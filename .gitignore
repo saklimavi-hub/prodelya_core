@@ -1,0 +1,45 @@
+# Prodelya / Laravel güvenli ek kurallar
+.env.*
+!.env.example
+
+/bootstrap/cache/*.php
+
+/storage/app/*
+!/storage/app/.gitignore
+!/storage/app/public
+/storage/app/public/*
+!/storage/app/public/.gitignore
+/storage/app/backups/*
+/storage/framework/cache/*
+!/storage/framework/cache/.gitignore
+/storage/framework/sessions/*
+!/storage/framework/sessions/.gitignore
+/storage/framework/views/*
+!/storage/framework/views/.gitignore
+/storage/logs/*
+!/storage/logs/.gitignore
+
+# Geçici test / rapor / yedek dosyaları
+/test-results
+/tmp
+*.bak
+*.backup
+
+# Prodelya güvenli dışlama kuralları
+.env
+.env.*
+!.env.example
+
+/vendor/
+/node_modules/
+/storage/
+/public/storage/
+/bootstrap/cache/*.php
+
+.phpunit.result.cache
+.tmp/
+*.log
+*.bak
+*.backup
+
+prodelya_*_onizleme.html
