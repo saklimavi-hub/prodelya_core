@@ -51,6 +51,7 @@
                     <div>
                         <h3 class="text-lg font-medium text-gray-900">Mail Gönderim Ayarları</h3>
                         <p class="mt-1 text-sm text-gray-500">Şifre hiçbir zaman düz gösterilmez. Boş bırakırsanız mevcut şifre korunur.</p>
+                        <p class="mt-2 text-sm text-gray-500">Durum: <span class="font-medium text-gray-700">{{ $smtpReadiness['status_label'] }}</span></p>
                     </div>
                     <span class="badge {{ $smtpSettings['smtp_password_configured'] ? 'badge-green' : 'badge-amber' }}">
                         {{ $smtpSettings['smtp_password_configured'] ? 'Şifre Tanımlı' : 'Şifre Tanımlı Değil' }}
@@ -156,6 +157,12 @@
                         Test Mail Gönder
                     </button>
                 </form>
+
+                <div class="mt-5 rounded-lg border border-gray-200 bg-gray-50 px-4 py-4 text-sm text-gray-700">
+                    <div><span class="font-medium">Son Test:</span> {{ $smtpReadiness['last_test_at'] }}</div>
+                    <div class="mt-1"><span class="font-medium">Durum:</span> {{ $smtpReadiness['last_test_status'] }}</div>
+                    <div class="mt-1"><span class="font-medium">Not:</span> {{ $smtpReadiness['last_test_note'] }}</div>
+                </div>
             </div>
         </div>
 

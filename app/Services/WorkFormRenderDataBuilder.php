@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\OrderItemWorkForm;
 use App\Models\OrderItemWorkFormAttachment;
+use App\Services\ProductDataHub\ProductHubSafeImageUrlService;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Collection;
 
@@ -11,7 +12,8 @@ class WorkFormRenderDataBuilder
 {
     public function __construct(
         protected WorkFormQrCodeService $qrCodeService,
-        protected TenantCompanyProfileService $tenantCompanyProfileService
+        protected TenantCompanyProfileService $tenantCompanyProfileService,
+        protected ProductHubSafeImageUrlService $safeImageUrlService,
     ) {
     }
 
@@ -71,6 +73,7 @@ class WorkFormRenderDataBuilder
             'orderSnapshot' => $orderSnapshot,
             'customerSnapshot' => $customerSnapshot,
             'productSnapshot' => $productSnapshot,
+            'safeProductImageUrlForAdmin' => $this->safeImageUrlService->resolveFromSnapshot($productSnapshot, 'work_form_admin'),
             'printSnapshot' => $printSnapshot,
             'procurementSnapshot' => $procurementSnapshot,
             'graphicSnapshot' => $graphicSnapshot,

@@ -57,6 +57,12 @@
         </div>
     @endif
 
+    <div id="quote-client-error" class="pd-card border-red-200 bg-red-50 hidden">
+        <div class="pd-card-body">
+            <div class="text-sm font-semibold text-red-800" data-client-error-message></div>
+        </div>
+    </div>
+
     <div class="pd-quote-workspace">
         <div class="space-y-5">
             <div class="pd-card">
@@ -224,6 +230,8 @@ let productItemCount = 0;
 let activeItemIndex = 0;
 let expandAllItems = false;
 const catalogSearchTimers = new Map();
+const catalogEntryStore = new Map();
+let catalogEntrySequence = 0;
 const tenantPrintSettings = Array.isArray(quoteWorkspace.tenantPrintSettings) ? quoteWorkspace.tenantPrintSettings : [];
 const tenantPrintSettingsById = new Map(tenantPrintSettings.map((setting) => [String(setting.id), setting]));
 const legacyPrintTypeOptions = Array.isArray(quoteWorkspace.legacyPrintTypeOptions) ? quoteWorkspace.legacyPrintTypeOptions : [];
@@ -318,6 +326,50 @@ function finiteNumber(value, fallback = 0) {
     return Number.isFinite(number) ? number : fallback;
 }
 
+function cloneJsonSafe(value) {
+    try {
+        return JSON.parse(JSON.stringify(value ?? null));
+    } catch (error) {
+        return null;
+    }
+}
+
+function rememberCatalogEntry(entry) {
+    const entryKey = `catalog-entry-${++catalogEntrySequence}`;
+    catalogEntryStore.set(entryKey, cloneJsonSafe(entry) ?? entry);
+    return entryKey;
+}
+
+function getCatalogEntry(entryKey) {
+    if (!entryKey || !catalogEntryStore.has(entryKey)) {
+        return null;
+    }
+
+    return cloneJsonSafe(catalogEntryStore.get(entryKey)) ?? catalogEntryStore.get(entryKey);
+}
+
+function setClientFormError(message = '') {
+    const box = document.getElementById('quote-client-error');
+    const label = box?.querySelector('[data-client-error-message]');
+
+    if (!box || !label) {
+        return;
+    }
+
+    if (!message) {
+        label.textContent = '';
+        box.classList.add('hidden');
+        return;
+    }
+
+    label.textContent = message;
+    box.classList.remove('hidden');
+}
+
+function clearClientFormError() {
+    setClientFormError('');
+}
+
 function normalizeCatalogSelectionEntry(entry = {}, currentItem = {}) {
     const normalizedEntry = safeObject(entry);
     const currentProductSnapshot = safeObject(currentItem.product_snapshot);
@@ -347,6 +399,68 @@ function normalizeCatalogSelectionEntry(entry = {}, currentItem = {}) {
         entryPriceSnapshot.sale_price,
         entryPriceSnapshot.unit_price,
     ], fallbackListPrice), fallbackListPrice);
+    const selectedCatalogIdentity = {
+        catalog_source: firstFilledValue([
+            normalizedEntry.catalog_source,
+            currentItem.catalog_source,
+            currentProductSnapshot.catalog_source,
+            'tenant_catalog',
+        ], 'tenant_catalog'),
+        tenant_catalog_product_id: firstFilledValue([
+            normalizedEntry.tenant_catalog_product_id,
+            normalizedEntry.product_id,
+            normalizedEntry.id,
+            currentItem.tenant_catalog_product_id,
+            currentProductSnapshot.tenant_catalog_product_id,
+        ], ''),
+        tenant_catalog_product_variant_id: firstFilledValue([
+            normalizedEntry.tenant_catalog_product_variant_id,
+            normalizedEntry.product_variant_id,
+            normalizedEntry.variant_id,
+            currentItem.tenant_catalog_product_variant_id,
+            currentProductSnapshot.tenant_catalog_product_variant_id,
+        ], ''),
+        standard_product_id: firstFilledValue([
+            entryProductSnapshot.standard_product_id,
+            normalizedEntry.standard_product_id,
+            currentItem.standard_product_id,
+            currentProductSnapshot.standard_product_id,
+        ], ''),
+        standard_product_variant_id: firstFilledValue([
+            entryProductSnapshot.standard_product_variant_id,
+            normalizedEntry.standard_product_variant_id,
+            currentItem.standard_product_variant_id,
+            currentProductSnapshot.standard_product_variant_id,
+        ], ''),
+        product_code: firstFilledValue([
+            normalizedEntry.product_code,
+            entryProductSnapshot.product_code,
+            currentItem.product_code,
+            currentProductSnapshot.product_code,
+        ], ''),
+        product_name: firstFilledValue([
+            normalizedEntry.product_name,
+            entryProductSnapshot.product_name,
+            currentItem.product_name,
+            currentProductSnapshot.product_name,
+        ], ''),
+        is_warning_sellable: !!firstFilledValue([
+            normalizedEntry.is_warning_sellable,
+            entryProductSnapshot.is_warning_sellable,
+            currentProductSnapshot.is_warning_sellable,
+            false,
+        ], false),
+        warning_tone: firstFilledValue([
+            normalizedEntry.warning_tone,
+            entryProductSnapshot.warning_tone,
+            currentProductSnapshot.warning_tone,
+        ], ''),
+        warning_summary: firstFilledValue([
+            normalizedEntry.warning_summary,
+            entryProductSnapshot.warning_summary,
+            currentProductSnapshot.warning_summary,
+        ], ''),
+    };
 
     return {
         entry: normalizedEntry,
@@ -498,6 +612,10 @@ function normalizeCatalogSelectionEntry(entry = {}, currentItem = {}) {
             entryPriceSnapshot.supplier_warning_type,
             currentPriceSnapshot.supplier_warning_type,
         ], null),
+        is_warning_sellable: selectedCatalogIdentity.is_warning_sellable,
+        warning_tone: selectedCatalogIdentity.warning_tone,
+        warning_summary: selectedCatalogIdentity.warning_summary,
+        selected_catalog_identity: selectedCatalogIdentity,
     };
 }
 
@@ -614,7 +732,9 @@ function defaultItem() {
         product_snapshot: null,
         price_snapshot: null,
         stock_snapshot: null,
+        selected_catalog_identity: null,
         print_vat_rate: quoteWorkspace.defaultPrintVatRate || 20,
+        _row_error: '',
     };
 }
 
@@ -622,6 +742,7 @@ function normalizeItem(item = {}, index = 0) {
     const productSnapshot = parseJsonValue(item.product_snapshot);
     const priceSnapshot = parseJsonValue(item.price_snapshot);
     const stockSnapshot = parseJsonValue(item.stock_snapshot);
+    const selectedCatalogIdentity = safeObject(item.selected_catalog_identity);
     const warningBadges = [
         ...(productSnapshot?.warning_badges || []),
         ...(priceSnapshot?.warning_badges || []),
@@ -654,6 +775,19 @@ function normalizeItem(item = {}, index = 0) {
         calculated_unit_price: formatInputNumber(item.calculated_unit_price ?? priceSnapshot?.calculated_unit_price ?? ''),
         warning_badges: [...new Set(warningBadges)],
         warning_messages: [...new Set(warningMessages)],
+        selected_catalog_identity: Object.keys(selectedCatalogIdentity).length ? selectedCatalogIdentity : {
+            catalog_source: item.catalog_source || 'tenant_catalog',
+            tenant_catalog_product_id: item.tenant_catalog_product_id || productSnapshot?.tenant_catalog_product_id || '',
+            tenant_catalog_product_variant_id: item.tenant_catalog_product_variant_id || productSnapshot?.tenant_catalog_product_variant_id || '',
+            standard_product_id: item.standard_product_id || productSnapshot?.standard_product_id || '',
+            standard_product_variant_id: item.standard_product_variant_id || productSnapshot?.standard_product_variant_id || '',
+            product_code: item.product_code || productSnapshot?.product_code || '',
+            product_name: item.product_name || productSnapshot?.product_name || '',
+            is_warning_sellable: !!(productSnapshot?.is_warning_sellable),
+            warning_tone: productSnapshot?.warning_tone || '',
+            warning_summary: productSnapshot?.warning_summary || '',
+        },
+        _row_error: item._row_error || '',
     };
 }
 
@@ -672,7 +806,7 @@ function vatModeLabel(mode) {
 function quoteLineWarningBadges(item) {
     const badges = [];
     const rawBadges = item.warning_badges || [];
-    const hasSupplierWarning = rawBadges.includes('Özel fiyat uyarısı');
+    const hasSupplierWarning = rawBadges.includes('Kırmızı Ürün') || rawBadges.includes('Turuncu Ürün');
     const hasNetWarning = rawBadges.includes('Net fiyat uyarısı');
     const hasMissingPrice = rawBadges.includes('Fiyat eksik');
     const hasMissingImage = rawBadges.includes('Görsel eksik');
@@ -709,7 +843,7 @@ function quoteLineWarningBadges(item) {
 function quoteWarningMeta(item) {
     const rawBadges = item.warning_badges || [];
     return {
-        hasSupplierWarning: rawBadges.includes('Özel fiyat uyarısı'),
+        hasSupplierWarning: rawBadges.includes('Kırmızı Ürün') || rawBadges.includes('Turuncu Ürün'),
         hasNetWarning: rawBadges.includes('Net fiyat uyarısı'),
         hasStockWarning: rawBadges.includes('Stok yok'),
     };
@@ -902,10 +1036,10 @@ function renderItem(item) {
     ];
     const compactWarningBadges = displayWarningBadges
         .filter((badge) => ['Uyarılı', 'Net Fiyat', 'Fiyat Eksik'].includes(badge.text))
-        .map((badge) => badgeHtml(badge.text, badge.class.replace('pd-badge-', '')));
+        .map((badge) => badgeHtml(badge.text, badge.tone || 'amber'));
 
     return `
-        <div class="pd-quote-item pd-quote-item-group ${warningMeta.hasSupplierWarning || warningMeta.hasStockWarning ? 'is-warning' : ''}" data-item-index="${item._index}" data-stable-key="${escapeHtml(item._stable_key || '')}">
+        <div class="pd-quote-item pd-quote-item-group ${warningMeta.hasSupplierWarning || warningMeta.hasStockWarning ? 'is-warning' : ''}" data-item-index="${item._index}" data-stable-key="${escapeHtml(item._stable_key || '')}" data-row-error-message="${escapeHtml(item._row_error || '')}">
             <div class="pd-quote-line-row">
                 <div class="pd-quote-item-number">${item._index + 1}</div>
                 <div class="pd-quote-line-product">
@@ -931,6 +1065,7 @@ function renderItem(item) {
                             </div>
                         </div>
                     </div>
+                    ${item._row_error ? `<div class="mt-2 text-xs font-medium text-red-700">${escapeHtml(item._row_error)}</div>` : ''}
                 </div>
                 <div><input type="number" name="items[${item._index}][quantity]" value="${escapeHtml(formatInputNumber(item.quantity || ''))}" step="0.01" min="0.01" class="pd-compact-input" placeholder="1.00"></div>
                 <div><input type="number" name="items[${item._index}][list_price]" value="${escapeHtml(formatInputNumber(item.list_price || ''))}" step="0.01" min="0" class="pd-compact-input" placeholder="${quoteWorkspace.canViewFinancialData ? '0.00' : 'Gizli'}" ${quoteWorkspace.canViewFinancialData ? '' : 'readonly'}></div>
@@ -977,6 +1112,7 @@ function renderItem(item) {
             <input type="hidden" name="items[${item._index}][supplier_id]" value="${escapeHtml(item.supplier_id || '')}">
             <input type="hidden" name="items[${item._index}][supplier_source_id]" value="${escapeHtml(item.supplier_source_id || '')}">
             <input type="hidden" name="items[${item._index}][catalog_source]" value="${escapeHtml(item.catalog_source || 'tenant_catalog')}">
+            <input type="hidden" name="items[${item._index}][selected_catalog_identity]" value="${escapeHtml(JSON.stringify(item.selected_catalog_identity || null))}">
             <input type="hidden" name="items[${item._index}][manual_unit_price]" value="${manualUnitPrice ? '1' : '0'}" data-manual-unit-price>
             <input type="hidden" name="items[${item._index}][calculated_unit_price]" value="${escapeHtml(formatInputNumber(calculatedUnitPrice || ''))}" data-calculated-unit-price>
             <input type="hidden" name="items[${item._index}][description]" value="${escapeHtml(item.description || '')}">
@@ -993,8 +1129,18 @@ function mountItems(items) {
     container.innerHTML = '';
 
     items.forEach((item, index) => {
-        const normalized = normalizeItem(item, index);
-        container.insertAdjacentHTML('beforeend', renderItem(normalized));
+        try {
+            const normalized = normalizeItem(item, index);
+            container.insertAdjacentHTML('beforeend', renderItem(normalized));
+        } catch (error) {
+            const fallbackItem = normalizeItem({
+                ...defaultItem(),
+                ...safeObject(item),
+                _row_error: 'Bu satir tam yuklenemedi. Lütfen ürünü katalogdan yeniden seçin.',
+            }, index);
+            container.insertAdjacentHTML('beforeend', renderItem(fallbackItem));
+            setClientFormError('Teklif satırlarından biri güvenli şekilde yeniden yüklendi. Lütfen hatalı satırı kontrol edin.');
+        }
     });
 
     productItemCount = items.length;
@@ -1011,6 +1157,7 @@ function collectItems() {
         const productSnapshot = parseJsonValue(element.querySelector('input[name$="[product_snapshot]"]')?.value);
         const priceSnapshot = parseJsonValue(element.querySelector('input[name$="[price_snapshot]"]')?.value);
         const stockSnapshot = parseJsonValue(element.querySelector('input[name$="[stock_snapshot]"]')?.value);
+        const selectedCatalogIdentity = parseJsonValue(element.querySelector('input[name$="[selected_catalog_identity]"]')?.value);
 
         return normalizeItem({
             stable_key: element.dataset.stableKey || element.querySelector('input[name$="[stable_key]"]')?.value || '',
@@ -1038,6 +1185,8 @@ function collectItems() {
             product_snapshot: productSnapshot,
             price_snapshot: priceSnapshot,
             stock_snapshot: stockSnapshot,
+            selected_catalog_identity: selectedCatalogIdentity,
+            _row_error: element.dataset.rowErrorMessage || '',
             print_vat_rate: priceSnapshot?.print_vat_rate || quoteWorkspace.defaultPrintVatRate || 20,
             prints: Array.from(element.querySelectorAll('[data-print-list] .pd-print-operation')).map((row, printIndex) => normalizePrint({
                 tenant_print_setting_id: row.querySelector('[data-print-setting-id]')?.value || '',
@@ -1124,9 +1273,10 @@ function buildCatalogResult(entry) {
         `Stok: ${formatStock(entry.visible_stock_quantity ?? 0)}`,
         `${formatMoney(price, entry.currency || 'TL')}`,
     ].filter(Boolean).join(' • ');
+    const entryKey = rememberCatalogEntry(entry);
 
     return `
-        <button type="button" class="pd-catalog-result" data-entry="${encodeURIComponent(JSON.stringify(entry))}">
+        <button type="button" class="pd-catalog-result" data-entry-key="${escapeHtml(entryKey)}">
             <div class="flex items-start gap-3">
                 ${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="Ürün" class="pd-catalog-result-thumb">` : ''}
                 <div class="min-w-0">
@@ -1225,7 +1375,18 @@ function updateItemSummary(itemElement, entry) {
     if (!target) {
         return;
     }
-    const normalizedEntry = normalizeCatalogSelectionEntry(entry, target);
+    let normalizedEntry;
+
+    try {
+        normalizedEntry = normalizeCatalogSelectionEntry(entry, target);
+    } catch (error) {
+        target._row_error = 'Seçilen ürün bilgisi güvenli şekilde işlenemedi. Lütfen ürünü yeniden seçin.';
+        items[itemIndex] = target;
+        setClientFormError('Seçilen ürün bilgisi işlenemedi. Lütfen hatalı satırı kontrol edin.');
+        mountItems(items);
+        return;
+    }
+
     const selectedPrice = normalizedEntry.list_price;
     const selectedStock = normalizedEntry.visible_stock_quantity;
     const localStock = normalizedEntry.local_stock_quantity;
@@ -1247,6 +1408,9 @@ function updateItemSummary(itemElement, entry) {
     target.standard_product_variant_id = normalizedEntry.standard_product_variant_id;
     target.supplier_id = sourceSummary[0]?.supplier_id || target.supplier_id || '';
     target.supplier_source_id = sourceSummary[0]?.supplier_source_id || target.supplier_source_id || '';
+    target.selected_catalog_identity = normalizedEntry.selected_catalog_identity;
+    target._row_error = '';
+    clearClientFormError();
     target.product_snapshot = {
         ...safeObject(target.product_snapshot),
         ...normalizedEntry.product_snapshot,
@@ -1267,6 +1431,9 @@ function updateItemSummary(itemElement, entry) {
         category_name: normalizedEntry.category_name,
         visible_in_catalog: normalizedEntry.visible_in_catalog,
         visible_in_quote: normalizedEntry.visible_in_quote,
+        is_warning_sellable: normalizedEntry.is_warning_sellable,
+        warning_tone: normalizedEntry.warning_tone,
+        warning_summary: normalizedEntry.warning_summary,
     };
     target.price_snapshot = {
         ...safeObject(target.price_snapshot),
@@ -1671,13 +1838,24 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.addEventListener('click', (event) => {
-        const resultButton = event.target.closest('.pd-catalog-result[data-entry]');
+        const resultButton = event.target.closest('.pd-catalog-result[data-entry-key]');
         if (resultButton) {
             const itemElement = resultButton.closest('.pd-quote-item');
-            const entry = JSON.parse(decodeURIComponent(resultButton.dataset.entry));
-            updateItemSummary(itemElement, entry);
-            hideCatalogResults(itemElement);
-            return;
+            const entry = getCatalogEntry(resultButton.dataset.entryKey);
+            if (!entry) {
+                const items = collectItems();
+                const itemIndex = Number(itemElement?.dataset.itemIndex ?? -1);
+                if (items[itemIndex]) {
+                    items[itemIndex]._row_error = 'Seçilen ürün bilgisi eksik kaldı. Lütfen ürünü katalogdan yeniden seçin.';
+                    mountItems(items);
+                    setClientFormError('Teklif kaydedilemedi. Hatalı satırları kontrol edip tekrar deneyin.');
+                }
+                hideCatalogResults(itemElement);
+                return;
+        }
+        updateItemSummary(itemElement, entry);
+        hideCatalogResults(itemElement);
+        return;
         }
 
         const itemElement = event.target.closest('.pd-quote-item');
@@ -1706,6 +1884,63 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!event.target.closest('.pd-catalog-search')) {
             document.querySelectorAll('.pd-quote-item').forEach((itemElement) => hideCatalogResults(itemElement));
+        }
+    });
+
+    document.getElementById('quote-form')?.addEventListener('submit', (event) => {
+        const items = collectItems();
+        let firstErrorIndex = -1;
+        let hasErrors = false;
+
+        const nextItems = items.map((item, index) => {
+            const normalized = normalizeItem(item, index);
+            const identity = safeObject(normalized.selected_catalog_identity);
+            const hasCatalogIdentity = Boolean(
+                identity.tenant_catalog_product_id
+                || identity.tenant_catalog_product_variant_id
+                || normalized.tenant_catalog_product_id
+                || normalized.tenant_catalog_product_variant_id
+                || normalized.standard_product_id
+            );
+            let rowError = '';
+
+            if (!normalized.product_name || !normalized.product_code && hasCatalogIdentity && !safeObject(normalized.product_snapshot).product_code) {
+                rowError = 'Seçilen ürün bilgisi eksik kaldı. Lütfen ürünü katalogdan yeniden seçin.';
+            } else if (hasCatalogIdentity && !safeObject(normalized.product_snapshot).product_name) {
+                rowError = 'Seçilen ürün bilgisi eksik kaldı. Lütfen ürünü katalogdan yeniden seçin.';
+            } else if (hasCatalogIdentity && !safeObject(normalized.price_snapshot).list_price && !safeObject(normalized.price_snapshot).display_price) {
+                rowError = 'Ürün fiyat özeti okunamadı. Satırı yeniden seçip tekrar deneyin.';
+            } else if (
+                identity.tenant_catalog_product_variant_id
+                && normalized.tenant_catalog_product_variant_id
+                && String(identity.tenant_catalog_product_variant_id) !== String(normalized.tenant_catalog_product_variant_id)
+            ) {
+                rowError = 'Seçilen varyasyon ürün ile eşleşmiyor. Lütfen satırı yeniden seçin.';
+            } else if (identity.is_warning_sellable && hasCatalogIdentity && !safeObject(normalized.product_snapshot).product_name) {
+                rowError = 'Uyarılı ürün seçildi ancak teklif satırı eksik veri taşıyor. Lütfen satırı yeniden seçin veya manuel ürün olarak kaydedin.';
+            }
+
+            if (rowError) {
+                hasErrors = true;
+                if (firstErrorIndex === -1) {
+                    firstErrorIndex = index;
+                }
+            }
+
+            return {
+                ...normalized,
+                _row_error: rowError,
+            };
+        });
+
+        if (hasErrors) {
+            event.preventDefault();
+            mountItems(nextItems);
+            setClientFormError('Teklif kaydedilemedi. Hatalı satırları kontrol edip tekrar deneyin.');
+            const firstErrorRow = document.querySelector(`.pd-quote-item[data-item-index="${firstErrorIndex}"]`);
+            firstErrorRow?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else {
+            clearClientFormError();
         }
     });
 

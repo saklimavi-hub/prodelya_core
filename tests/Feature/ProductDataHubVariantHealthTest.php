@@ -324,9 +324,8 @@ class ProductDataHubVariantHealthTest extends TestCase
         $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->get('/admin/super-admin/product-data-hub/common-products?limit=50&q=ET')
-            ->assertOk()
-            ->assertSeeText('Ortak Ürün Listesi')
-            ->assertSee('value="50"', false);
+            ->assertStatus(301)
+            ->assertRedirect('/admin/super-admin/product-data-hub/standard-products?q=ET&limit=50');
 
         $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])

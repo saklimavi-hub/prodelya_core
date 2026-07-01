@@ -64,6 +64,31 @@ class TenantAccount extends Model
         return $this->hasMany(CurrentAccountTransaction::class);
     }
 
+    public function billingEntries()
+    {
+        return $this->hasMany(TenantBillingEntry::class);
+    }
+
+    public function paymentCheckoutSessions()
+    {
+        return $this->hasMany(PaymentCheckoutSession::class);
+    }
+
+    public function paymentGatewayCredentials()
+    {
+        return $this->hasMany(PaymentGatewayCredential::class);
+    }
+
+    public function paymentWebhookLogs()
+    {
+        return $this->hasMany(PaymentWebhookLog::class);
+    }
+
+    public function packageUpgradeRequests()
+    {
+        return $this->hasMany(TenantPackageUpgradeRequest::class);
+    }
+
     public function printSettings()
     {
         return $this->hasMany(TenantPrintSetting::class);

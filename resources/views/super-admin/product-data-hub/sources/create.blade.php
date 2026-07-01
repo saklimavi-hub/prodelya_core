@@ -5,9 +5,17 @@
 @php
     $profileOptions = collect($sourceProfiles)->mapWithKeys(fn ($profile, $key) => [$key => $profile['display_name'] ?? $key])->all();
     $profileOptions['CUSTOM'] = 'Boş Profil / Manuel Alan Eşleme';
-    $selectedProfileKey = old('profile_key', $formDefaults['profile_key'] ?? array_key_first($sourceProfiles));
-    $selectedProfileTemplate = $profileTemplates[$selectedProfileKey] ?? null;
-    $selectedSourceType = old('source_type', $formDefaults['source_type'] ?? 'xml');
+    $oldTemplateKey = old('source_profile_template');
+    if (!$oldTemplateKey) {
+        $legacyOldProfileKey = old('profile_key');
+        $oldTemplateKey = ($legacyOldProfileKey && (array_key_exists($legacyOldProfileKey, $profileTemplates) || $legacyOldProfileKey === 'CUSTOM'))
+            ? $legacyOldProfileKey
+            : null;
+    }
+    $selectedProfileTemplateKey = $oldTemplateKey ?? $formDefaults['source_profile_template'] ?? array_key_first($sourceProfiles);
+    $selectedProfileTemplate = $profileTemplates[$selectedProfileTemplateKey] ?? null;
+    $selectedProfileKey = old('profile_key', $formDefaults['profile_key'] ?? ($selectedProfileTemplate['profile_identity_key'] ?? $selectedProfileTemplateKey));
+    $selectedSourceType = old('source_type', $formDefaults['source_type'] ?? ($selectedProfileTemplate['source_type'] ?? 'xml'));
     $supplierLookup = $suppliers->mapWithKeys(fn ($supplier) => [$supplier->code => $supplier->id])->all();
 @endphp
 
@@ -17,8 +25,8 @@
         <div class="pd-card-body">
             <div class="pd-hero-main">
                 <div class="pd-hero-copy">
-                    <h1 class="pd-hero-title">Yeni Global Tedarikçi Kaynağı</h1>
-                    <p class="pd-hero-subtitle">Yeni XML, JSON, CSV veya API tedarikçileri için özel ekran yazmadan hazır profil, mevcut profil kopyası veya manuel alan eşleme akışıyla ilerleyin.</p>
+                    <h1 class="pd-hero-title">Yeni Hazır Tedarikçi Kaynağı</h1>
+                    <p class="pd-hero-subtitle">Önce kaynak kimliğini ve profili netleştirin, sonra bağlantı bilgilerini ve güvenlik ayarlarını tamamlayın.</p>
                     <div class="pd-hero-badges">
                         <span class="pd-badge pd-badge-blue">Super Admin</span>
                         <span class="pd-badge pd-badge-green">{{ count($profileTemplates) }} hazır profil</span>
@@ -45,9 +53,10 @@
 
         <div class="pd-card pd-form-card mb-6">
             <div class="pd-card-header">
-                <h3 class="pd-card-title">Adım 1 — Kaynak Tipi Seç</h3>
+                <h3 class="pd-card-title">Kaynak Kimliği</h3>
             </div>
             <div class="pd-card-body">
+                <div class="pd-note mb-4">Hazır profil, kopya kaynak veya manuel başlangıç yöntemini seçin. Bu seçim yalnız formun başlangıç düzenini belirler.</div>
                 <div class="pd-template-choice-grid">
                     <div class="pd-template-choice {{ $selectedProfileKey !== 'CUSTOM' && in_array($selectedSourceType, ['xml', 'api'], true) ? 'is-selected' : '' }}">
                         <div class="pd-template-choice-title">Hazır Profil Kullan</div>
@@ -75,13 +84,13 @@
 
         <div class="pd-card pd-form-card mb-6">
             <div class="pd-card-header">
-                <h3 class="pd-card-title">Adım 2 — Hazır Profil Seç</h3>
+                <h3 class="pd-card-title">Profil ve Parsing</h3>
             </div>
             <div class="pd-card-body">
-                <div class="pd-note mb-4">Hazır profil kartları config içindeki profile library’den gelir. Yeni tedarikçi için özel Blade değil, yeni profil veya manuel mapping akışı kullanılır.</div>
+                <div class="pd-note mb-4">Kaynağın veri biçimine en yakın profili seçin. Kaynaktaki alanlar farklıysa eşlemeler daha sonra alan eşleme ekranında tamamlanır.</div>
                 <div class="pd-profile-grid">
                     @foreach($profileTemplates as $profile)
-                        <div class="pd-profile-card {{ $selectedProfileKey === $profile['key'] ? 'pd-profile-card-selected' : '' }}">
+                        <div class="pd-profile-card {{ $selectedProfileTemplateKey === $profile['key'] ? 'pd-profile-card-selected' : '' }}">
                             <div class="pd-profile-head">
                                 <div>
                                     <h4 class="pd-profile-name">{{ $profile['display_name'] }}</h4>
@@ -122,8 +131,13 @@
                                         class="pd-btn pd-btn-sm pd-btn-primary"
                                         data-profile-select
                                         data-profile-key="{{ $profile['key'] }}"
-                                        data-source-type="xml"
-                                        data-supplier-id="{{ $supplierLookup[$profile['key']] ?? '' }}"
+                                        data-profile-identity-key="{{ $profile['profile_identity_key'] ?? $profile['key'] }}"
+                                        data-source-type="{{ $profile['source_type'] ?? 'xml' }}"
+                                        data-supplier-id="{{ $supplierLookup[$profile['profile_identity_key'] ?? $profile['key']] ?? '' }}"
+                                        data-source-name="{{ $profile['suggested_source_name'] ?? '' }}"
+                                        data-supplier-name="{{ $profile['suggested_supplier_name'] ?? '' }}"
+                                        data-source-url="{{ $profile['default_url'] ?? '' }}"
+                                        data-format="{{ $profile['source_type'] ?? 'xml' }}"
                                     >
                                         Bu profili kullan
                                     </button>
@@ -132,7 +146,7 @@
                         </div>
                     @endforeach
 
-                    <div class="pd-profile-card {{ $selectedProfileKey === 'CUSTOM' ? 'pd-profile-card-selected' : '' }}">
+                    <div class="pd-profile-card {{ $selectedProfileTemplateKey === 'CUSTOM' ? 'pd-profile-card-selected' : '' }}">
                         <div class="pd-profile-head">
                             <div>
                                 <h4 class="pd-profile-name">Boş Profil / Manuel Alan Eşleme</h4>
@@ -145,7 +159,7 @@
                                 Yeni tedarikçi bilinen profile benzemiyorsa önce boş profil ile başla, mapping oturduğunda profile library’ye ekle.
                             </div>
                             <div class="pd-template-card-actions">
-                                <button type="button" class="pd-btn pd-btn-sm pd-btn-light" data-profile-select data-profile-key="CUSTOM" data-source-type="manual">Boş profil ile başla</button>
+                                <button type="button" class="pd-btn pd-btn-sm pd-btn-light" data-profile-select data-profile-key="CUSTOM" data-profile-identity-key="CUSTOM" data-source-type="manual" data-format="manual">Boş profil ile başla</button>
                             </div>
                         </div>
                     </div>
@@ -170,9 +184,10 @@
 
         <div class="pd-card pd-form-card mb-6">
             <div class="pd-card-header">
-                <h3 class="pd-card-title">Adım 3 — Bağlantı Bilgileri</h3>
+                <h3 class="pd-card-title">Bağlantı ve Güvenlik</h3>
             </div>
             <div class="pd-card-body">
+                <div class="pd-note mb-4">Kaynak adı, tedarikçi, URL veya dosya yolu ve temel erişim bilgilerini burada tanımlayın.</div>
                 <div class="pd-form-grid-2">
                     <div>
                         <label class="pd-label">Tedarikçi *</label>
@@ -186,18 +201,18 @@
                     </div>
                     <div>
                         <label class="pd-label">Kaynak Adı *</label>
-                        <input type="text" name="source_name" class="pd-input" value="{{ old('source_name', $formDefaults['source_name'] ?? '') }}" required placeholder="Örn: Etkin XML Feed">
+                        <input type="text" name="source_name" id="source_name" class="pd-input" value="{{ old('source_name', $formDefaults['source_name'] ?? '') }}" required placeholder="Örn: Etkin XML Feed">
                     </div>
                 </div>
 
                 <div class="pd-form-grid-2 mt-4">
                     <div>
                         <label class="pd-label">Yeni Tedarikçi Adı</label>
-                        <input type="text" name="supplier_name" class="pd-input" value="{{ old('supplier_name') }}" placeholder="Örn: X Tedarikçi">
+                        <input type="text" name="supplier_name" id="supplier_name" class="pd-input" value="{{ old('supplier_name') }}" placeholder="Örn: X Tedarikçi">
                     </div>
                     <div>
                         <label class="pd-label">Profil Key</label>
-                        <input type="text" class="pd-input" value="{{ old('profile_key', $selectedProfileKey) }}" readonly>
+                        <input type="text" name="profile_key" id="profile_key" class="pd-input" value="{{ old('profile_key', $selectedProfileKey) }}" readonly>
                     </div>
                 </div>
 
@@ -212,9 +227,9 @@
                     </div>
                     <div>
                         <label class="pd-label">Kaynak Profil Şablonu *</label>
-                        <select name="profile_key" id="profile_key" class="pd-select">
+                        <select name="source_profile_template" id="source_profile_template" class="pd-select">
                             @foreach($profileOptions as $value => $label)
-                                <option value="{{ $value }}" {{ old('profile_key', $selectedProfileKey) === $value ? 'selected' : '' }}>{{ $value }} - {{ $label }}</option>
+                                <option value="{{ $value }}" {{ $selectedProfileTemplateKey === $value ? 'selected' : '' }}>{{ $value }} - {{ $label }}</option>
                             @endforeach
                         </select>
                     </div>
@@ -223,7 +238,7 @@
                 <div class="pd-form-grid-2 mt-4">
                     <div>
                         <label class="pd-label">XML / API URL</label>
-                        <input type="url" name="url" class="pd-input" value="{{ old('url', $formDefaults['url'] ?? '') }}" placeholder="https://example.com/feed.xml">
+                        <input type="url" name="url" id="url" class="pd-input" value="{{ old('url', $formDefaults['url'] ?? '') }}" placeholder="https://example.com/feed.xml">
                     </div>
                     <div>
                         <label class="pd-label">Yerel Dosya Yolu</label>
@@ -256,10 +271,11 @@
 
         <details class="pd-card pd-form-card mb-6">
             <summary class="pd-card-header">
-                <h3 class="pd-card-title">Adım 4 — Alan Eşleme Önizleme</h3>
+                <h3 class="pd-card-title">Önizleme ve Alan Eşleme Hazırlığı</h3>
                 <span class="pd-badge pd-badge-gray">Gelişmiş</span>
             </summary>
             <div class="pd-card-body">
+                <div class="pd-note mb-4">Bu bölüm yalnız hazır profilin hangi alanları beklediğini gösterir. Kesin eşleme kaydı kaynak oluşturulduktan sonra yapılır.</div>
                 @if($selectedProfileTemplate)
                     <div class="pd-note mb-4">{{ $selectedProfileTemplate['display_name'] }} profili için otomatik gelen alan grupları. Gerekirse kayıt sonrası field mapping ekranında ince ayar yapılabilir.</div>
                     <div class="pd-mapping-preview-grid">
@@ -289,7 +305,7 @@
                     </div>
                     <div>
                         <label class="pd-label">Format</label>
-                        <input type="text" name="format" class="pd-input" value="{{ old('format', $formDefaults['format'] ?? '') }}" placeholder="xml / json / csv">
+                        <input type="text" name="format" id="format" class="pd-input" value="{{ old('format', $formDefaults['format'] ?? '') }}" placeholder="xml / json / csv">
                     </div>
                 </div>
 
@@ -333,6 +349,18 @@
 
                 <div class="pd-form-grid-2 mt-4">
                     <div>
+                        <label class="pd-label">HTTP User-Agent</label>
+                        <input type="text" name="user_agent" class="pd-input" value="{{ old('user_agent', $formDefaults['user_agent'] ?? '') }}" placeholder="prodelya.com">
+                        <div class="pd-profile-note mt-2">Bazı tedarikçiler XML/API erişimi için User-Agent zorunlu tutar. Yeni Nesil gibi kaynaklarda bu alana web site adresinizi veya platform adresinizi yazın. Ornek: prodelya.com</div>
+                    </div>
+                    <div>
+                        <label class="pd-label">Bağlantı Zaman Aşımı (sn)</label>
+                        <input type="number" name="timeout_seconds" class="pd-input" value="{{ old('timeout_seconds', $formDefaults['timeout_seconds'] ?? 25) }}" min="1" max="120">
+                    </div>
+                </div>
+
+                <div class="pd-form-grid-2 mt-4">
+                    <div>
                         <label class="pd-label">Basic Kullanıcı Adı</label>
                         <input type="text" name="auth_username" class="pd-input" value="{{ old('auth_username', $formDefaults['auth_username'] ?? '') }}">
                     </div>
@@ -365,8 +393,9 @@
                 </div>
 
                 <div class="mt-4">
-                    <label class="pd-label">Header JSON</label>
-                    <textarea name="request_headers" class="pd-textarea" rows="3" placeholder='{"Accept":"application/xml"}'>{{ old('request_headers', $formDefaults['request_headers'] ?? '') }}</textarea>
+                    <label class="pd-label">Ozel HTTP Header'lari</label>
+                    <textarea name="request_headers" class="pd-textarea" rows="3" placeholder='{"Accept":"application/xml"}'>{{ old('request_headers', $formDefaults['request_headers_display'] ?? $formDefaults['request_headers'] ?? '') }}</textarea>
+                    <div class="pd-profile-note mt-2">User-Agent alani doluysa burada tanimli User-Agent header'i yerine bu deger kullanilir. Diger header'lar korunur.</div>
                 </div>
 
                 <div class="mt-4">
@@ -422,7 +451,7 @@
                 </div>
 
                 <div class="pd-inline-section mt-5">
-                    <div class="pd-inline-section-title">Senkron Politikası</div>
+                    <div class="pd-inline-section-title">Sync Davranışı</div>
                     <div class="pd-form-grid-2">
                         <div>
                             <label class="pd-label">Güncelleme Sıklığı</label>
@@ -483,7 +512,7 @@
                         <div>
                             <label class="pd-checkbox">
                                 <input type="checkbox" name="sync_auto_project_to_tenant_catalog" value="1" {{ old('sync_auto_project_to_tenant_catalog', $formDefaults['sync_auto_project_to_tenant_catalog'] ?? true) ? 'checked' : '' }}>
-                                Sync sonrası tenant kataloğa otomatik yansıt
+                                Sync sonrası Abone Firma kataloğuna otomatik yansıt
                             </label>
                         </div>
                     </div>
@@ -513,7 +542,7 @@
                         <div>
                             <label class="pd-checkbox">
                                 <input type="checkbox" name="sync_allow_warning_products_to_catalog" value="1" {{ old('sync_allow_warning_products_to_catalog', $formDefaults['sync_allow_warning_products_to_catalog'] ?? true) ? 'checked' : '' }}>
-                                Uyarılı ürünleri tenant kataloga uyarıyla geçir
+                                Uyarılı ürünleri Abone Firma kataloğuna uyarıyla geçir
                             </label>
                         </div>
                     </div>
@@ -586,20 +615,45 @@
 document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('[data-profile-select]').forEach(function (button) {
         button.addEventListener('click', function () {
-            var profileSelect = document.getElementById('profile_key');
+            var profileSelect = document.getElementById('source_profile_template');
+            var profileKeyInput = document.getElementById('profile_key');
             var sourceTypeSelect = document.getElementById('source_type');
             var supplierSelect = document.getElementById('supplier_id');
+            var sourceNameInput = document.getElementById('source_name');
+            var supplierNameInput = document.getElementById('supplier_name');
+            var urlInput = document.getElementById('url');
+            var formatInput = document.getElementById('format');
 
             if (profileSelect && button.dataset.profileKey) {
                 profileSelect.value = button.dataset.profileKey;
+            }
+
+            if (profileKeyInput && button.dataset.profileIdentityKey) {
+                profileKeyInput.value = button.dataset.profileIdentityKey;
             }
 
             if (sourceTypeSelect && button.dataset.sourceType) {
                 sourceTypeSelect.value = button.dataset.sourceType;
             }
 
-            if (supplierSelect && button.dataset.supplierId) {
-                supplierSelect.value = button.dataset.supplierId;
+            if (supplierSelect) {
+                supplierSelect.value = button.dataset.supplierId || '';
+            }
+
+            if (sourceNameInput && button.dataset.sourceName) {
+                sourceNameInput.value = button.dataset.sourceName;
+            }
+
+            if (supplierNameInput) {
+                supplierNameInput.value = button.dataset.supplierName || '';
+            }
+
+            if (urlInput && button.dataset.sourceUrl) {
+                urlInput.value = button.dataset.sourceUrl;
+            }
+
+            if (formatInput && button.dataset.format) {
+                formatInput.value = button.dataset.format;
             }
         });
     });

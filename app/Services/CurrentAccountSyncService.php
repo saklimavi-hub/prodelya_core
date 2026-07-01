@@ -34,6 +34,7 @@ class CurrentAccountSyncService
                 $account->fill($this->companyPayload($company));
                 $account->save();
 
+                $this->linkCompany($account, $company);
                 $this->syncCompanyRoles($account, $company);
 
                 return $account->fresh(['roles', 'links']);
@@ -139,22 +140,23 @@ class CurrentAccountSyncService
 
         $company->loadMissing('companyRoles');
 
-        $roleMap = [
-            'customer' => CurrentAccountRole::ROLE_CUSTOMER,
-            'supplier' => CurrentAccountRole::ROLE_SUPPLIER,
-            'print_fason' => CurrentAccountRole::ROLE_SUBCONTRACTOR,
-            'production_partner' => CurrentAccountRole::ROLE_SERVICE_PROVIDER,
-            'delivery_partner' => CurrentAccountRole::ROLE_CARRIER,
-            'other' => CurrentAccountRole::ROLE_OTHER,
-        ];
+        $mappedRoles = $company->companyRoles
+            ->map(fn ($companyRole) => $this->mapCompanyRoleToCurrentAccountRole($companyRole->role_key))
+            ->filter()
+            ->unique()
+            ->values();
 
-        foreach ($company->companyRoles as $companyRole) {
-            $mappedRole = $roleMap[$companyRole->role_key] ?? null;
+        CurrentAccountRole::query()
+            ->where('tenant_account_id', $account->tenant_account_id)
+            ->where('current_account_id', $account->id)
+            ->whereIn('role', $this->companyManagedCurrentAccountRoles())
+            ->when(
+                $mappedRoles->isNotEmpty(),
+                fn ($query) => $query->whereNotIn('role', $mappedRoles->all())
+            )
+            ->delete();
 
-            if ($mappedRole === null) {
-                continue;
-            }
-
+        foreach ($mappedRoles as $mappedRole) {
             $this->ensureRole($account, $mappedRole);
         }
     }
@@ -363,6 +365,31 @@ class CurrentAccountSyncService
             CurrentAccountRole::ROLE_OTHER => 'other',
             default => null,
         };
+    }
+
+    private function mapCompanyRoleToCurrentAccountRole(string $roleKey): ?string
+    {
+        return match ($roleKey) {
+            'customer' => CurrentAccountRole::ROLE_CUSTOMER,
+            'supplier' => CurrentAccountRole::ROLE_SUPPLIER,
+            'print_fason' => CurrentAccountRole::ROLE_SUBCONTRACTOR,
+            'production_partner' => CurrentAccountRole::ROLE_SERVICE_PROVIDER,
+            'delivery_partner' => CurrentAccountRole::ROLE_CARRIER,
+            'other' => CurrentAccountRole::ROLE_OTHER,
+            default => null,
+        };
+    }
+
+    private function companyManagedCurrentAccountRoles(): array
+    {
+        return [
+            CurrentAccountRole::ROLE_CUSTOMER,
+            CurrentAccountRole::ROLE_SUPPLIER,
+            CurrentAccountRole::ROLE_SUBCONTRACTOR,
+            CurrentAccountRole::ROLE_SERVICE_PROVIDER,
+            CurrentAccountRole::ROLE_CARRIER,
+            CurrentAccountRole::ROLE_OTHER,
+        ];
     }
 
     private function requiresCompanyLink(array $roles): bool

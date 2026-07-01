@@ -17,8 +17,13 @@
                     P
                 </div>
                 <h1 class="text-2xl font-semibold text-stone-900">Müşteri Portalı</h1>
-                <p class="mt-2 text-sm text-stone-600">{{ $tenant->name }}</p>
-                <p class="text-sm text-stone-500">Portal hesabınızla giriş yapın.</p>
+                @if($tenant)
+                    <p class="mt-2 text-sm text-stone-600">{{ $tenant->name }}</p>
+                    <p class="text-sm text-stone-500">Portal hesabınızla giriş yapın.</p>
+                @else
+                    <p class="mt-2 text-sm text-stone-600">Genel Müşteri Portalı Girişi</p>
+                    <p class="text-sm text-stone-500">Tenant bilginiz olmadan merkezi müşteri portal ekranındasınız. Mümkünse firmanızın portal linkinden giriş yapın.</p>
+                @endif
             </div>
 
             @if (session('success'))
@@ -39,7 +44,7 @@
                 @csrf
 
                 <div>
-                    <label for="email" class="mb-2 block text-sm font-medium text-stone-700">E-posta</label>
+                    <label for="email" class="mb-2 block text-sm font-medium text-stone-700">{{ $tenant ? 'E-posta' : 'Kullanıcı adı veya e-posta' }}</label>
                     <input
                         id="email"
                         name="email"
@@ -77,10 +82,14 @@
             </form>
 
             <div class="mt-6 space-y-2 text-center text-sm">
-                <div>
-                    <a href="{{ route('customer.password.request') }}" class="font-medium text-stone-800 hover:text-stone-900">Şifremi unuttum</a>
-                </div>
-                <p class="text-stone-500">Davet linkiniz varsa bu bağlantı üzerinden şifrenizi belirleyebilirsiniz.</p>
+                @if($tenant)
+                    <div>
+                        <a href="{{ route('customer.password.request') }}" class="font-medium text-stone-800 hover:text-stone-900">Şifremi unuttum</a>
+                    </div>
+                    <p class="text-stone-500">Davet linkiniz varsa bu bağlantı üzerinden şifrenizi belirleyebilirsiniz.</p>
+                @else
+                    <p class="text-stone-500">Mümkünse firmanızın size verdiği müşteri portal bağlantısını kullanın.</p>
+                @endif
             </div>
         </div>
     </div>

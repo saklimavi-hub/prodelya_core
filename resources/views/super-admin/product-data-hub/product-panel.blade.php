@@ -1,24 +1,15 @@
 @extends('layouts.prodelya-admin')
 
-@section('title', 'Product Data Hub Ürün Paneli')
-@section('page_title', 'Product Data Hub > Ürün Paneli')
-@section('page_subtitle', 'Günlük hızlı ürün kontrolü için sade tablo görünümü.')
+@section('title', 'Ürün Paneli')
+@section('page_title', 'Ürün Paneli')
+@section('page_subtitle', 'Ürün Paneli, tenant katalog, teklif arama ve ileride export çıktılarında kullanılacak satılabilir ürün doğruluğunu denetleyen ana operasyon ekranıdır. Parent/grup kayıtlar teknik yapı olarak izlenir; satılabilir doğruluk projection satırları üzerinden kontrol edilir.')
 
 @section('page_actions')
-    <a href="{{ route('admin.super.product-data-hub.common-products') }}" class="pd-btn pd-btn-light">Ortak Ürün Havuzu</a>
-    <a href="{{ route('admin.super.product-data-hub.standard-products.index') }}" class="pd-btn pd-btn-light">Standart Ürünler</a>
+    <a href="{{ route('admin.super.product-data-hub.standard-products.index') }}" class="pd-btn pd-btn-light">Standart Ürünler (Teknik)</a>
 @endsection
 
 @section('content')
     @php
-        $badgeClass = static function (string $warning): string {
-            return match ($warning) {
-                'Kategori Bekliyor' => 'pd-badge-amber',
-                'Fiyat Eksik', 'Stok Yok' => 'pd-badge-red',
-                'Resim Eksik' => 'pd-badge-light',
-                default => 'pd-badge-blue',
-            };
-        };
         $panelQuery = request()->except(['category_mapping_product_id']);
         $drawerProduct = $categoryMappingDrawer['product'] ?? null;
         $drawerMapping = $categoryMappingDrawer['mapping'] ?? null;
@@ -26,261 +17,458 @@
         $drawerFormAction = isset($categoryMappingDrawer['save_action'])
             ? $categoryMappingDrawer['save_action'] . (!empty($panelQuery) ? ('?' . http_build_query($panelQuery)) : '')
             : null;
+
+        $toneClass = static function (string $tone): string {
+            return match ($tone) {
+                'green' => 'pd-badge-green',
+                'amber' => 'pd-badge-amber',
+                'red' => 'pd-badge-red',
+                'purple' => 'pd-badge-purple',
+                'blue' => 'pd-badge-blue',
+                default => 'pd-badge-light',
+            };
+        };
+
+        $formatPrice = static function ($value, ?string $currency = 'TL'): string {
+            if ($value === null || $value === '') {
+                return '-';
+            }
+
+            return number_format((float) $value, 2, ',', '.') . ' ' . ($currency ?: 'TL');
+        };
+
+        $formatStock = static function ($value): string {
+            if ($value === null || $value === '') {
+                return '-';
+            }
+
+            return number_format((float) $value, 0, ',', '.');
+        };
+
+        $metricCards = [
+            ['label' => 'Otomatik güncellendi', 'value' => $diagnosticSummary['auto_updated'] ?? 0, 'class' => 'pd-metric-card-soft-green'],
+            ['label' => 'İnceleme bekliyor', 'value' => $diagnosticSummary['review_required'] ?? 0, 'class' => 'pd-metric-card-soft-amber'],
+            ['label' => 'Kategori bekliyor', 'value' => $diagnosticSummary['category_waiting'] ?? 0, 'class' => 'pd-metric-card-soft-amber'],
+            ['label' => 'Tenant çıkışı kapalı', 'value' => $diagnosticSummary['tenant_output_closed'] ?? 0, 'class' => 'pd-metric-card-soft-red'],
+            ['label' => 'Toplam satır', 'value' => $diagnosticSummary['total_rows'] ?? 0, 'class' => 'pd-metric-card-soft-blue'],
+            ['label' => 'Satılabilir varyant', 'value' => $diagnosticSummary['sellable_variant'] ?? 0, 'class' => 'pd-metric-card-soft-green'],
+            ['label' => 'Satılabilir flat', 'value' => $diagnosticSummary['sellable_flat'] ?? 0, 'class' => 'pd-metric-card-soft-green'],
+            ['label' => 'Parent / grup', 'value' => $diagnosticSummary['parent_only'] ?? 0, 'class' => 'pd-metric-card-soft-purple'],
+            ['label' => 'Fiyat uyumsuz', 'value' => $diagnosticSummary['stale_price'] ?? 0, 'class' => 'pd-metric-card-soft-amber'],
+            ['label' => 'Stok uyumsuz', 'value' => $diagnosticSummary['stale_stock'] ?? 0, 'class' => 'pd-metric-card-soft-amber'],
+            ['label' => 'Projection eski', 'value' => $diagnosticSummary['projection_outdated'] ?? 0, 'class' => 'pd-metric-card-soft-red'],
+            ['label' => 'Erişim kapalı', 'value' => $diagnosticSummary['supplier_access_closed'] ?? 0, 'class' => 'pd-metric-card-soft-red'],
+            ['label' => 'Teklifte görünür', 'value' => $diagnosticSummary['quote_visible'] ?? 0, 'class' => 'pd-metric-card-soft-blue'],
+            ['label' => 'Teklifte görünmez', 'value' => $diagnosticSummary['not_quote_visible'] ?? 0, 'class' => 'pd-metric-card-soft-slate'],
+        ];
     @endphp
 
     @if(session('product_panel_category_mapping_saved'))
-        <div class="pd-card pd-section-card-soft-amber" style="margin-bottom:16px;">
-            <div class="pd-card-body" style="display:flex;justify-content:space-between;gap:12px;align-items:center;">
+        <div class="pd-card pd-section-card-soft-amber pd-gap-bottom-md">
+            <div class="pd-card-body pd-flex-between-start">
                 <div>
-                    <div style="font-weight:700;">Kategori eşlendi, ürün listesine yansıtma bekliyor.</div>
-                    <div class="pd-card-subtitle">Ürün/projection kategori alanı ayrı adımda güncellenir.</div>
+                    <div class="pd-text-strong">Kategori eşlendi, ürün listesine yansıtma bekliyor.</div>
+                    <div class="pd-card-subtitle">Bu ekran read-only teşhis ekranıdır; kategori kaydı ayrıdır, projection yazımı burada yapılmaz.</div>
                 </div>
                 <span class="pd-badge pd-badge-amber">Yansıtma Bekliyor</span>
             </div>
         </div>
     @endif
 
-    <div class="pd-card pd-form-card" style="margin-bottom:16px;">
-        <div class="pd-card-header">
-            <div>
-                <h2 class="pd-card-title">Filtreler</h2>
-                <p class="pd-card-subtitle">Ürün kodu, grup kodu, ad, kategori ve teknik JSON blob içinde arama yapılabilir.</p>
-            </div>
-        </div>
-        <div class="pd-card-body">
-            <form method="GET" action="{{ route('admin.super.product-data-hub.product-panel') }}" class="pd-form-grid-3">
-                <div>
-                    <label class="pd-label">Arama</label>
-                    <input type="text" name="search" value="{{ $filters['search'] }}" class="pd-input" placeholder="Kod, ad, grup, kategori">
-                </div>
-                <div>
-                    <label class="pd-label">Tedarikçi</label>
-                    <select name="supplier" class="pd-select">
-                        <option value="">Tümü</option>
-                        @foreach($suppliers as $supplier)
-                            <option value="{{ $supplier->id }}" @selected((int) $filters['supplier'] === (int) $supplier->id)>{{ $supplier->name }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div>
-                    <label class="pd-label">Kategori Durumu</label>
-                    <select name="category_status" class="pd-select">
-                        <option value="">Tümü</option>
-                        <option value="matched" @selected($filters['category_status'] === 'matched')>Eşleşmiş</option>
-                        <option value="category_waiting" @selected($filters['category_status'] === 'category_waiting')>Kategori Bekliyor</option>
-                        <option value="target_missing" @selected($filters['category_status'] === 'target_missing')>Hedef Bulunamayan</option>
-                        <option value="warning" @selected($filters['category_status'] === 'warning')>Uyarılı</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="pd-label">Kategori</label>
-                    <select name="category" class="pd-select">
-                        <option value="">Tüm Kategoriler</option>
-                        @foreach($categories as $category)
-                            <option value="{{ $category->id }}" @selected((int) $filters['category'] === (int) $category->id)>{{ $category->path ?: $category->name }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div>
-                    <label class="pd-label">Stok</label>
-                    <select name="stock_state" class="pd-select">
-                        <option value="">Tümü</option>
-                        <option value="in_stock" @selected($filters['stock_state'] === 'in_stock')>Stok var</option>
-                        <option value="out_of_stock" @selected($filters['stock_state'] === 'out_of_stock')>Stok yok</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="pd-label">Fiyat</label>
-                    <select name="price_state" class="pd-select">
-                        <option value="">Tümü</option>
-                        <option value="available" @selected($filters['price_state'] === 'available')>Fiyat var</option>
-                        <option value="missing" @selected($filters['price_state'] === 'missing')>Fiyat yok</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="pd-label">Resim</label>
-                    <select name="image_state" class="pd-select">
-                        <option value="">Tümü</option>
-                        <option value="available" @selected($filters['image_state'] === 'available')>Resimli</option>
-                        <option value="missing" @selected($filters['image_state'] === 'missing')>Resimsiz</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="pd-label">Uyarı</label>
-                    <select name="warning_state" class="pd-select">
-                        <option value="">Tümü</option>
-                        <option value="warning" @selected($filters['warning_state'] === 'warning')>Uyarılı</option>
-                        <option value="clean" @selected($filters['warning_state'] === 'clean')>Temiz</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="pd-label">Kayıt</label>
-                    <select name="limit" class="pd-select">
-                        @foreach(['50', '100', '250', '500'] as $limit)
-                            <option value="{{ $limit }}" @selected((string) $filters['limit'] === $limit)>{{ $limit }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div style="display:flex;align-items:flex-end;gap:8px;">
-                    <button type="submit" class="pd-btn pd-btn-primary">Filtrele</button>
-                    <a href="{{ route('admin.super.product-data-hub.product-panel') }}" class="pd-btn pd-btn-light">Temizle</a>
-                </div>
-                <div style="display:flex;align-items:center;gap:8px;">
-                    <label class="pd-checkbox">
-                        <input type="checkbox" name="technical_columns" value="1" @checked($filters['technical_columns'])>
-                        Teknik kolonları göster
-                    </label>
-                </div>
-            </form>
-        </div>
+    <div class="pd-note pd-note-soft-blue pd-gap-bottom-md">
+        Ürün Paneli, tenant katalog doğruluğunu, teklif arama görünürlüğünü ve ileride export için sellable truth zincirini denetleyen ana operasyon ekranıdır. Parent/grup satırlar teknik yapı olarak izlenir; satılabilir doğruluk projection satırları üzerinden kontrol edilir.
     </div>
 
-    <div class="pd-card pd-table-card">
-        <div class="pd-card-header">
-            <div>
-                <h2 class="pd-card-title">Ürün Listesi</h2>
-                <p class="pd-card-subtitle">Toplam {{ number_format($rows->total(), 0, ',', '.') }} satılabilir kayıt, sayfa başı {{ $rows->perPage() }} ürün.</p>
+    <div class="pd-hub-family-shell">
+        <section class="pd-section-card pd-section-card-soft-slate">
+            <div class="pd-section-header">
+                <div>
+                    <h2 class="pd-section-title">Tek Operasyon Akışı</h2>
+                    <p class="pd-section-subtitle">Temiz akışta satırlar sessizce güncel kalır. Yalnız kategori, freshness veya tenant çıkışı istisnaları operatöre iş çıkarır.</p>
+                </div>
             </div>
-            <div class="flex items-center" style="gap:8px;">
-                <span class="pd-badge pd-badge-green">Satılabilir: {{ $stats['sellable'] }}</span>
-                <span class="pd-badge pd-badge-amber">Uyarılı: {{ $stats['with_warning'] }}</span>
-            </div>
-        </div>
-        <div class="pd-card-body">
-            <div class="pd-table-wrap">
-                <table class="pd-table">
-                    <thead>
-                        <tr>
-                            <th><input type="checkbox" disabled></th>
-                            <th>Resim</th>
-                            <th>Tedarikçi</th>
-                            <th>Ürün Kodu</th>
-                            @if($filters['technical_columns'])
-                                <th>Grup Kodu</th>
-                            @endif
-                            <th>Ürün Adı</th>
-                            <th>Kategori</th>
-                            <th>Eşleşen Kategori</th>
-                            <th>Fiyat</th>
-                            <th>Stok</th>
-                            <th>Renk</th>
-                            <th>Ebat / Ölçü</th>
-                            <th>Uyarı</th>
-                            <th>Durum</th>
-                            <th>İşlem</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @forelse($rows as $row)
-                            <tr>
-                                <td><input type="checkbox" disabled></td>
-                                <td>
-                                    @if($row['image_url'])
-                                        <img src="{{ $row['image_url'] }}" alt="{{ $row['display_name'] }}" style="width:44px;height:44px;object-fit:cover;border-radius:8px;">
-                                    @else
-                                        <span class="pd-badge pd-badge-light">Yok</span>
-                                    @endif
-                                </td>
-                                <td>{{ $row['supplier_name'] }}</td>
-                                <td>{{ $row['display_code'] }}</td>
-                                @if($filters['technical_columns'])
-                                    <td>{{ $row['group_code'] ?: '-' }}</td>
+            <div class="pd-section-body">
+                <div class="pd-mini-grid pd-mini-grid-compact">
+                    @foreach($flowCards as $card)
+                        <a href="{{ $card['href'] }}" class="pd-mini-link-card pd-operation-link-card pd-operation-link-card-{{ $card['tone'] }} {{ $filters['flow_mode'] === $card['key'] ? 'pd-operation-link-card-active' : '' }}">
+                            <div class="pd-inline-wrap-xs pd-gap-bottom-xs">
+                                <span class="pd-badge pd-badge-{{ $card['tone'] }}">{{ $card['count'] }}</span>
+                                @if($filters['flow_mode'] === $card['key'])
+                                    <span class="pd-badge pd-badge-light">Aktif görünüm</span>
                                 @endif
-                                <td style="max-width:340px;">
-                                    <div style="font-weight:600;">{{ $row['display_name'] }}</div>
-                                    <div class="text-xs text-gray-500">{{ $row['row_type'] === 'variant' ? 'Satılabilir varyant' : 'Satılabilir ürün' }}</div>
-                                </td>
-                                <td>{{ $row['supplier_category_name'] }}</td>
-                                <td>{{ $row['matched_category_name'] }}</td>
-                                <td>
-                                    @if($row['price'])
-                                        {{ number_format((float) $row['price'], 2, ',', '.') }} {{ $row['currency'] }}
-                                    @else
-                                        <span class="pd-badge pd-badge-red">Eksik</span>
-                                    @endif
-                                </td>
-                                <td>{{ number_format($row['stock_quantity'], 0, ',', '.') }}</td>
-                                <td>{{ $row['color'] ?: '-' }}</td>
-                                <td>{{ $row['size'] ?: $row['measure'] ?: '-' }}</td>
-                                <td>
-                                    <div style="display:flex;flex-wrap:wrap;gap:6px;">
-                                        @if($row['warnings'] === [])
-                                            <span class="pd-badge pd-badge-green">Temiz</span>
-                                        @else
-                                            @foreach($row['warnings'] as $warning)
-                                                <span class="pd-badge {{ $badgeClass($warning) }}">{{ $warning }}</span>
-                                            @endforeach
-                                        @endif
-                                    </div>
-                                </td>
-                                <td>
-                                    <span class="pd-badge {{ $row['status_label'] === 'Aktif' ? 'pd-badge-green' : 'pd-badge-light' }}">{{ $row['status_label'] }}</span>
-                                </td>
-                                <td>
-                                    <div style="display:flex;flex-wrap:wrap;gap:6px;">
-                                        <a href="{{ $row['detail_link'] }}" class="pd-btn pd-btn-sm pd-btn-light">İncele</a>
-                                        @if($row['category_action_required'])
-                                            <a href="{{ route('admin.super.product-data-hub.product-panel', array_merge($panelQuery, ['category_mapping_product_id' => $row['standard_product_id']])) }}" class="pd-btn pd-btn-sm pd-btn-primary">Kategori Eşle</a>
-                                        @endif
-                                        <a href="{{ $row['standard_link'] }}" class="pd-btn pd-btn-sm pd-btn-light">Önizle</a>
-                                        <a href="{{ $row['detail_link'] }}" class="pd-btn pd-btn-sm pd-btn-warning">Teknik Detay</a>
-                                    </div>
-                                </td>
-                            </tr>
-                        @empty
-                            <tr>
-                                <td colspan="{{ $filters['technical_columns'] ? 15 : 14 }}">Filtrelere uygun ürün bulunamadı.</td>
-                            </tr>
-                        @endforelse
-                    </tbody>
-                </table>
+                            </div>
+                            <div class="pd-mini-link-title">{{ $card['title'] }}</div>
+                            <div class="pd-mini-link-copy">{{ $card['copy'] }}</div>
+                        </a>
+                    @endforeach
+                </div>
             </div>
+        </section>
 
-            <div style="margin-top:16px;">
-                {{ $rows->links() }}
+        <section class="pd-kpi-strip">
+            @foreach($metricCards as $metric)
+                <div class="pd-metric-card {{ $metric['class'] }}">
+                    <div class="pd-metric-card-label">{{ $metric['label'] }}</div>
+                    <div class="pd-metric-card-value">{{ $metric['value'] }}</div>
+                </div>
+            @endforeach
+        </section>
+
+        <section class="pd-section-card pd-section-card-soft-amber">
+            <div class="pd-section-header">
+                <div>
+                    <h2 class="pd-section-title">Review Kuyruğu</h2>
+                    <p class="pd-section-subtitle">Normal akış dışında kalan işleri tek yerde görün. Hedef, yalnız yeni ürün, kategori, kimlik ve anomali istisnalarının operatöre iş çıkarmasıdır.</p>
+                </div>
+                <div class="pd-inline-wrap-xs">
+                    <span class="pd-badge pd-badge-amber">Toplam iş: {{ $reviewQueueSummary['total'] ?? 0 }}</span>
+                </div>
             </div>
-        </div>
+            <div class="pd-section-body">
+                <div class="pd-mini-grid pd-mini-grid-compact">
+                    @foreach($reviewQueueCards as $card)
+                        <a href="{{ $card['href'] }}" class="pd-mini-link-card pd-operation-link-card pd-operation-link-card-{{ $card['tone'] }} {{ $filters['review_bucket'] === $card['key'] ? 'pd-operation-link-card-active' : '' }}">
+                            <div class="pd-inline-wrap-xs pd-gap-bottom-xs">
+                                <span class="pd-badge pd-badge-{{ $card['tone'] }}">{{ $card['count'] }}</span>
+                                @if($filters['review_bucket'] === $card['key'])
+                                    <span class="pd-badge pd-badge-light">Aktif kuyruk</span>
+                                @endif
+                            </div>
+                            <div class="pd-mini-link-title">{{ $card['title'] }}</div>
+                            <div class="pd-mini-link-copy">{{ $card['copy'] }}</div>
+                        </a>
+                    @endforeach
+                </div>
+            </div>
+        </section>
+
+        <section class="pd-section-card pd-section-card-soft-blue">
+            <div class="pd-section-header">
+                <div>
+                    <h2 class="pd-section-title">Filtreler</h2>
+                    <p class="pd-section-subtitle">Kod, ad, group code, tedarikçi, satış durumu ve freshness alarmına göre zinciri daraltın.</p>
+                </div>
+            </div>
+            <div class="pd-section-body">
+                <form method="GET" action="{{ route('admin.super.product-data-hub.product-panel') }}" class="pd-form-grid-3">
+                    <div>
+                        <label class="pd-label">Kod / Ürün Arama</label>
+                        <input type="text" name="search" value="{{ $filters['search'] }}" class="pd-input" placeholder="Ürün kodu, varyant kodu, grup kodu, ürün adı">
+                    </div>
+                    <div>
+                        <label class="pd-label">Tedarikçi</label>
+                        <select name="supplier" class="pd-select">
+                            <option value="">Tümü</option>
+                            @foreach($suppliers as $supplier)
+                                <option value="{{ $supplier->id }}" @selected((int) $filters['supplier'] === (int) $supplier->id)>{{ $supplier->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div>
+                        <label class="pd-label">Kategori</label>
+                        <select name="category" class="pd-select">
+                            <option value="">Tüm Kategoriler</option>
+                            @foreach($categories as $category)
+                                <option value="{{ $category->id }}" @selected((int) $filters['category'] === (int) $category->id)>{{ $category->path ?: $category->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div>
+                        <label class="pd-label">Satış Durumu</label>
+                        <select name="sales_state" class="pd-select">
+                            <option value="">Tümü</option>
+                            <option value="sellable_variant" @selected($filters['sales_state'] === 'sellable_variant')>Satılabilir varyant</option>
+                            <option value="sellable_flat" @selected($filters['sales_state'] === 'sellable_flat')>Satılabilir flat ürün</option>
+                            <option value="parent_only" @selected($filters['sales_state'] === 'parent_only')>Parent / grup</option>
+                            <option value="quote_visible" @selected($filters['sales_state'] === 'quote_visible')>Teklifte görünür</option>
+                            <option value="quote_hidden" @selected($filters['sales_state'] === 'quote_hidden')>Teklifte görünmez</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="pd-label">Freshness Durumu</label>
+                        <select name="freshness_state" class="pd-select">
+                            <option value="all" @selected($filters['freshness_state'] === 'all')>Tümü</option>
+                            <option value="price_mismatch" @selected($filters['freshness_state'] === 'price_mismatch')>Fiyat uyumsuz</option>
+                            <option value="stock_mismatch" @selected($filters['freshness_state'] === 'stock_mismatch')>Stok uyumsuz</option>
+                            <option value="projection_outdated" @selected($filters['freshness_state'] === 'projection_outdated')>Projection eski</option>
+                            <option value="standard_variant_outdated" @selected($filters['freshness_state'] === 'standard_variant_outdated')>Standart varyant eski</option>
+                            <option value="supplier_access_closed" @selected($filters['freshness_state'] === 'supplier_access_closed')>Tedarikçi erişimi kapalı</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="pd-label">Akış Modu</label>
+                        <select name="flow_mode" class="pd-select">
+                            <option value="" @selected($filters['flow_mode'] === '')>Tümü</option>
+                            <option value="clean_flow" @selected($filters['flow_mode'] === 'clean_flow')>Temiz akış</option>
+                            <option value="review_queue" @selected($filters['flow_mode'] === 'review_queue')>İnceleme gerekenler</option>
+                            <option value="category_waiting" @selected($filters['flow_mode'] === 'category_waiting')>Kategori bekleyenler</option>
+                            <option value="projection_issues" @selected($filters['flow_mode'] === 'projection_issues')>Projection sorunları</option>
+                            <option value="tenant_output_blocks" @selected($filters['flow_mode'] === 'tenant_output_blocks')>Tenant çıkışı blokajları</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="pd-label">Review Kuyruğu</label>
+                        <select name="review_bucket" class="pd-select">
+                            <option value="" @selected($filters['review_bucket'] === '')>Tümü</option>
+                            <option value="new_items" @selected($filters['review_bucket'] === 'new_items')>Yeni ürünler</option>
+                            <option value="category_waiting" @selected($filters['review_bucket'] === 'category_waiting')>Kategori bekleyenler</option>
+                            <option value="identity_issues" @selected($filters['review_bucket'] === 'identity_issues')>Kimlik / variant sorunu</option>
+                            <option value="anomaly_flags" @selected($filters['review_bucket'] === 'anomaly_flags')>Anomali / freshness</option>
+                            <option value="projection_issues" @selected($filters['review_bucket'] === 'projection_issues')>Projection sorunları</option>
+                            <option value="tenant_output_blocks" @selected($filters['review_bucket'] === 'tenant_output_blocks')>Tenant çıkışı blokajları</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="pd-label">Kategori Durumu</label>
+                        <select name="category_status" class="pd-select">
+                            <option value="">Tümü</option>
+                            <option value="matched" @selected($filters['category_status'] === 'matched')>Eşleşmiş</option>
+                            <option value="category_waiting" @selected($filters['category_status'] === 'category_waiting')>Kategori bekliyor</option>
+                            <option value="target_missing" @selected($filters['category_status'] === 'target_missing')>Hedef bulunamayan</option>
+                            <option value="warning" @selected($filters['category_status'] === 'warning')>Uyarılı</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="pd-label">Stok</label>
+                        <select name="stock_state" class="pd-select">
+                            <option value="">Tümü</option>
+                            <option value="in_stock" @selected($filters['stock_state'] === 'in_stock')>Stok var</option>
+                            <option value="out_of_stock" @selected($filters['stock_state'] === 'out_of_stock')>Stok yok</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="pd-label">Fiyat</label>
+                        <select name="price_state" class="pd-select">
+                            <option value="">Tümü</option>
+                            <option value="available" @selected($filters['price_state'] === 'available')>Fiyat var</option>
+                            <option value="missing" @selected($filters['price_state'] === 'missing')>Fiyat yok</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="pd-label">Resim</label>
+                        <select name="image_state" class="pd-select">
+                            <option value="">Tümü</option>
+                            <option value="available" @selected($filters['image_state'] === 'available')>Resimli</option>
+                            <option value="missing" @selected($filters['image_state'] === 'missing')>Resimsiz</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="pd-label">Genel Uyarı</label>
+                        <select name="warning_state" class="pd-select">
+                            <option value="">Tümü</option>
+                            <option value="warning" @selected($filters['warning_state'] === 'warning')>Uyarılı</option>
+                            <option value="clean" @selected($filters['warning_state'] === 'clean')>Temiz</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="pd-label">Kayıt</label>
+                        <select name="limit" class="pd-select">
+                            @foreach(['50', '100', '250', '500'] as $limit)
+                                <option value="{{ $limit }}" @selected((string) $filters['limit'] === $limit)>{{ $limit }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="pd-inline-actions pd-inline-actions-end">
+                        <button type="submit" class="pd-btn pd-btn-primary">Filtrele</button>
+                        <a href="{{ route('admin.super.product-data-hub.product-panel') }}" class="pd-btn pd-btn-light">Temizle</a>
+                    </div>
+                    <div class="pd-inline-actions">
+                        <label class="pd-checkbox">
+                            <input type="checkbox" name="technical_columns" value="1" @checked($filters['technical_columns'])>
+                            Teknik kolonları göster
+                        </label>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+        <section class="pd-section-card">
+            <div class="pd-section-header">
+                <div>
+                    <h2 class="pd-section-title">Sellable Truth Listesi</h2>
+                    <p class="pd-section-subtitle">Günlük kullanıcı burada tenant’ın gördüğü fiyat/stok doğruluğunu hızlıca okur. Raw, standard, projection ve teklif zinciri teknik detay içinde açılır; parent/grup satırları satış kaynağı değildir.</p>
+                </div>
+                <div class="pd-inline-wrap-xs">
+                    <span class="pd-badge pd-badge-green">Satılabilir: {{ $stats['sellable'] }}</span>
+                    <span class="pd-badge pd-badge-amber">Kontrol isteyen: {{ $stats['with_warning'] }}</span>
+                </div>
+            </div>
+            <div class="pd-section-body">
+                @if($searchFirstIdle ?? false)
+                    <div class="pd-note pd-note-soft-blue pd-gap-bottom-md">
+                        <div class="pd-text-strong">Teşhis başlatmak için arama veya filtre seçin</div>
+                        <div>Bu ekran büyük ürün evreninde freshness, projection ve quote görünürlük kontrolleri yaptığı için boş açılışta tam tarama yapmaz. Ürün kodu, tedarikçi, kategori veya kuyruk filtresi seçerek hedefli teşhisi başlatabilirsiniz.</div>
+                    </div>
+                @endif
+                <div class="pd-table-wrap">
+                    <table class="pd-table pd-product-diagnostic-table">
+                        <thead>
+                            <tr>
+                                <th>Ürün / Kod</th>
+                                <th>Tedarikçi</th>
+                                <th>Geçerli Fiyat</th>
+                                <th>Geçerli Stok</th>
+                                <th>Katalog / Teklif</th>
+                                <th>Durum</th>
+                                <th>Teknik İnceleme</th>
+                                <th>İşlem</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($rows as $row)
+                                <tr>
+                                    <td class="pd-diagnostic-cell">
+                                        <div class="pd-diagnostic-product">
+                                            @if($row['image_url'])
+                                                <img src="{{ $row['image_url'] }}" alt="{{ $row['display_name'] }}" class="pd-product-thumb-sm">
+                                            @endif
+                                            <div>
+                                                <div class="pd-diagnostic-main">{{ $row['display_name'] }}</div>
+                                                <div class="pd-diagnostic-meta">{{ $row['display_code'] }}</div>
+                                                <div class="pd-diagnostic-meta">Varyant: {{ $row['color'] ?: '-' }} / {{ $row['size'] ?: ($row['measure'] ?: '-') }}</div>
+                                                <div class="pd-diagnostic-meta">Group code: {{ $row['group_code'] ?: '-' }}</div>
+                                                @if($filters['technical_columns'])
+                                                    <div class="pd-diagnostic-meta">Row type: {{ $row['row_type'] }}</div>
+                                                @endif
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="pd-diagnostic-cell">
+                                        <div class="pd-diagnostic-main">{{ $row['supplier_name'] }}</div>
+                                        <div class="pd-diagnostic-meta">Kaynak #{{ $row['supplier_source_id'] ?: '-' }}</div>
+                                        @if($filters['technical_columns'])
+                                            <div class="pd-diagnostic-meta">Standard product #{{ $row['standard_product_id'] }}</div>
+                                            @if($row['standard_product_variant_id'])
+                                                <div class="pd-diagnostic-meta">Variant #{{ $row['standard_product_variant_id'] }}</div>
+                                            @endif
+                                        @endif
+                                    </td>
+                                    <td class="pd-diagnostic-cell">
+                                        @php
+                                            $truth = $row['sellable_truth'] ?? [];
+                                            $effectivePrice = $truth['effective_price'] ?? null;
+                                            $effectiveStock = $truth['effective_stock'] ?? 0;
+                                            $effectiveCurrency = $truth['effective_currency'] ?? ($row['currency'] ?: 'TL');
+                                            $isCurrentState = ($row['operation_state_key'] ?? null) === 'auto_updated';
+                                        @endphp
+                                        <div class="pd-diagnostic-main">
+                                            {{ $effectivePrice !== null ? $formatPrice($effectivePrice, $effectiveCurrency) : '-' }}
+                                        </div>
+                                        <div class="pd-diagnostic-meta">Truth katmanı: {{ $truth['source_layer'] ?? '-' }}</div>
+                                    </td>
+                                    <td class="pd-diagnostic-cell">
+                                        <div class="pd-diagnostic-main">{{ $formatStock($effectiveStock) }}</div>
+                                        <div class="pd-diagnostic-meta">Kategori: {{ ($truth['category_status'] ?? 'matched') === 'category_waiting' ? 'Bekliyor' : 'Hazır' }}</div>
+                                    </td>
+                                    <td class="pd-diagnostic-cell">
+                                        <div class="pd-diagnostic-main">{{ $row['projection_visibility_label'] }}</div>
+                                        <div class="pd-diagnostic-meta">{{ $row['supplier_access_summary']['label'] }}</div>
+                                        <div class="pd-inline-wrap-xs pd-gap-top-xs">
+                                            <span class="pd-badge {{ ($truth['quote_visibility_status'] ?? 'hidden') === 'visible' ? 'pd-badge-blue' : 'pd-badge-light' }}">
+                                                {{ ($truth['quote_visibility_status'] ?? 'hidden') === 'visible' ? 'Teklifte Açık' : 'Teklifte Kapalı' }}
+                                            </span>
+                                        </div>
+                                    </td>
+                                    <td class="pd-diagnostic-cell">
+                                        <div class="pd-inline-wrap-xs pd-gap-bottom-xs">
+                                            <span class="pd-badge {{ $isCurrentState ? 'pd-badge-green' : $toneClass($row['operation_state_tone']) }}">{{ $isCurrentState ? 'Güncel' : $row['operation_state_label'] }}</span>
+                                            @if(($truth['category_status'] ?? 'matched') === 'category_waiting')
+                                                <span class="pd-badge pd-badge-amber">Kategori Bekliyor</span>
+                                            @endif
+                                            @if(!empty($truth['tenant_price_override']))
+                                                <span class="pd-badge pd-badge-purple">Tenant özel fiyat var</span>
+                                            @endif
+                                        </div>
+                                        <div class="pd-inline-wrap-xs">
+                                            @foreach(collect($row['diagnostic_badges'])->reject(fn ($badge) => in_array($badge['key'], ['sellable_variant', 'sellable_flat', 'parent_only', 'not_quote_visible'], true)) as $badge)
+                                                <span class="pd-badge {{ $toneClass($badge['tone']) }}">{{ $badge['label'] }}</span>
+                                            @endforeach
+                                        </div>
+                                    </td>
+                                    <td class="pd-diagnostic-cell">
+                                        <details class="pd-inline-details">
+                                            <summary class="pd-diagnostic-meta">Teknik İnceleme</summary>
+                                            <div class="pd-diagnostic-matrix pd-gap-top-xs">
+                                                <div><span>Raw Fiyat</span><strong>{{ $formatPrice($row['raw_snapshot']['price'] ?? null, $row['currency']) }}</strong></div>
+                                                <div><span>Standart Fiyat</span><strong>{{ $formatPrice($row['standard_snapshot']['price'] ?? null, $row['currency']) }}</strong></div>
+                                                <div><span>Projection Fiyat</span><strong>{{ ($row['projection_snapshot']['price_label'] ?? '-') !== '-' ? ($row['projection_snapshot']['price_label'] . ' ' . ($row['currency'] ?: 'TL')) : '-' }}</strong></div>
+                                                <div><span>Teklif Fiyatı</span><strong>{{ ($row['quote_snapshot']['price_label'] ?? '-') !== '-' ? ($row['quote_snapshot']['price_label'] . ' ' . ($row['currency'] ?: 'TL')) : '-' }}</strong></div>
+                                                <div><span>Raw Stok</span><strong>{{ $formatStock($row['raw_snapshot']['stock'] ?? null) }}</strong></div>
+                                                <div><span>Standart Stok</span><strong>{{ $formatStock($row['standard_snapshot']['stock'] ?? null) }}</strong></div>
+                                                <div><span>Projection Stok</span><strong>{{ $row['projection_snapshot']['stock_label'] ?? '-' }}</strong></div>
+                                                <div><span>Projection Tenant</span><strong>{{ $row['projection_snapshot']['count'] ?? 0 }}</strong></div>
+                                                <div><span>Supplier ürün</span><strong>{{ $row['raw_snapshot']['supplier_product_code'] ?: '-' }}</strong></div>
+                                                <div><span>Supplier varyant</span><strong>{{ $row['raw_snapshot']['supplier_variant_code'] ?: '-' }}</strong></div>
+                                                <div><span>Satış tipi</span><strong>{{ collect($row['diagnostic_badges'])->firstWhere('key', $row['sellable_state_key'])['label'] ?? '-' }}</strong></div>
+                                                <div><span>Matched kategori</span><strong>{{ $row['matched_category_name'] }}</strong></div>
+                                            </div>
+                                        </details>
+                                    </td>
+                                    <td>
+                                        <div class="pd-row-actions">
+                                            <a href="{{ $row['detail_link'] }}" class="pd-btn pd-btn-sm pd-btn-light">Teknik Detay</a>
+                                            @if($row['category_action_required'])
+                                                <a href="{{ route('admin.super.product-data-hub.product-panel', array_merge($panelQuery, ['category_mapping_product_id' => $row['standard_product_id']])) }}" class="pd-btn pd-btn-sm pd-btn-primary">Kategori Eşle</a>
+                                            @endif
+                                            <a href="{{ $row['standard_link'] }}" class="pd-btn pd-btn-sm pd-btn-light">Standart Depo</a>
+                                        </div>
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="8">{{ ($searchFirstIdle ?? false) ? 'Teşhis için arama veya filtre seçin.' : 'Filtrelere uygun ürün bulunamadı.' }}</td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="pd-gap-top-md">
+                    {{ $rows->links() }}
+                </div>
+            </div>
+        </section>
     </div>
 
     @if($drawerProduct && $drawerMapping)
-        <div style="position:fixed;inset:0;background:rgba(15,23,42,.32);z-index:80;">
-            <a href="{{ $categoryMappingDrawer['cancel_link'] }}" aria-label="Kapat" style="position:absolute;inset:0;display:block;"></a>
-            <div style="position:absolute;top:0;right:0;width:min(560px,100%);height:100%;background:#fff;box-shadow:-16px 0 40px rgba(15,23,42,.18);overflow:auto;padding:24px;z-index:81;">
-                <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:18px;">
+        <div class="pd-drawer-overlay">
+            <a href="{{ $categoryMappingDrawer['cancel_link'] }}" aria-label="Kapat" class="pd-drawer-overlay-link"></a>
+            <div class="pd-drawer-panel">
+                <div class="pd-drawer-head">
                     <div>
-                        <div class="pd-badge pd-badge-blue" style="margin-bottom:8px;">Kategori Eşle</div>
-                        <h2 class="pd-card-title" style="margin-bottom:6px;">Kategori Eşle</h2>
+                        <div class="pd-badge pd-badge-blue pd-gap-bottom-xs">Kategori Eşle</div>
+                        <h2 class="pd-card-title pd-title-gap-xs">Kategori Eşle</h2>
                         <p class="pd-card-subtitle">Tedarikçi kategorisini Prodelya standart kategorisine bağlayın.</p>
                     </div>
                     <a href="{{ $categoryMappingDrawer['cancel_link'] }}" class="pd-btn pd-btn-light pd-btn-sm">Vazgeç</a>
                 </div>
 
-                <div class="pd-card" style="margin-bottom:14px;">
+                <div class="pd-card pd-gap-bottom-sm">
                     <div class="pd-card-header">
                         <div>
                             <h3 class="pd-card-title">Ürün Bilgisi</h3>
                         </div>
                     </div>
-                    <div class="pd-card-body" style="display:grid;grid-template-columns:72px 1fr;gap:14px;">
+                    <div class="pd-card-body pd-drawer-product-grid">
                         <div>
                             @if($drawerProduct['image_url'])
-                                <img src="{{ $drawerProduct['image_url'] }}" alt="{{ $drawerProduct['display_name'] }}" style="width:72px;height:72px;object-fit:cover;border-radius:12px;">
+                                <img src="{{ $drawerProduct['image_url'] }}" alt="{{ $drawerProduct['display_name'] }}" class="pd-drawer-thumb">
                             @else
-                                <div style="width:72px;height:72px;border-radius:12px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;">
+                                <div class="pd-drawer-thumb-placeholder">
                                     <span class="pd-badge pd-badge-light">Görsel Yok</span>
                                 </div>
                             @endif
                         </div>
-                        <div style="display:grid;gap:8px;">
+                        <div class="pd-grid pd-gap-xs">
                             <div>
                                 <div class="text-xs text-gray-500">Ürün Kodu</div>
-                                <div style="font-weight:700;">{{ $drawerProduct['display_code'] }}</div>
+                                <div class="pd-text-strong">{{ $drawerProduct['display_code'] }}</div>
                             </div>
                             <div>
                                 <div class="text-xs text-gray-500">Ürün Adı</div>
-                                <div style="font-weight:600;">{{ $drawerProduct['display_name'] }}</div>
+                                <div class="pd-text-semibold">{{ $drawerProduct['display_name'] }}</div>
                             </div>
-                            <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                            <div class="pd-inline-wrap-sm">
                                 <span class="pd-badge pd-badge-light">{{ $drawerProduct['supplier_name'] }}</span>
                                 <span class="pd-badge pd-badge-blue">Stok: {{ number_format($drawerProduct['stock_quantity'], 0, ',', '.') }}</span>
                                 <span class="pd-badge pd-badge-green">
@@ -298,22 +486,22 @@
                     </div>
                 </div>
 
-                <div class="pd-card" style="margin-bottom:14px;">
+                <div class="pd-card pd-gap-bottom-sm">
                     <div class="pd-card-header">
                         <div>
                             <h3 class="pd-card-title">Tedarikçi Kategorisi</h3>
                         </div>
                     </div>
-                    <div class="pd-card-body" style="display:grid;gap:10px;">
+                    <div class="pd-card-body pd-grid pd-gap-sm">
                         <div>
                             <div class="text-xs text-gray-500">Kategori Adı</div>
-                            <div style="font-weight:700;">{{ $drawerMapping->source_category }}</div>
+                            <div class="pd-text-strong">{{ $drawerMapping->source_category }}</div>
                         </div>
                         <div>
                             <div class="text-xs text-gray-500">Kategori Yolu</div>
                             <div>{{ $drawerMapping->supplier_category_path ?: '-' }}</div>
                         </div>
-                        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+                        <div class="pd-inline-wrap-sm pd-inline-align-center">
                             <span class="pd-badge pd-badge-light">Ürün Sayısı: {{ number_format((int) $drawerMapping->product_count, 0, ',', '.') }}</span>
                             @foreach(($categoryMappingDrawer['sample_products'] ?? []) as $sampleProduct)
                                 <span class="pd-badge pd-badge-blue">{{ $sampleProduct }}</span>
@@ -322,18 +510,18 @@
                     </div>
                 </div>
 
-                <div class="pd-card" style="margin-bottom:14px;">
+                <div class="pd-card pd-gap-bottom-sm">
                     <div class="pd-card-header">
                         <div>
                             <h3 class="pd-card-title">Sistem Önerisi</h3>
                         </div>
                     </div>
-                    <div class="pd-card-body" style="display:grid;gap:10px;">
+                    <div class="pd-card-body pd-grid pd-gap-sm">
                         <div>
                             <div class="text-xs text-gray-500">Önerilen Hedef Kategori</div>
-                            <div style="font-weight:700;">{{ $categoryMappingDrawer['suggestion_path'] ?: 'Henüz öneri yok' }}</div>
+                            <div class="pd-text-strong">{{ $categoryMappingDrawer['suggestion_path'] ?: 'Henüz öneri yok' }}</div>
                         </div>
-                        <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                        <div class="pd-inline-wrap-sm">
                             <span class="pd-badge pd-badge-green">Güven Skoru: {{ $categoryMappingDrawer['confidence_label'] }}</span>
                         </div>
                         <div class="pd-card-subtitle">{{ $categoryMappingDrawer['suggestion_reason'] }}</div>
@@ -349,24 +537,24 @@
                     <div class="pd-card-body">
                         <form method="POST" action="{{ $drawerFormAction }}" id="product-panel-category-mapping-form">
                             @csrf
-                            <div style="display:grid;gap:12px;">
+                            <div class="pd-grid pd-gap-sm">
                                 <div>
                                     <label class="pd-label" for="quick-category-search">Hızlı kategori arama</label>
                                     <input type="text" id="quick-category-search" class="pd-input" placeholder="Kategori adı, kodu veya yolunu ara" autocomplete="off">
                                 </div>
-                                <div id="quick-category-results" style="display:grid;gap:8px;"></div>
+                                <div id="quick-category-results" class="pd-grid pd-gap-xs"></div>
                                 <div>
                                     <label class="pd-label" for="quick-standard-category-id">Seçilen kategori</label>
                                     <input type="hidden" name="standard_category_id" id="quick-standard-category-id" value="{{ old('standard_category_id', $drawerMapping->standard_category_id) }}">
-                                    <div id="quick-selected-category" class="pd-input" style="min-height:44px;display:flex;align-items:center;">
+                                    <div id="quick-selected-category" class="pd-input pd-selected-category-box">
                                         {{ old('standard_category_id') ? 'Kategori seçildi' : ($categoryMappingDrawer['suggestion_path'] ?: 'Henüz kategori seçilmedi') }}
                                     </div>
                                 </div>
                                 <div>
                                     <label class="pd-label">Karar Tipi</label>
-                                    <div class="pd-input" style="display:flex;align-items:center;">Eşle</div>
+                                    <div class="pd-input pd-selected-category-box">Eşle</div>
                                 </div>
-                                <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+                                <div class="pd-inline-wrap-sm pd-inline-align-center">
                                     <button type="submit" class="pd-btn pd-btn-primary">Eşle ve Kaydet</button>
                                     <a href="{{ $categoryMappingDrawer['cancel_link'] }}" class="pd-btn pd-btn-light">Vazgeç</a>
                                     <a href="{{ $categoryMappingDrawer['advanced_link'] }}" class="pd-btn pd-btn-light">Gelişmiş Eşleme Ekranında Aç</a>
@@ -407,7 +595,7 @@
 
                     results.innerHTML = items.map(function (item) {
                         const path = item.path || item.name;
-                        return '<button type="button" class="pd-btn pd-btn-light pd-btn-sm quick-category-option" data-id="' + item.id + '" data-path="' + String(path).replace(/"/g, '&quot;') + '" style="justify-content:flex-start;text-align:left;">' + path + '</button>';
+                        return '<button type="button" class="pd-btn pd-btn-light pd-btn-sm quick-category-option pd-quick-category-option" data-id="' + item.id + '" data-path="' + String(path).replace(/"/g, '&quot;') + '">' + path + '</button>';
                     }).join('');
 
                     results.querySelectorAll('.quick-category-option').forEach(function (button) {
@@ -444,4 +632,29 @@
             }());
         </script>
     @endif
+@endsection
+
+@section('side_summary')
+    <div class="pd-side-summary">
+        <div class="pd-card-body">
+            <h3 class="pd-summary-title">Freshness Özeti</h3>
+            <div class="pd-status-list">
+                <div class="pd-status-row"><span>Otomatik güncellendi</span><span class="pd-badge pd-badge-green">{{ $diagnosticSummary['auto_updated'] ?? 0 }}</span></div>
+                <div class="pd-status-row"><span>İnceleme bekliyor</span><span class="pd-badge pd-badge-amber">{{ $diagnosticSummary['review_required'] ?? 0 }}</span></div>
+                <div class="pd-status-row"><span>Kategori bekliyor</span><span class="pd-badge pd-badge-amber">{{ $diagnosticSummary['category_waiting'] ?? 0 }}</span></div>
+                <div class="pd-status-row"><span>Tenant çıkışı kapalı</span><span class="pd-badge pd-badge-red">{{ $diagnosticSummary['tenant_output_closed'] ?? 0 }}</span></div>
+                <div class="pd-status-row"><span>Toplam satır</span><span class="pd-badge pd-badge-blue">{{ $diagnosticSummary['total_rows'] ?? 0 }}</span></div>
+                <div class="pd-status-row"><span>Satılabilir varyant</span><span class="pd-badge pd-badge-green">{{ $diagnosticSummary['sellable_variant'] ?? 0 }}</span></div>
+                <div class="pd-status-row"><span>Satılabilir flat</span><span class="pd-badge pd-badge-green">{{ $diagnosticSummary['sellable_flat'] ?? 0 }}</span></div>
+                <div class="pd-status-row"><span>Parent / grup</span><span class="pd-badge pd-badge-purple">{{ $diagnosticSummary['parent_only'] ?? 0 }}</span></div>
+                <div class="pd-status-row"><span>Fiyat uyumsuz</span><span class="pd-badge pd-badge-amber">{{ $diagnosticSummary['stale_price'] ?? 0 }}</span></div>
+                <div class="pd-status-row"><span>Stok uyumsuz</span><span class="pd-badge pd-badge-amber">{{ $diagnosticSummary['stale_stock'] ?? 0 }}</span></div>
+                <div class="pd-status-row"><span>Projection eski satır</span><span class="pd-badge pd-badge-red">{{ $diagnosticSummary['projection_outdated'] ?? 0 }}</span></div>
+                <div class="pd-status-row"><span>Tedarikçi erişimi kapalı</span><span class="pd-badge pd-badge-red">{{ $diagnosticSummary['supplier_access_closed'] ?? 0 }}</span></div>
+                <div class="pd-status-row"><span>Teklifte görünür</span><span class="pd-badge pd-badge-blue">{{ $diagnosticSummary['quote_visible'] ?? 0 }}</span></div>
+                <div class="pd-status-row"><span>Teklifte görünmez</span><span class="pd-badge pd-badge-light">{{ $diagnosticSummary['not_quote_visible'] ?? 0 }}</span></div>
+            </div>
+            <div class="pd-side-note">Bu ekran read-only teşhis ekranıdır. Raw, standard ve projection değerleri sadece görünür kılınır; burada apply, sync veya projection rebuild yapılmaz.</div>
+        </div>
+    </div>
 @endsection

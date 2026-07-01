@@ -8,21 +8,27 @@
     $cards = collect($dashboard['cards'] ?? []);
     $queueItems = collect($dashboard['queue_items'] ?? []);
     $quickLinks = collect($dashboard['quick_links'] ?? []);
+    $todayActions = collect($dashboard['today_actions'] ?? []);
+    $quickStartSteps = collect($dashboard['quick_start'] ?? []);
+    $readinessChecklist = collect($dashboard['readiness_checklist'] ?? []);
+    $packageSummary = $dashboard['package_summary'] ?? [];
+    $catalogSummary = $dashboard['catalog_summary'] ?? [];
     $summary = $dashboard['queue_summary'] ?? [];
+    $quickStartCompleted = $quickStartSteps->isNotEmpty() && $quickStartSteps->every(fn (array $step) => ($step['status'] ?? null) === 'Hazır');
 
     $cardMap = $cards->keyBy('title');
 
     $metricCards = [
         [
             'title' => 'Açık Sipariş',
-            'count' => ($cardMap['Teslimat Bekleyen İşler']['count'] ?? 0),
-            'hint' => 'Operasyonda takip edilen işler',
+            'count' => ($summary['active_orders'] ?? 0),
+            'hint' => 'Operasyonda takip edilen aktif siparişler',
             'class' => 'info',
         ],
         [
             'title' => 'Aksiyon Bekleyen',
-            'count' => ($summary['total_cards'] ?? 0),
-            'hint' => 'Bugün ele alınmalı',
+            'count' => ($summary['pending_actions_total'] ?? 0),
+            'hint' => 'Gerçek sipariş/iş akışına bağlı bekleyen işlemler',
             'class' => 'warn',
         ],
         [
@@ -149,6 +155,9 @@
         'blocked' => 'amber',
         'customer' => 'blue',
     ];
+
+    $showSuperAdminShortcut = (bool) auth()->user()?->isPlatformAdmin() && \Illuminate\Support\Facades\Route::has('admin.super.dashboard');
+    $superAdminDashboardUrl = $showSuperAdminShortcut ? route('admin.super.dashboard') : null;
 @endphp
 
 @section('content')
@@ -259,6 +268,16 @@
             margin-bottom: 12px;
         }
 
+        .pd-dashboard .setup-grid {
+            display: grid;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .pd-dashboard .setup-grid {
+            grid-template-columns: minmax(0, 1.2fr) minmax(0, .9fr) minmax(0, .9fr) minmax(0, 1fr);
+        }
+
         .pd-dashboard .kpi {
             min-height: 84px;
             padding: 12px;
@@ -286,6 +305,101 @@
         }
 
         .pd-dashboard .kpi .hint {
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+        .pd-dashboard .panel-list,
+        .pd-dashboard .checklist,
+        .pd-dashboard .mini-stats,
+        .pd-dashboard .step-list {
+            display: grid;
+            gap: 10px;
+        }
+
+        .pd-dashboard .panel-list {
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        }
+
+        .pd-dashboard .checklist {
+            grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+        }
+
+        .pd-dashboard .mini-stats {
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        }
+
+        .pd-dashboard .list-card,
+        .pd-dashboard .check-card,
+        .pd-dashboard .stat-card,
+        .pd-dashboard .step-card {
+            border: 1px solid var(--line-soft);
+            border-radius: 12px;
+            background: var(--surface-soft);
+            padding: 12px;
+        }
+
+        .pd-dashboard .list-card h3,
+        .pd-dashboard .check-card h3,
+        .pd-dashboard .stat-card h3,
+        .pd-dashboard .step-card h3 {
+            margin: 0 0 4px;
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .pd-dashboard .list-card p,
+        .pd-dashboard .check-card p,
+        .pd-dashboard .stat-card p,
+        .pd-dashboard .step-card p {
+            margin: 0;
+            color: var(--muted);
+            font-size: 11px;
+            line-height: 1.45;
+        }
+
+        .pd-dashboard .list-card .count,
+        .pd-dashboard .stat-card .count {
+            margin: 8px 0 6px;
+            font-size: 23px;
+            font-weight: 700;
+        }
+
+        .pd-dashboard .check-top {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .pd-dashboard .step-card {
+            display: grid;
+            grid-template-columns: auto minmax(0, 1fr) auto;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .pd-dashboard .step-no {
+            width: 28px;
+            height: 28px;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--blue-soft);
+            color: var(--blue);
+            font-weight: 700;
+            font-size: 12px;
+        }
+
+        .pd-dashboard .micro-list {
+            display: grid;
+            gap: 6px;
+            margin-top: 10px;
+        }
+
+        .pd-dashboard .micro-list span {
             font-size: 11px;
             color: var(--muted);
         }
@@ -415,6 +529,12 @@
             display: flex;
             flex-direction: column;
             gap: 12px;
+        }
+
+        .pd-dashboard .right-stack {
+            position: sticky;
+            top: 10px;
+            align-self: start;
         }
 
         .pd-dashboard .panel {
@@ -626,6 +746,10 @@
                 grid-template-columns: repeat(3, minmax(0, 1fr));
             }
 
+            .pd-dashboard .setup-grid {
+                grid-template-columns: 1fr;
+            }
+
             .pd-dashboard .flow {
                 grid-template-columns: repeat(4, minmax(0, 1fr));
             }
@@ -639,6 +763,7 @@
             }
 
             .pd-dashboard .right-stack {
+                position: static;
                 display: grid;
                 grid-template-columns: 1fr 1fr;
                 gap: 12px;
@@ -659,6 +784,12 @@
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
 
+            .pd-dashboard .panel-list,
+            .pd-dashboard .checklist,
+            .pd-dashboard .mini-stats {
+                grid-template-columns: 1fr;
+            }
+
             .pd-dashboard .flow {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
@@ -668,6 +799,7 @@
             }
 
             .pd-dashboard .right-stack {
+                position: static;
                 display: flex;
             }
 
@@ -724,52 +856,86 @@
                 <a class="pd-btn pd-btn-light btn-soft" href="{{ route('admin.dashboard') }}">İş Kuyruğu</a>
                 <a class="pd-btn pd-btn-primary" href="{{ route('admin.promotion-quotes.create') }}">Yeni Teklif</a>
                 <a class="pd-btn pd-btn-light" href="{{ route('admin.orders.index') }}">Tüm Siparişler</a>
-            </div>
-        </section>
-
-        <section aria-labelledby="dashboard-summary-title">
-            <div class="section-label">
-                <div>
-                    <h2 id="dashboard-summary-title">Genel Özet</h2>
-                    <p>Açık operasyonlar, bloklu alanlar ve müşteri yanıtları tek sırada özetlenir.</p>
-                </div>
-            </div>
-
-            <div class="top-summary">
-                @foreach($metricCards as $card)
-                    <div class="kpi {{ $card['class'] }}">
-                        <div>
-                            <div class="name">{{ $card['title'] }}</div>
-                            <div class="num">{{ number_format((int) $card['count'], 0, ',', '.') }}</div>
-                            <div class="hint">{{ $card['hint'] }}</div>
-                        </div>
-                    </div>
-                @endforeach
-            </div>
-        </section>
-
-        <section aria-labelledby="dashboard-flow-title">
-            <div class="section-label">
-                <div>
-                    <h2 id="dashboard-flow-title">Süreç Akış Şeridi</h2>
-                    <p>Tekliften teslimata kadar her adımın bekleyen iş sayısı kompakt olarak izlenir.</p>
-                </div>
-            </div>
-
-            <div class="flow">
-                @foreach($processSteps as $step)
-                    <div class="flow-step">
-                        <div class="flow-title">{{ $step['title'] }}</div>
-                        <div class="flow-num">{{ $step['count'] }}</div>
-                        <span class="badge {{ $step['badge']['class'] }}">{{ $step['badge']['text'] }}</span>
-                        <div class="flow-note">{{ $step['note'] }}</div>
-                    </div>
-                @endforeach
+                @if($showSuperAdminShortcut && $superAdminDashboardUrl)
+                    <a class="pd-btn pd-btn-light" href="{{ $superAdminDashboardUrl }}">Super Admin Operasyon Paneline Geç</a>
+                @endif
             </div>
         </section>
 
         <div class="dashboard-grid">
             <div class="left-stack">
+                <section class="panel" aria-labelledby="dashboard-today-title">
+                    <div class="section-label">
+                        <div>
+                            <h2 id="dashboard-today-title">Bugün Ne Yapmalıyım?</h2>
+                            <p>Günlük operasyonu başlatmak için önce bu kuyruğa bakın.</p>
+                        </div>
+                    </div>
+
+                    <div class="panel-list">
+                        @foreach($todayActions as $action)
+                            <article class="list-card">
+                                <div class="check-top">
+                                    <h3>{{ $action['title'] }}</h3>
+                                    <span class="badge {{ $toneBadgeMap[$action['tone'] ?? 'gray'] ?? '' }}">
+                                        @if(is_numeric($action['count'] ?? null))
+                                            {{ number_format((int) $action['count'], 0, ',', '.') }}
+                                        @else
+                                            Aç
+                                        @endif
+                                    </span>
+                                </div>
+                                <div class="count">{{ is_numeric($action['count'] ?? null) ? number_format((int) $action['count'], 0, ',', '.') : '—' }}</div>
+                                <p>{{ $action['note'] }}</p>
+                                <div class="card-bottom" style="margin-top:10px;">
+                                    <a class="pd-btn pd-btn-light small" href="{{ $action['url'] }}">Aç</a>
+                                </div>
+                            </article>
+                        @endforeach
+                    </div>
+                </section>
+
+                <section aria-labelledby="dashboard-summary-title">
+                    <div class="section-label">
+                        <div>
+                            <h2 id="dashboard-summary-title">Genel Özet</h2>
+                            <p>Açık operasyonlar, bloklu alanlar ve müşteri yanıtları tek sırada özetlenir.</p>
+                        </div>
+                    </div>
+
+                    <div class="top-summary">
+                        @foreach($metricCards as $card)
+                            <div class="kpi {{ $card['class'] }}">
+                                <div>
+                                    <div class="name">{{ $card['title'] }}</div>
+                                    <div class="num">{{ number_format((int) $card['count'], 0, ',', '.') }}</div>
+                                    <div class="hint">{{ $card['hint'] }}</div>
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                </section>
+
+                <section aria-labelledby="dashboard-flow-title">
+                    <div class="section-label">
+                        <div>
+                            <h2 id="dashboard-flow-title">Süreç Akış Şeridi</h2>
+                            <p>Tekliften teslimata kadar her adımın bekleyen iş sayısı kompakt olarak izlenir.</p>
+                        </div>
+                    </div>
+
+                    <div class="flow">
+                        @foreach($processSteps as $step)
+                            <div class="flow-step">
+                                <div class="flow-title">{{ $step['title'] }}</div>
+                                <div class="flow-num">{{ $step['count'] }}</div>
+                                <span class="badge {{ $step['badge']['class'] }}">{{ $step['badge']['text'] }}</span>
+                                <div class="flow-note">{{ $step['note'] }}</div>
+                            </div>
+                        @endforeach
+                    </div>
+                </section>
+
                 <section class="panel" aria-labelledby="dashboard-priority-title">
                     <div class="section-label">
                         <div>
@@ -895,13 +1061,13 @@
                 <section class="panel" aria-labelledby="dashboard-portal-title">
                     <div class="section-label">
                         <div>
-                            <h2 id="dashboard-portal-title">Portal ve Public Linkler</h2>
+                            <h2 id="dashboard-portal-title">Portal ve Paylaşım Linkleri</h2>
                             <p>Müşteri tarafında aktif çalışan görünür yüzeyler.</p>
                         </div>
                     </div>
 
                     <div class="portal-note">
-                        Public Tracking, Teklif Onayı ve Grafik Onayı aktif. Müşteri portalında teklif, sipariş ve dosya yüzeyleri kullanılabilir. Sipariş ve dosya ekranlarında fiyat/cari/maliyet gösterilmez.
+                        Genel takip bağlantısı, teklif onayı ve grafik onayı aktif. Müşteri portalında teklif, sipariş ve dosya yüzeyleri kullanılabilir. Sipariş ve dosya ekranlarında fiyat, cari ve maliyet bilgileri gösterilmez.
                     </div>
                 </section>
 
@@ -928,6 +1094,153 @@
                     </div>
                 </section>
             </aside>
+        </div>
+
+        <div class="setup-grid">
+            <section class="panel" aria-labelledby="dashboard-readiness-title">
+                <div class="section-label">
+                    <div>
+                        <h2 id="dashboard-readiness-title">Canlıya Hazırlık</h2>
+                        <p>Eksik ayarları ve kontrol gerektiren alanları burada görün.</p>
+                    </div>
+                </div>
+
+                <div class="checklist">
+                    @foreach($readinessChecklist as $item)
+                        @php
+                            $checkTone = match($item['status']) {
+                                'Hazır' => 'green',
+                                'Eksik' => 'red',
+                                'Pakette Yok' => '',
+                                default => 'amber',
+                            };
+                        @endphp
+                        <article class="check-card">
+                            <div class="check-top">
+                                <h3>{{ $item['label'] }}</h3>
+                                <span class="badge {{ $checkTone }}">{{ $item['status'] }}</span>
+                            </div>
+                            <a class="link-mini" href="{{ $item['url'] }}">İlgili ekrana git</a>
+                        </article>
+                    @endforeach
+                </div>
+            </section>
+
+            <section class="panel" aria-labelledby="dashboard-package-title">
+                <div class="section-label">
+                    <div>
+                        <h2 id="dashboard-package-title">Paket ve Limit Özeti</h2>
+                        <p>Paket durumu, limit uyarıları ve talep merkezi tek blokta özetlenir.</p>
+                    </div>
+                </div>
+
+                <div class="mini-stats">
+                    <article class="stat-card">
+                        <h3>Aktif Paket</h3>
+                        <div class="count">{{ $packageSummary['package_label'] ?? '-' }}</div>
+                        <p>{{ $packageSummary['subscription_label'] ?? 'Bilinmiyor' }}</p>
+                    </article>
+                    <article class="stat-card">
+                        <h3>Limit Uyarısı</h3>
+                        <div class="count">{{ number_format((int) ($packageSummary['usage_warning_count'] ?? 0), 0, ',', '.') }}</div>
+                        <p>{{ $packageSummary['warning_label'] ?? 'Kritik paket uyarısı yok.' }}</p>
+                    </article>
+                </div>
+
+                @if(!empty($packageSummary['usage_items']))
+                    <div class="micro-list">
+                        @foreach($packageSummary['usage_items'] as $item)
+                            <span>{{ $item['label'] }}: {{ $item['status'] }}</span>
+                        @endforeach
+                    </div>
+                @endif
+
+                <div class="extra-links">
+                    @if(!empty($packageSummary['package_url']))
+                        <a href="{{ $packageSummary['package_url'] }}">Paketim ve Kullanımım</a>
+                    @endif
+                    @if(!empty($packageSummary['request_url']))
+                        <a href="{{ $packageSummary['request_url'] }}">Talep Merkezi</a>
+                    @endif
+                </div>
+            </section>
+
+            <section class="panel" aria-labelledby="dashboard-quick-start-title">
+                <div class="section-label">
+                    <div>
+                        <h2 id="dashboard-quick-start-title">Hızlı Başla</h2>
+                        <p>İlk kurulumdan ilk siparişe kadar önerilen sade akış.</p>
+                    </div>
+                </div>
+
+                @if($quickStartCompleted)
+                    <div class="portal-note">
+                        Kurulum tamamlandı. Abone Firma günlük operasyon akışına hazır görünüyor; dilerseniz müşteri, teklif ve sipariş operasyonuna doğrudan devam edebilirsiniz.
+                    </div>
+                @else
+                    <div class="step-list">
+                        @foreach($quickStartSteps as $index => $step)
+                            @php
+                                $stepTone = match($step['status']) {
+                                    'Hazır' => 'green',
+                                    'Eksik' => 'red',
+                                    'Pakette Yok' => '',
+                                    default => 'amber',
+                                };
+                            @endphp
+                            <article class="step-card">
+                                <span class="step-no">{{ $index + 1 }}</span>
+                                <div>
+                                    <h3>{{ $step['title'] }}</h3>
+                                    <p>{{ $step['description'] }}</p>
+                                </div>
+                                <div class="text-right">
+                                    <span class="badge {{ $stepTone }}">{{ $step['status'] }}</span>
+                                    <div class="mt-2">
+                                        <a class="link-mini" href="{{ $step['url'] }}">Aç</a>
+                                    </div>
+                                </div>
+                            </article>
+                        @endforeach
+                    </div>
+                @endif
+            </section>
+
+            <section class="panel" aria-labelledby="dashboard-catalog-title">
+                <div class="section-label">
+                    <div>
+                        <h2 id="dashboard-catalog-title">Katalog / Product Hub Özeti</h2>
+                        <p>Teknik detaya girmeden teklifte kullanılabilir ürün durumunu özetler.</p>
+                    </div>
+                </div>
+
+                <div class="mini-stats">
+                    <article class="stat-card">
+                        <h3>Katalogdaki Ürünler</h3>
+                        <div class="count">{{ number_format((int) ($catalogSummary['total_products'] ?? 0), 0, ',', '.') }}</div>
+                        <p>Katalogda görünen aktif ürün ve varyant satırları.</p>
+                    </article>
+                    <article class="stat-card">
+                        <h3>Teklifte Seçilebilir</h3>
+                        <div class="count">{{ number_format((int) ($catalogSummary['quote_ready_products'] ?? 0), 0, ',', '.') }}</div>
+                        <p>Teklif ekranında seçilebilir ürün ve varyant satırları.</p>
+                    </article>
+                    <article class="stat-card">
+                        <h3>Kontrol Gereken Ürünler</h3>
+                        <div class="count">{{ number_format((int) ($catalogSummary['needs_review_count'] ?? 0), 0, ',', '.') }}</div>
+                        <p>Kategori, fiyat veya stok uyarısı olan ürün ve varyant satırları.</p>
+                    </article>
+                </div>
+
+                <div class="extra-links">
+                    @if(!empty($catalogSummary['catalog_url']))
+                        <a href="{{ $catalogSummary['catalog_url'] }}">Kataloğu Aç</a>
+                    @endif
+                    @if(!empty($catalogSummary['quote_url']))
+                        <a href="{{ $catalogSummary['quote_url'] }}">Ürün Seç ve Teklif Oluştur</a>
+                    @endif
+                </div>
+            </section>
         </div>
     </div>
 @endsection

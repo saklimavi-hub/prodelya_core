@@ -2,7 +2,7 @@
 
 @section('title', 'Özellik Şablonları')
 @section('page_title', 'Özellik Şablonları')
-@section('page_subtitle', 'Renk, malzeme, hacim, kapasite, ebat ve baskı türü gibi alanları kategori çoğaltmadan yönetin.')
+@section('page_subtitle', 'Renk, ölçü, kapasite, malzeme ve baskı türü gibi alanları kategori çoğaltmadan yönetin.')
 
 @section('page_actions')
 <div class="pd-actions-wrap">
@@ -16,7 +16,8 @@
     <section class="pd-card mb-4">
         <div class="pd-card-body">
             <h2 class="pd-card-title">Özellikler kategori çoğaltmayı azaltır</h2>
-            <p class="pd-card-subtitle">Bu şablonlar web filtrelerinde, tenant katalog filtrelerinde, import/export alanlarında ve kategori öneri motorunda kullanılır. Teklif ekranını kalabalıklaştırmak için değildir.</p>
+            <p class="pd-card-subtitle">Renk, ölçü, kapasite ve malzeme gibi detaylar kategori ağacını uzatmadan burada yönetilir. Bu şablonlar web filtrelerinde, Abone Firma katalog filtrelerinde, import/export alanlarında ve kategori öneri motorunda kullanılır.</p>
+            <div class="pd-note mt-3">Bu ekran, hangi özelliklerin hangi kategori ailesinde kullanılacağını gösterir. Gerçek kategori taşıma, merge veya apply işlemi burada yapılmaz.</div>
         </div>
     </section>
 
@@ -24,7 +25,7 @@
         <div class="pd-card-header">
             <div>
                 <h2 class="pd-card-title">Şablon Listesi</h2>
-                <p class="pd-card-subtitle">Her şablonda alan adı, alan kodu, tip, görünürlük ve kullanım amacı birlikte okunur.</p>
+                <p class="pd-card-subtitle">Kalemler için renk ve malzeme, termos için hacim ve malzeme, tekstil için beden ve kumaş gibi alanları kategori ailesi bazında okuyun.</p>
             </div>
             <span class="pd-badge pd-badge-blue">Yardımcı ekran</span>
         </div>
@@ -86,11 +87,11 @@
         <h3 class="pd-summary-title">Şablon Amacı</h3>
         <div class="pd-status-list">
             <div class="pd-status-row"><span>Web filtresi</span><span class="pd-badge pd-badge-green">Evet</span></div>
-            <div class="pd-status-row"><span>Tenant katalog</span><span class="pd-badge pd-badge-green">Evet</span></div>
+            <div class="pd-status-row"><span>Abone Firma kataloğu</span><span class="pd-badge pd-badge-green">Evet</span></div>
             <div class="pd-status-row"><span>Import / Export</span><span class="pd-badge pd-badge-blue">Evet</span></div>
             <div class="pd-status-row"><span>Teklif formu kalabalığı</span><span class="pd-badge pd-badge-gray">Hayır</span></div>
         </div>
-        <div class="pd-side-note">Özellikler kategori ağacını sade tutmak için kullanılır. Gerçek ürün taşıma veya kategori merge bu ekranda yapılmaz.</div>
+        <div class="pd-side-note">Özellikler kategori ağacını sade tutmak için kullanılır. Gerçek ürün taşıma, kategori birleştirme veya onaylı uygulama bu ekranda yapılmaz.</div>
     </div>
 </div>
 @endsection

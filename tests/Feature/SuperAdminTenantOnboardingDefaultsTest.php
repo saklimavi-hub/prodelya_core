@@ -47,7 +47,7 @@ class SuperAdminTenantOnboardingDefaultsTest extends TestCase
             ->get(route('admin.super.tenants.show', $tenant));
 
         $show->assertOk();
-        $show->assertSee('Başlangıç Ayarları');
+        $show->assertSee('Abone Firma Hazırlık Durumu');
         $show->assertSee('Başlangıç Ayarlarını Hazırla');
         $show->assertSee(route('admin.super.tenants.prepare-defaults', $tenant), false);
 
@@ -55,8 +55,9 @@ class SuperAdminTenantOnboardingDefaultsTest extends TestCase
             ->get(route('admin.super.tenants.edit', $tenant));
 
         $edit->assertOk();
-        $edit->assertSee('Başlangıç Ayarları');
-        $edit->assertSee('SMTP ayar ekranı hazırdır ancak bu fazda SMTP kurulmuş sayılmaz.');
+        $edit->assertSee('Owner Durumu');
+        $edit->assertSee('Panel ve Domain');
+        $edit->assertSee('SaaS Cari');
     }
 
     public function test_tenant_owner_and_demo_admin_cannot_run_prepare_defaults_route(): void

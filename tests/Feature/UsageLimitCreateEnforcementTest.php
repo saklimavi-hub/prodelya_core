@@ -146,7 +146,7 @@ class UsageLimitCreateEnforcementTest extends TestCase
 
         $settings->assertOk();
         $settings->assertSee('Limit aşıldı');
-        $settings->assertSee('Portal ve Uyarılar');
+        $settings->assertSee('Panel ve Portal');
 
         $package = Package::query()->firstWhere('key', 'starter');
         if (!$package) {

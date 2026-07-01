@@ -31,6 +31,7 @@
             <div class="px-4 py-4 sm:px-5 sm:py-5">
                 <h3 class="text-lg font-medium text-gray-900">WhatsApp Hazır Mesaj Ayarları</h3>
                 <p class="mt-1 text-sm text-gray-500">Telefon numarası düzenlenir; sistem sizin yerinize otomatik mesaj göndermez.</p>
+                <p class="mt-2 text-sm text-gray-500">Durum: <span class="font-medium text-gray-700">{{ $whatsappReadiness['status_label'] }}</span></p>
 
                 <form method="POST" action="{{ route('admin.settings.notifications.whatsapp.update') }}" class="mt-6 space-y-5">
                     @csrf
@@ -167,6 +168,11 @@
                     <li>Fiyat, KDV, bakiye ve maliyet bilgileri mesajdan temizlenir.</li>
                     <li>Ham token, file path ve group code gösterilmez.</li>
                 </ul>
+                <div class="mt-4 rounded-lg border border-gray-200 bg-gray-50 px-4 py-4 text-sm text-gray-700">
+                    <div><span class="font-medium">Test Telefonu:</span> {{ $whatsappReadiness['test_phone_masked'] }}</div>
+                    <div class="mt-1"><span class="font-medium">Ülke Kodu:</span> {{ $whatsappReadiness['country_code'] }}</div>
+                    <div class="mt-1"><span class="font-medium">Not:</span> {{ $whatsappReadiness['api_note'] }}</div>
+                </div>
             </div>
         </div>
     </div>

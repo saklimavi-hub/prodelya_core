@@ -36,6 +36,12 @@ class TenantOnboardingStatusService
         return [
             'has_package' => filled($tenant->package_key),
             'has_owner' => $this->hasOwner($tenant),
+            'has_active_owner' => $this->hasActiveOwner($tenant),
+            'has_active_user' => $this->hasActiveUser($tenant),
+            'has_finance_user' => $this->hasFinanceUser($tenant),
+            'has_operations_user' => $this->hasOperationsUser($tenant),
+            'has_panel_domain' => filled($tenant->panel_subdomain),
+            'has_company_profile' => $this->hasCompanyProfile($tenant),
             'has_print_settings' => $requiredPrintSettings > 0 && $existingPrintSettings >= $requiredPrintSettings,
             'has_notification_templates' => $requiredTemplateSlots > 0 && $existingTemplateSlots >= $requiredTemplateSlots,
             'has_tenant_settings_defaults' => $this->hasTenantSettingsDefaults($tenant),
@@ -49,6 +55,16 @@ class TenantOnboardingStatusService
             'print_settings_count' => $existingPrintSettings,
             'notification_templates_count' => $existingTemplateSlots,
         ];
+    }
+
+    private function hasCompanyProfile(TenantAccount $tenant): bool
+    {
+        $displayName = TenantSetting::getValue($tenant->id, 'company_display_name');
+        $phone = TenantSetting::getValue($tenant->id, 'company_phone');
+        $email = TenantSetting::getValue($tenant->id, 'company_email');
+
+        return filled($displayName ?: $tenant->name)
+            && (filled($phone) || filled($email));
     }
 
     private function hasOwner(TenantAccount $tenant): bool
@@ -65,6 +81,44 @@ class TenantOnboardingStatusService
         return UserRole::query()
             ->where('tenant_account_id', $tenant->id)
             ->where('role_id', $tenantOwnerRoleId)
+            ->exists();
+    }
+
+    private function hasActiveOwner(TenantAccount $tenant): bool
+    {
+        return $this->hasOwner($tenant);
+    }
+
+    private function hasActiveUser(TenantAccount $tenant): bool
+    {
+        return UserRole::query()
+            ->where('tenant_account_id', $tenant->id)
+            ->whereHas('role', fn ($query) => $query->where('is_active', true))
+            ->whereHas('user', fn ($query) => $query->where('is_platform_admin', false))
+            ->exists();
+    }
+
+    private function hasFinanceUser(TenantAccount $tenant): bool
+    {
+        return UserRole::query()
+            ->where('tenant_account_id', $tenant->id)
+            ->whereHas('user', fn ($query) => $query->where('is_platform_admin', false))
+            ->whereHas('role', function ($query): void {
+                $query->where('is_active', true)
+                    ->whereIn('key', ['tenant_owner', 'admin', 'finance']);
+            })
+            ->exists();
+    }
+
+    private function hasOperationsUser(TenantAccount $tenant): bool
+    {
+        return UserRole::query()
+            ->where('tenant_account_id', $tenant->id)
+            ->whereHas('user', fn ($query) => $query->where('is_platform_admin', false))
+            ->whereHas('role', function ($query): void {
+                $query->where('is_active', true)
+                    ->whereIn('key', ['tenant_owner', 'admin', 'sales', 'graphic', 'supplier_operator', 'production', 'warehouse', 'delivery']);
+            })
             ->exists();
     }
 

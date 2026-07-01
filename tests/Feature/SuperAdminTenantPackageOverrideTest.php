@@ -93,8 +93,8 @@ class SuperAdminTenantPackageOverrideTest extends TestCase
             ->get($showUrl);
 
         $show->assertOk();
-        $show->assertSee('Paket ve Override Özeti');
-        $show->assertSee('starter');
+        $show->assertSee('Modül / Override Özeti');
+        $show->assertSee('Starter');
         $show->assertDontSee('smtp_password', false);
         $show->assertDontSee('file_path', false);
 
@@ -102,7 +102,7 @@ class SuperAdminTenantPackageOverrideTest extends TestCase
             ->get($editUrl);
 
         $edit->assertOk();
-        $edit->assertSee('Paket Bölümü');
+        $edit->assertSee('Abone Firma Düzenle');
         $edit->assertSee('Modül Override');
         $edit->assertSee('Feature Override');
         $edit->assertSee('Limit Override');

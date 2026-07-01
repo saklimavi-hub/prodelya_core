@@ -27,7 +27,14 @@ class CustomerPortalAuthController extends Controller
     {
         $tenant = $this->tenantResolver->getCurrentTenant($request);
 
-        if (! $tenant || ! $this->portalAccessService->portalLoginEnabled($tenant)) {
+        if (! $tenant) {
+            return view('customer-portal.auth.login', [
+                'tenant' => null,
+                'portalTenant' => null,
+            ]);
+        }
+
+        if (! $this->portalAccessService->portalLoginEnabled($tenant)) {
             abort(404);
         }
 
@@ -37,6 +44,7 @@ class CustomerPortalAuthController extends Controller
 
         return view('customer-portal.auth.login', [
             'tenant' => $tenant,
+            'portalTenant' => $tenant,
         ]);
     }
 
@@ -167,7 +175,13 @@ class CustomerPortalAuthController extends Controller
     {
         $tenant = $this->tenantResolver->getCurrentTenant($request);
 
-        if (! $tenant || ! $this->portalAccessService->portalLoginEnabled($tenant)) {
+        if (! $tenant) {
+            return back()
+                ->withErrors(['email' => 'Firma bilginiz bulunamadı. Mümkünse firmanızın size verdiği portal linki ile giriş yapın.'])
+                ->onlyInput('email');
+        }
+
+        if (! $this->portalAccessService->portalLoginEnabled($tenant)) {
             abort(404);
         }
 

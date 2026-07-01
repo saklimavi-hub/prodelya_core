@@ -43,3 +43,7 @@
 *.backup
 
 prodelya_*_onizleme.html
+
+# Local tool config
+/.nprc
+.nprc

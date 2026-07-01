@@ -139,8 +139,8 @@ class ProductDataHubCategoryCleanupTest extends TestCase
         $this->getOnCentralHost('/admin/super-admin/product-data-hub/category-mappings?view_mode=detail')
             ->assertOk()
             ->assertSee('Kategori Eşleme Kuyruğu')
-            ->assertSee('Sol Blok — Tedarikçi Kategorisi')
-            ->assertSee('Orta Blok — Sistem Önerisi')
+            ->assertSee('Sol Blok — Orijinal Tedarikçi Kategorisi')
+            ->assertSee('Orta Blok — Önerilen Prodelya Kategorisi')
             ->assertSee('Sağ Blok — Karar')
             ->assertSee('Eşle')
             ->assertSee('Alias Yap')
@@ -167,7 +167,7 @@ class ProductDataHubCategoryCleanupTest extends TestCase
             ->assertSee('Yeni Kategori Taslağı')
             ->assertSee('Promosyon Ürünleri')
             ->assertSee('Matbaa Ürünleri')
-            ->assertSee('Taslağı Aç');
+            ->assertSee('Taslağı İncele');
     }
 
     public function test_category_mapping_can_be_cancelled_and_logged(): void
@@ -235,8 +235,8 @@ class ProductDataHubCategoryCleanupTest extends TestCase
             ->assertOk()
             ->assertSee('Tedarikçi Set Kategorisi')
             ->assertSee('XML / Setler')
-            ->assertSee('Sol Blok — Tedarikçi Kategorisi')
-            ->assertSee('Orta Blok — Sistem Önerisi')
+            ->assertSee('Sol Blok — Orijinal Tedarikçi Kategorisi')
+            ->assertSee('Orta Blok — Önerilen Prodelya Kategorisi')
             ->assertSee('Sağ Blok — Karar')
             ->assertSee('İptal Edilmiş')
             ->assertSee('Ayrı Bırakılmış')
@@ -287,9 +287,9 @@ class ProductDataHubCategoryCleanupTest extends TestCase
 
         $this->getOnCentralHost('/admin/super-admin/product-data-hub/category-cleanup')
             ->assertOk()
-            ->assertSee('Temizlik Kararları')
-            ->assertSee('CSV Export')
-            ->assertSee('JSON Export');
+            ->assertSee('Karar Listesi')
+            ->assertSee('Dışa Aktar: CSV')
+            ->assertSee('Dışa Aktar: JSON');
 
         $draft = CategoryTreeDraft::query()->where('name', 'Prodelya Temiz Standart Kategori Taslağı')->firstOrFail();
 

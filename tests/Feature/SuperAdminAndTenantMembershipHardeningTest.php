@@ -40,7 +40,7 @@ class SuperAdminAndTenantMembershipHardeningTest extends TestCase
         $this->actingAs($this->platformAdmin, 'web')
             ->get($this->centralUrl('/admin/super-admin/tenants'))
             ->assertOk()
-            ->assertSee('Tenantlar');
+            ->assertSee('Abone Firmalar');
     }
 
     public function test_non_platform_tenant_admins_cannot_access_super_admin_routes_on_central_host(): void

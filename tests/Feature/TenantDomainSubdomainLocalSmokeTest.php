@@ -242,10 +242,9 @@ class TenantDomainSubdomainLocalSmokeTest extends TestCase
 
         $show->assertOk();
         $show->assertSee('http://saklimavi-test.' . self::CENTRAL_HOST . '/admin');
-        $show->assertSee('C:\\Windows\\System32\\drivers\\etc\\hosts', false);
-        $show->assertSee('127.0.0.1 saklimavi-test.' . self::CENTRAL_HOST, false);
-        $show->assertSee('http://app.saklimavi.test/admin');
-        $show->assertSee('http://portal.saklimavi.test/musteri-giris');
+        $show->assertSee('Domain Yaşam Döngüsü / DNS-SSL Görünürlüğü');
+        $show->assertSee('app.saklimavi.test');
+        $show->assertSee('portal.saklimavi.test');
         $show->assertDontSee('password', false);
         $show->assertDontSee('file_path', false);
 
@@ -254,7 +253,7 @@ class TenantDomainSubdomainLocalSmokeTest extends TestCase
 
         $edit->assertOk();
         $edit->assertSee('http://saklimavi-test.' . self::CENTRAL_HOST . '/admin');
-        $edit->assertSee('hosts veya wildcard vhost gerekebilir');
+        $edit->assertSee('DNS ve SSL otomasyonu bu fazda açılmadı.');
     }
 
     private function createTenant(string $subdomain): TenantAccount

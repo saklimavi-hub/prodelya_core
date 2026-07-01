@@ -29,10 +29,10 @@ class ProductDataHubFinalUiCleanupTest extends TestCase
 
         $this->getOnCentralHost('/admin/super-admin/product-data-hub')
             ->assertOk()
-            ->assertSeeText('GÜNLÜK')
-            ->assertSeeText('KATEGORİ')
-            ->assertSeeText('ARAÇLAR / BAKIM')
-            ->assertSeeText('Ortak Ürün Havuzu')
+            ->assertSeeText('Durum Merkezi')
+            ->assertSeeText('Tedarikçi Akışları')
+            ->assertSeeText('Kategori ve Özellikler')
+            ->assertSeeText('Ayarlar ve Bakım')
             ->assertSeeText('Standart Ürünler')
             ->assertSeeText('Akış Kontrol')
             ->assertSeeText('Profil Karşılaştırma');
@@ -76,7 +76,7 @@ class ProductDataHubFinalUiCleanupTest extends TestCase
         $this->getOnCentralHost('/admin/super-admin/product-data-hub/category-mappings?mode=advanced')
             ->assertOk()
             ->assertSeeText('Review Kararı Bekliyor')
-            ->assertSeeText('Fallback ile Görünebilir')
+            ->assertSeeText('Geçici görünüm olabilir')
             ->assertSeeText('Mapping / Refresh Ayrı')
             ->assertSee('<details class="pd-inline-details mt-3">', false);
     }
@@ -87,14 +87,14 @@ class ProductDataHubFinalUiCleanupTest extends TestCase
 
         $this->getOnCentralHost('/admin/super-admin/product-data-hub/sources/create')
             ->assertOk()
-            ->assertSeeText('Gelişmiş Bağlantı, Auth ve Sync Policy')
-            ->assertSeeText('Varsayılan kapalı')
+            ->assertSeeText('Önizleme ve Alan Eşleme Hazırlığı')
+            ->assertSeeText('Sync Davranışı')
             ->assertSee('<details class="pd-card pd-form-card mb-6">', false);
 
         $this->getOnCentralHost('/admin/super-admin/product-data-hub/sources/1/edit')
             ->assertOk()
-            ->assertSeeText('Bağlantı ve Yetkilendirme Ayarları')
-            ->assertSeeText('Senkron Politikası')
+            ->assertSeeText('Bağlantı ve Güvenlik')
+            ->assertSeeText('Sync Davranışı')
             ->assertSee('<details class="pd-card pd-form-card mb-6">', false);
     }
 

@@ -49,7 +49,7 @@ class AdminMenuServiceTest extends TestCase
 
         $this->assertNotEmpty(config('admin_menu.tenant'));
         $this->assertNotEmpty(config('admin_menu.super_admin'));
-        $this->assertContains('Gösterge Paneli', $flatBefore);
+        $this->assertContains('Yönetim Paneli', $flatBefore);
         $this->assertContains('Promosyon Teklifleri', $flatBefore);
         $this->assertNotContains('Baskı Teklifleri', $flatBefore);
         $this->assertNotContains('İş Formları', $flatBefore);
@@ -111,15 +111,18 @@ class AdminMenuServiceTest extends TestCase
         $this->assertNotContains('Katalog Görünürlüğü', $flatAfter);
         $this->assertNotContains('Uyarılı Ürünler', $flatAfter);
         $this->assertContains('Müşteri Portalı', $flatAfter);
+        $this->assertContains('Kurulum Merkezi', $flatAfter);
         $this->assertNotContains('Raporlar', $flatAfter);
         $this->assertNotContains('Kalite Kontrol', $flatAfter);
 
         $superMenu = $service->superAdminMenu($this->adminUser);
         $flatSuper = $this->flattenLabels($superMenu);
         $this->assertContains('Super Admin Paneli', $flatSuper);
-        $this->assertContains('Tenantlar', $flatSuper);
+        $this->assertContains('Abone Firmalar', $flatSuper);
+        $this->assertContains('Başvurular', $flatSuper);
         $this->assertContains('Product Data Hub', $flatSuper);
         $this->assertContains('Standart Kategori Ağacı', $flatSuper);
+        $this->assertNotContains('Paket Talepleri', $flatSuper);
         $this->assertNotContains('Modüller', $flatSuper);
         $this->assertNotContains('Super Ayarlar', $flatSuper);
     }

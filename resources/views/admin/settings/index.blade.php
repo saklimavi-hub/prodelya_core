@@ -1,17 +1,23 @@
 @extends('layouts.prodelya-admin')
 
-@section('title', 'Ayarlar')
-@section('page_title', 'Ayarlar')
-@section('page_subtitle', 'Firma, kullanıcı, modül, kullanım ve operasyon ayarlarınızı yönetin.')
+@section('title', 'Kurulum Merkezi')
+@section('page_title', 'Kurulum Merkezi')
+@section('page_subtitle', 'Abone Firma ayarlarını, canlıya hazırlık durumunu ve günlük kurulum aksiyonlarını sekmeli yapı içinde yönetin.')
 @section('hide_side_summary', true)
 
 @php
-    $statusBadgeMap = [
-        'success' => 'badge-green',
-        'info' => 'badge-blue',
-        'warning' => 'badge-amber',
-        'danger' => 'badge-red',
-        'muted' => 'badge-gray',
+    $statusPillMap = [
+        'Hazır' => 'badge-green',
+        'Aktif' => 'badge-green',
+        'Eksik' => 'badge-red',
+        'Kontrol Gerekir' => 'badge-amber',
+        'Kontrol Edilmeli' => 'badge-amber',
+        'Pakette Yok' => 'badge-gray',
+        'Sonraki Faz' => 'badge-gray',
+        'Bilgi' => 'badge-blue',
+        'Pasif' => 'badge-gray',
+        'Veri yok' => 'badge-gray',
+        'Tanımlı' => 'badge-green',
     ];
 
     $usageBadgeMap = [
@@ -28,406 +34,1070 @@
         'unlimited' => 'Limitsiz',
     ];
 
-    $hardStopUsageKeys = ['users', 'current_accounts', 'orders'];
-
-    $sectionBadgeMap = [
-        'green' => 'badge-green',
-        'gray' => 'badge-gray',
-        'amber' => 'badge-amber',
-    ];
+    $activeTabMeta = collect($settingsTabs)->firstWhere('key', $activeSettingsTab) ?? collect($settingsTabs)->first();
+    $activeTabDescription = $activeTabMeta['description'] ?? '';
+    $userUsage = collect($usageSnapshot)->first(fn (array $usage) => str_contains(mb_strtolower((string) ($usage['label'] ?? '')), 'kullan'));
+    $latestSignalLabel = $settingsOverview['latest_signal'] ?? 'Kurulum özeti';
 @endphp
 
 @section('content')
 <style>
-    .settings-shell {
+    .setup-center-shell {
         font-family: Arial, Helvetica, sans-serif;
     }
-    .settings-task-grid,
-    .settings-usage-grid {
-        display: grid;
-        gap: 16px;
-    }
-    .settings-task-grid {
-        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    }
-    .settings-usage-grid {
-        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    }
-    .settings-task-card,
-    .settings-compact-card,
-    .settings-usage-card {
+    .setup-center-topbar,
+    .setup-center-hero,
+    .setup-center-section,
+    .setup-summary-panel,
+    .setup-module-block,
+    .setup-status-card,
+    .setup-check-card {
         background: #fff;
         border: 1px solid #e5e7eb;
-        border-radius: 12px;
+        border-radius: 8px;
         box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
     }
-    .settings-task-card {
-        padding: 16px;
-    }
-    .settings-compact-card {
+    .setup-center-topbar,
+    .setup-center-hero,
+    .setup-center-section,
+    .setup-summary-panel {
         padding: 18px;
     }
-    .settings-usage-card {
-        padding: 14px;
+    .setup-center-topbar {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 14px;
     }
-    .settings-task-item {
-        border: 1px solid #edf2f7;
-        border-radius: 12px;
-        background: #f8fafc;
-        padding: 12px 14px;
+    .setup-center-topbar h2,
+    .setup-section-title,
+    .setup-module-title {
+        margin: 0;
+        color: #1f2d45;
+        font-weight: 600;
     }
-    .settings-mini-text {
+    .setup-center-topbar h2 {
+        font-size: 26px;
+        line-height: 1.15;
+    }
+    .setup-muted,
+    .setup-mini-text,
+    .setup-module-desc,
+    .setup-info-key,
+    .setup-tab-caption {
+        color: #6d7788;
+    }
+    .setup-mini-text {
         font-size: 12px;
-        line-height: 1.45;
-        color: #64748b;
+        line-height: 1.5;
     }
-    .settings-action {
+    .setup-top-actions,
+    .setup-chip-row,
+    .setup-tab-toolbar,
+    .setup-tab-buttons,
+    .setup-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .setup-chip {
         display: inline-flex;
         align-items: center;
-        justify-content: center;
-        min-width: 92px;
-    }
-    .settings-hero {
-        background: #fff;
+        min-height: 28px;
+        padding: 0 10px;
+        border-radius: 4px;
         border: 1px solid #e5e7eb;
-        border-radius: 12px;
-        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
-        padding: 18px 20px;
+        background: #fff;
+        color: #58657a;
+        font-size: 12px;
+        white-space: nowrap;
     }
-    @media (max-width: 1024px) {
-        .settings-task-grid,
-        .settings-usage-grid {
+    .setup-chip-blue {
+        background: #eef4ff;
+        border-color: #dce7ff;
+        color: #2f6fed;
+    }
+    .setup-chip-green {
+        background: #edf8f2;
+        border-color: #d8f0e4;
+        color: #238a55;
+    }
+    .setup-chip-amber {
+        background: #fff6e7;
+        border-color: #f1ddb5;
+        color: #c47713;
+    }
+    .setup-chip-gray {
+        background: #f5f7fa;
+        color: #6b7587;
+    }
+    .setup-center-hero {
+        margin-bottom: 14px;
+    }
+    .setup-hero-grid {
+        display: grid;
+        grid-template-columns: 1.35fr .95fr;
+        gap: 14px;
+        align-items: start;
+    }
+    .setup-info-banner {
+        border: 1px solid #dfe7f3;
+        border-left: 3px solid #2f6fed;
+        background: #f8fbff;
+        border-radius: 6px;
+        padding: 12px 14px;
+        color: #536176;
+        font-size: 13px;
+        line-height: 1.55;
+    }
+    .setup-status-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 14px;
+    }
+    .setup-status-card {
+        padding: 12px;
+        min-height: 84px;
+    }
+    .setup-status-label {
+        color: #6f7b90;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        margin-bottom: 6px;
+    }
+    .setup-status-value {
+        color: #233149;
+        font-size: 16px;
+        margin-bottom: 4px;
+        font-weight: 600;
+    }
+    .setup-check-card {
+        padding: 0;
+        overflow: hidden;
+    }
+    .setup-check-head {
+        padding: 16px 18px 10px;
+        border-bottom: 1px solid #edf1f5;
+        background: linear-gradient(180deg, #fff 0%, #fcfcfd 100%);
+    }
+    .setup-check-list {
+        display: grid;
+        gap: 8px;
+        padding: 18px;
+    }
+    .setup-check-item {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        border: 1px solid #e7ebf1;
+        border-radius: 6px;
+        padding: 10px 12px;
+        background: #fbfcfd;
+    }
+    .setup-check-dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        margin-top: 5px;
+        flex: 0 0 auto;
+        background: #bbc5d4;
+    }
+    .setup-check-dot.green { background: #238a55; }
+    .setup-check-dot.amber { background: #c47713; }
+    .setup-layout {
+        display: grid;
+        grid-template-columns: minmax(760px, 1fr) 305px;
+        gap: 16px;
+        align-items: start;
+    }
+    .setup-summary-panel {
+        position: sticky;
+        top: 18px;
+        padding: 0;
+        overflow: hidden;
+    }
+    .setup-summary-section {
+        padding: 14px 16px;
+        border-bottom: 1px solid #edf1f5;
+    }
+    .setup-summary-section:last-child {
+        border-bottom: 0;
+    }
+    .setup-summary-title {
+        color: #748096;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        margin-bottom: 10px;
+    }
+    .setup-progress-wrap {
+        border: 1px solid #e6ebf2;
+        background: #f8fafc;
+        border-radius: 6px;
+        padding: 10px 12px;
+    }
+    .setup-progress-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 8px;
+        font-size: 13px;
+        color: #233149;
+    }
+    .setup-progress-bar {
+        height: 6px;
+        background: #e6ebf3;
+        border-radius: 999px;
+        overflow: hidden;
+    }
+    .setup-progress-bar > span {
+        display: block;
+        height: 100%;
+        width: {{ max(0, min(100, $settingsOverview['progress_percent'] ?? 0)) }}%;
+        background: linear-gradient(90deg, #2f6fed, #79a3ff);
+    }
+    .setup-summary-list,
+    .setup-quick-actions,
+    .setup-summary-checks {
+        display: grid;
+        gap: 8px;
+    }
+    .setup-summary-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+        border-top: 1px solid #edf1f5;
+        padding-top: 9px;
+        color: #425066;
+        font-size: 12.5px;
+    }
+    .setup-summary-row:first-child {
+        border-top: 0;
+        padding-top: 0;
+    }
+    .setup-section-head {
+        padding-bottom: 14px;
+        border-bottom: 1px solid #edf1f5;
+        margin-bottom: 14px;
+    }
+    .setup-tab-toolbar {
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 14px;
+    }
+    .setup-tab-buttons {
+        flex: 1 1 auto;
+    }
+    .setup-tab-button {
+        border: 1px solid #e5e7eb;
+        background: #fff;
+        color: #42506a;
+        min-height: 36px;
+        padding: 0 12px;
+        border-radius: 5px;
+        font: inherit;
+        cursor: pointer;
+    }
+    .setup-tab-button.is-active {
+        color: #2f6fed;
+        background: #eef4ff;
+        border-color: #dbe7ff;
+    }
+    .setup-tab-caption {
+        min-height: 28px;
+        padding: 0 10px;
+        border-radius: 4px;
+        border: 1px solid #dce7ff;
+        background: #eef4ff;
+        color: #2f6fed;
+        display: inline-flex;
+        align-items: center;
+        font-size: 12px;
+    }
+    .js-settings-tabs .setup-tab-panel {
+        display: none;
+    }
+    .js-settings-tabs .setup-tab-panel.is-active {
+        display: block;
+    }
+    .setup-card-grid-2,
+    .setup-card-grid-3,
+    .setup-info-grid,
+    .setup-module-grid,
+    .setup-usage-grid {
+        display: grid;
+        gap: 12px;
+    }
+    .setup-card-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .setup-card-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .setup-info-grid { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+    .setup-module-grid { grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+    .setup-usage-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+    .setup-module-block {
+        padding: 14px;
+        min-height: 162px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    .setup-module-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        align-items: flex-start;
+    }
+    .setup-module-title {
+        font-size: 16px;
+    }
+    .setup-module-desc {
+        font-size: 12px;
+        margin-top: 3px;
+    }
+    .setup-info-list {
+        display: grid;
+        gap: 8px;
+        margin-top: 2px;
+    }
+    .setup-info-row {
+        display: grid;
+        grid-template-columns: 145px minmax(0, 1fr);
+        gap: 12px;
+        align-items: start;
+        padding: 8px 0;
+        border-top: 1px solid #edf1f5;
+    }
+    .setup-info-row:first-child {
+        border-top: 0;
+        padding-top: 0;
+    }
+    .setup-info-key {
+        font-size: 12px;
+    }
+    .setup-info-val {
+        color: #243149;
+        font-size: 13px;
+    }
+    .setup-link-list {
+        display: grid;
+        gap: 8px;
+        margin-top: auto;
+    }
+    .setup-action-link {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        min-height: 38px;
+        padding: 0 12px;
+        border: 1px solid #e5e7eb;
+        border-radius: 5px;
+        background: #fafbfd;
+        color: #30405a;
+        text-decoration: none;
+    }
+    .setup-action-link.primary {
+        background: #eef4ff;
+        border-color: #dce7ff;
+        color: #2f6fed;
+    }
+    .setup-note-box {
+        border: 1px solid #dce7ff;
+        background: #f8fbff;
+        border-radius: 6px;
+        padding: 12px 14px;
+        color: #536176;
+        font-size: 12px;
+        line-height: 1.55;
+        margin-top: 12px;
+    }
+    .setup-static-chip {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 0 10px;
+        border-radius: 5px;
+        border: 1px solid #e5e7eb;
+        background: #f8fafc;
+        color: #6b7587;
+        font-size: 12px;
+    }
+    @media (max-width: 1300px) {
+        .setup-layout {
+            grid-template-columns: 1fr;
+        }
+        .setup-summary-panel {
+            position: static;
+        }
+    }
+    @media (max-width: 1080px) {
+        .setup-hero-grid {
+            grid-template-columns: 1fr;
+        }
+        .setup-status-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+    @media (max-width: 920px) {
+        .setup-center-topbar {
+            padding: 14px;
+        }
+        .setup-center-topbar h2 {
+            font-size: 24px;
+        }
+        .setup-card-grid-2,
+        .setup-card-grid-3,
+        .setup-status-grid,
+        .setup-info-row,
+        .setup-hero-grid,
+        .setup-module-grid,
+        .setup-usage-grid {
             grid-template-columns: 1fr;
         }
     }
 </style>
 
-<div class="settings-shell">
-@if(session('success'))
-    <div class="mb-4 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
-        {{ session('success') }}
-    </div>
-@endif
+<div class="setup-center-shell">
+    @if(session('success'))
+        <div class="mb-4 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+            {{ session('success') }}
+        </div>
+    @endif
 
-@if($subscription['status'] === 'expired')
-    <div class="mb-6 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        Paket süresi dolmuş. İşlem yapmak için paket yenilenmeli.
-    </div>
-@endif
+    @if($subscription['status'] === 'expired')
+        <div class="mb-6 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            Paket süresi dolmuş. İşlem yapmak için paket yenilenmeli.
+        </div>
+    @endif
 
-<div class="settings-hero mb-6">
-    <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+    <div class="setup-center-topbar">
         <div>
-            <h2 class="text-lg font-semibold text-gray-900">Önce yapmak istediğiniz işi seçin.</h2>
-            <p class="mt-1 max-w-3xl text-sm text-gray-600">Firma, operasyon, müşteri portalı, bildirim ve paket ayarlarını buradan yönetin. Her bölüm kısa açıklamayla neyi yönettiğini gösterir.</p>
+            <h2>Kurulum Merkezi</h2>
+            <p class="setup-muted">Abone Firma ayarlarını, canlıya hazırlık durumunu ve günlük kurulum aksiyonlarını sekmeli yapı içinde yönetin.</p>
+            <div class="setup-chip-row mt-3">
+                <span class="setup-chip setup-chip-blue">Sekmeli görünüm</span>
+                <span class="setup-chip setup-chip-green">Hazır alanlar</span>
+                <span class="setup-chip setup-chip-amber">Kontrol gerekenler</span>
+                <span class="setup-chip setup-chip-gray">Sonraki faz alanları</span>
+            </div>
         </div>
-        <div class="flex flex-wrap gap-2">
-            <span class="badge badge-blue">{{ $packageLabel }}</span>
-            <span class="badge {{ $statusBadgeMap[$subscription['severity']] ?? 'badge-gray' }}">{{ $subscription['label'] }}</span>
+        <div class="setup-top-actions">
+            <span class="setup-chip">Para birimi: {{ $tenant->default_currency ?: 'TL' }}</span>
+            <span class="setup-chip">{{ $settingsOverview['package_label'] }}</span>
         </div>
     </div>
-</div>
 
-<div class="space-y-6">
-        <div class="settings-compact-card">
-            <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                <div>
-                    <h3 class="text-[15px] font-semibold text-gray-900">Tenant Profili ve Hazırlık</h3>
-                    <p class="mt-1 settings-mini-text">SAKLImavi gibi gerçek tenantlar için firma kimliği, panel adresi ve kurulum bekleyen alanları tek bakışta görün.</p>
-                </div>
-                <div class="flex flex-wrap gap-2">
-                    <span class="badge badge-blue">Tenant Profili</span>
-                    <span class="badge {{ ($tenantReadiness['legacy_import_done'] ?? false) ? 'badge-green' : 'badge-amber' }}">
-                        {{ ($tenantReadiness['legacy_import_done'] ?? false) ? 'Eski veri import edildi' : 'Eski veri import yapılmadı' }}
-                    </span>
-                </div>
-            </div>
-
-            <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-                <div class="settings-task-item">
-                    <div class="settings-mini-text">Görünen Firma Adı</div>
-                    <div class="mt-1 text-sm font-semibold text-gray-900">{{ $tenantReadiness['company_display_name'] ?: '-' }}</div>
-                </div>
-                <div class="settings-task-item">
-                    <div class="settings-mini-text">Yasal Ünvan</div>
-                    <div class="mt-1 text-sm font-semibold text-gray-900">{{ $tenantReadiness['company_legal_name'] ?: 'Henüz girilmedi' }}</div>
-                </div>
-                <div class="settings-task-item">
-                    <div class="settings-mini-text">Panel Adresi</div>
-                    <div class="mt-1 text-sm font-semibold text-gray-900 break-all">{{ $tenantReadiness['panel_url'] ?: '-' }}</div>
-                </div>
-                <div class="settings-task-item">
-                    <div class="settings-mini-text">Dil / Para Birimi</div>
-                    <div class="mt-1 text-sm font-semibold text-gray-900">{{ $tenantReadiness['default_locale'] }} / {{ $tenantReadiness['default_currency'] }}</div>
-                </div>
-                <div class="settings-task-item">
-                    <div class="settings-mini-text">Zaman / Format</div>
-                    <div class="mt-1 text-sm font-semibold text-gray-900">{{ $tenantReadiness['timezone'] }} / {{ $tenantReadiness['number_format_locale'] }}</div>
-                </div>
-                <div class="settings-task-item">
-                    <div class="settings-mini-text">Storage Disk</div>
-                    <div class="mt-1 text-sm font-semibold text-gray-900">{{ $tenantReadiness['storage_disk'] }}</div>
-                </div>
-                <div class="settings-task-item">
-                    <div class="settings-mini-text">Adres Özeti</div>
-                    <div class="mt-1 text-sm font-semibold text-gray-900">{{ $tenantReadiness['company_full_address'] ?: 'Henüz girilmedi' }}</div>
-                </div>
-                <div class="settings-task-item">
-                    <div class="settings-mini-text">Telefon / E-posta</div>
-                    <div class="mt-1 text-sm font-semibold text-gray-900">{{ $tenantReadiness['company_phone'] ?: '-' }}{{ $tenantReadiness['company_email'] ? ' · ' . $tenantReadiness['company_email'] : '' }}</div>
-                </div>
-                <div class="settings-task-item">
-                    <div class="settings-mini-text">Web Sitesi</div>
-                    <div class="mt-1 text-sm font-semibold text-gray-900 break-all">{{ $tenantReadiness['company_website'] ?: 'Henüz girilmedi' }}</div>
-                </div>
-            </div>
-
-            <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
-                <div class="settings-task-item">
-                    <div class="settings-mini-text">İlk Firma</div>
-                    <div class="mt-1 text-sm font-semibold text-gray-900">{{ $tenantReadiness['has_first_company'] ? 'Hazır' : 'Henüz oluşturulmadı' }}</div>
-                </div>
-                <div class="settings-task-item">
-                    <div class="settings-mini-text">İlk Cari</div>
-                    <div class="mt-1 text-sm font-semibold text-gray-900">{{ $tenantReadiness['has_first_current_account'] ? 'Hazır' : 'Henüz oluşturulmadı' }}</div>
-                </div>
-                <div class="settings-task-item">
-                    <div class="settings-mini-text">SMTP Kurulumu</div>
-                    <div class="mt-1 text-sm font-semibold text-gray-900">{{ $tenantReadiness['smtp_ready'] ? 'Bilgi girilmiş' : 'Kurulum bekliyor' }}</div>
-                </div>
-                <div class="settings-task-item">
-                    <div class="settings-mini-text">WhatsApp Kurulumu</div>
-                    <div class="mt-1 text-sm font-semibold text-gray-900">{{ $tenantReadiness['whatsapp_ready'] ? 'Bilgi girilmiş' : 'Kurulum bekliyor' }}</div>
-                </div>
-            </div>
-
-            <div class="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                İlk firma/cari bu fazda otomatik oluşturulmadı. Bu kayıtlar müşteri/tedarikçi operasyonuyla karışmaması için tenant içinde bilinçli olarak manuel açılmalı.
-            </div>
-            <div class="mt-3 rounded-md border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-                Windows local test için gerekirse <code>127.0.0.1 {{ $tenantReadiness['panel_host'] }}</code> hosts kaydı eklenebilir. SMTP ve WhatsApp ayar ekranları hazırdır ancak bu tenant için gerçek kimlik bilgileri henüz girilmemiştir.
-            </div>
-            <div class="mt-4">
-                <a href="{{ route('admin.settings.company-profile.edit') }}" class="pd-btn pd-btn-primary">
-                    Firma Bilgilerini Düzenle
-                </a>
-            </div>
+    <div class="setup-center-hero">
+        <div class="setup-section-head border-0 mb-0 pb-0">
+            <h3 class="setup-section-title">Abone Firma ayarlarını ve canlıya hazırlık durumunu tek merkezden yönetin.</h3>
+            <p class="setup-muted mt-1">Üst bölüm hızlı özet verir. Detaylar kategori sekmeleri altında açılır.</p>
         </div>
-
-        <div class="settings-task-grid">
-            @foreach($settingsSections as $section)
-                <div class="settings-task-card">
-                        <div class="flex items-start justify-between gap-3">
+        <div class="setup-hero-grid mt-4">
+            <div>
+                <div class="setup-info-banner">
+                    Firma profili, panel ve portal, bildirimler, paket durumu, kullanıcılar, katalog erişimi, dosya yapısı ve Talep Merkezi aynı ekranda görünür; ancak kullanıcı sekmeden yalnız ilgilendiği alanı açar.
+                </div>
+                <div class="setup-status-grid">
+                    <div class="setup-status-card">
+                        <div class="setup-status-label">Paket</div>
+                        <div class="setup-status-value">{{ $settingsOverview['package_label'] }}</div>
+                        <div><span class="badge {{ $statusPillMap[$subscription['label']] ?? 'badge-blue' }}">{{ $subscription['label'] }}</span></div>
+                    </div>
+                    <div class="setup-status-card">
+                        <div class="setup-status-label">Canlıya Hazırlık</div>
+                        <div class="setup-status-value">{{ $settingsOverview['ready_count'] }} / {{ $settingsOverview['total_count'] }} hazır</div>
+                        <div><span class="badge badge-amber">{{ $settingsOverview['attention_count'] }} alan kontrol</span></div>
+                    </div>
+                    <div class="setup-status-card">
+                        <div class="setup-status-label">Kullanıcılar</div>
+                        <div class="setup-status-value">{{ $userRoleSummary['active_users'] }} / {{ $userUsage['limit'] ?? 'Limitsiz' }}</div>
+                        <div><span class="badge badge-blue">Ekip açık</span></div>
+                    </div>
+                    <div class="setup-status-card">
+                        <div class="setup-status-label">Son İşlem</div>
+                        <div class="setup-status-value">{{ $latestSignalLabel }}</div>
+                        <div><span class="badge {{ ($settingsOverview['attention_count'] ?? 0) > 0 ? 'badge-amber' : 'badge-green' }}">{{ ($settingsOverview['attention_count'] ?? 0) > 0 ? 'Kontrol Gerekir' : 'Hazır' }}</span></div>
+                    </div>
+                </div>
+            </div>
+            <div class="setup-check-card">
+                <div class="setup-check-head">
+                    <h3 class="setup-section-title">Bugün Ne Tamamlanmalı?</h3>
+                    <p class="setup-muted mt-1">İlk kurulum ve günlük ayar kontrolü için kısa aksiyon listesi.</p>
+                </div>
+                <div class="setup-check-list">
+                    @foreach($settingsOverview['focus_actions'] as $action)
+                        <div class="setup-check-item">
+                            <span class="setup-check-dot {{ $action['tone'] === 'green' ? 'green' : 'amber' }}"></span>
                             <div>
-                                <h3 class="text-[15px] font-semibold text-gray-900">{{ $section['title'] }}</h3>
-                                <p class="mt-1 settings-mini-text">{{ $section['description'] }}</p>
+                                <div class="text-gray-900">{{ $action['title'] }}</div>
+                                <div class="setup-mini-text">{{ $action['description'] }}</div>
                             </div>
-                        </div>
-                        <div class="mt-4 space-y-4">
-                            @foreach($section['items'] as $item)
-                                <div class="settings-task-item">
-                                    <div class="flex items-start justify-between gap-3">
-                                        <div>
-                                            <div class="text-[14px] font-semibold text-gray-900">{{ $item['title'] }}</div>
-                                            <p class="mt-1 settings-mini-text">{{ $item['description'] }}</p>
-                                        </div>
-                                        <span class="badge {{ $sectionBadgeMap[$item['badge_tone']] ?? 'badge-gray' }}">{{ $item['badge'] }}</span>
-                                    </div>
-
-                                    <div class="mt-3 flex items-center justify-between gap-3">
-                                        <span class="settings-mini-text">{{ $item['description'] }}</span>
-                                        @if($item['available'] && $item['route'])
-                                            <a href="{{ $item['route'] }}" class="pd-btn pd-btn-primary settings-action">
-                                                Yönet
-                                            </a>
-                                        @else
-                                            <span class="settings-mini-text">{{ $item['badge'] }}</span>
-                                        @endif
-                                    </div>
-                                </div>
-                            @endforeach
-                        </div>
-                </div>
-            @endforeach
-        </div>
-
-        <div class="settings-compact-card">
-            <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                <div>
-                    <h3 class="text-[15px] font-semibold text-gray-900">Paket ve Kullanım</h3>
-                    <p class="mt-1 settings-mini-text">Paket bilgisi ve kullanım limitleri daha kompakt özetlenir.</p>
-                </div>
-                <div class="flex flex-wrap gap-2">
-                    <span class="badge badge-blue">{{ $packageLabel }}</span>
-                    <span class="badge {{ $statusBadgeMap[$subscription['severity']] ?? 'badge-gray' }}">{{ $subscription['label'] }}</span>
-                </div>
-            </div>
-
-            <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
-                <div class="settings-task-item">
-                    <div class="settings-mini-text">Paket</div>
-                    <div class="mt-1 text-sm font-semibold text-gray-900">{{ $packageLabel }}</div>
-                </div>
-                <div class="settings-task-item">
-                    <div class="settings-mini-text">Paket Durumu</div>
-                    <div class="mt-1 text-sm font-semibold text-gray-900">{{ $subscription['label'] }}</div>
-                </div>
-                <div class="settings-task-item">
-                    <div class="settings-mini-text">Firma</div>
-                    <div class="mt-1 text-sm font-semibold text-gray-900">{{ $tenant->name }}</div>
-                </div>
-                <div class="settings-task-item">
-                    <div class="settings-mini-text">Durum Özeti</div>
-                    <div class="mt-1 text-sm font-semibold text-gray-900">{{ $subscription['days_remaining'] !== null ? 'Kalan gün: '.$subscription['days_remaining'] : 'Aktif kullanım' }}</div>
-                </div>
-            </div>
-
-            <div class="settings-usage-grid mt-4">
-                @foreach($usageSnapshot as $usage)
-                    <div class="settings-usage-card">
-                        <div class="flex items-start justify-between gap-2">
-                            <div class="text-[13px] font-semibold text-gray-900">{{ $usage['label'] }}</div>
-                            <span class="badge {{ $usageBadgeMap[$usage['status']] ?? 'badge-gray' }}">{{ $usageLabelMap[$usage['status']] ?? ucfirst($usage['status']) }}</span>
-                        </div>
-                        <div class="mt-2 text-lg font-semibold text-gray-900">{{ $usage['current'] }} <span class="text-sm font-normal text-gray-500">/ {{ $usage['limit'] ?? 'Limitsiz' }}</span></div>
-                        @if($usage['percentage'] !== null)
-                            <div class="mt-1 settings-mini-text">{{ $usage['percentage'] }}% kullanım</div>
-                        @endif
-                    </div>
-                @endforeach
-            </div>
-        </div>
-
-        <div class="settings-task-grid">
-            <div class="settings-compact-card">
-                <h3 class="text-[15px] font-semibold text-gray-900">Modül Görünümü</h3>
-                <p class="mt-1 settings-mini-text">Aktif ve kapalı modüller kullanıcı dilinde özetlenir.</p>
-                <div class="mt-4">
-                    <div class="settings-mini-text">Temel Modüller</div>
-                    <div class="mt-2 flex flex-wrap gap-2">
-                        @foreach($moduleSummary['core'] as $module)
-                            <span class="badge badge-green">{{ $module['label'] }}</span>
-                        @endforeach
-                    </div>
-                </div>
-                <div class="mt-4">
-                    <div class="settings-mini-text">Aktif Modüller</div>
-                    <div class="mt-2 flex flex-wrap gap-2">
-                        @forelse($moduleSummary['enabled_optional'] as $module)
-                            <span class="badge badge-blue">{{ $module['label'] }}</span>
-                        @empty
-                            <span class="settings-mini-text">Ek aktif modül yok.</span>
-                        @endforelse
-                    </div>
-                </div>
-                <div class="mt-4">
-                    <div class="settings-mini-text">Kapalı Modüller</div>
-                    <div class="mt-2 flex flex-wrap gap-2">
-                        @forelse($moduleSummary['disabled_optional'] as $module)
-                            <span class="badge badge-gray">{{ $module['label'] }}</span>
-                        @empty
-                            <span class="settings-mini-text">Kapalı opsiyonel modül görünmüyor.</span>
-                        @endforelse
-                    </div>
-                </div>
-            </div>
-
-            <div class="settings-compact-card">
-                <h3 class="text-[15px] font-semibold text-gray-900">Portal ve Uyarılar</h3>
-                <p class="mt-1 settings-mini-text">Müşteri portalı durumu ve kritik kullanım sinyalleri tek kartta görünür.</p>
-                <div class="mt-4 space-y-3">
-                    @foreach($portalSummary as $item)
-                        <div class="flex items-center justify-between gap-3">
-                            <span class="text-sm text-gray-600">{{ $item['label'] }}</span>
-                            <span class="badge {{ $sectionBadgeMap[$item['tone']] ?? 'badge-gray' }}">{{ $item['value'] }}</span>
                         </div>
                     @endforeach
+                    <div class="setup-note-box">Uzun tek sayfa yerine sekme sistemi kullanılır. Kullanıcı yalnız ilgili kurulum alanını açar.</div>
                 </div>
-
-                @if(!empty($usageWarnings))
-                    <div class="mt-4 space-y-2">
-                        @foreach($usageWarnings as $warning)
-                            <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3">
-                                <div class="flex items-center justify-between gap-3">
-                                    <span class="text-sm font-medium text-amber-900">{{ $warning['label'] }}</span>
-                                    <span class="badge {{ $usageBadgeMap[$warning['status']] ?? 'badge-amber' }}">{{ $usageLabelMap[$warning['status']] ?? ucfirst($warning['status']) }}</span>
-                                </div>
-                                <div class="mt-1 settings-mini-text text-amber-800">{{ $warning['current'] }} / {{ $warning['limit'] ?? 'Limitsiz' }}</div>
-                            </div>
-                        @endforeach
-                    </div>
-                @endif
             </div>
         </div>
+    </div>
 
-        <div id="dosya-ve-calisma-klasoru" class="settings-compact-card">
-                <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div>
-                        <h3 class="text-[15px] font-semibold text-gray-900">Dosya ve Çalışma Klasörü</h3>
-                        <p class="mt-1 settings-mini-text">Yeni sipariş ve iş formu klasörlerinin kök adını güvenli şekilde yönetin.</p>
-                    </div>
-                    <span class="badge badge-green">Display Path</span>
-                </div>
+    <div class="setup-layout" data-settings-shell>
+        <section class="setup-center-section">
+            <div class="setup-section-head">
+                <h3 class="setup-section-title">Kategori Bazlı Kurulum Alanları</h3>
+                <p class="setup-muted mt-1">Her alan kendi sekmesinde açılır. İlgisiz bilgiler gizli kalır, aktif sekme odakta çalışılır.</p>
+            </div>
 
-                <form method="POST" action="{{ route('admin.settings.update') }}" class="mt-5 space-y-5">
-                    @csrf
-
-                    <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                        <div>
-                            <label for="work_folder_root_name" class="block text-sm font-medium text-gray-700">Çalışma Klasörü Kök Adı</label>
-                            <div class="mt-1">
-                                <input
-                                    id="work_folder_root_name"
-                                    name="work_folder_root_name"
-                                    type="text"
-                                    value="{{ old('work_folder_root_name', $workFolderRootName) }}"
-                                    class="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900"
-                                    placeholder="ISLER">
-                            </div>
-                            @error('work_folder_root_name')
-                                <p class="mt-2 text-sm text-red-600">{{ $message }}</p>
-                            @enderror
-                            <p class="mt-2 settings-mini-text">
-                                Sipariş ve İş Formu çalışma klasörlerinin altında oluşacağı ana klasör adıdır. Örnek: ISLER, GRAFIK-ISLERI, SIPARIS-DOSYALARI.
-                            </p>
-                            <p class="mt-2 text-sm text-gray-600">
-                                Kaydedilecek normalize değer: <strong id="work-folder-root-name-normalized">{{ $workFolderRootName }}</strong>
-                            </p>
-                        </div>
-
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">Preview Path</label>
-                            <div class="mt-1 break-all rounded-md border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-900">
-                                {{ $workFolderPreviewPath }}
-                            </div>
-                            <p class="mt-2 settings-mini-text">
-                                Bu ayar yeni oluşacak çalışma klasörleri için kullanılır. Mevcut klasörler otomatik yeniden adlandırılmaz.
-                            </p>
-                        </div>
-                    </div>
-
-                    <div class="rounded-md border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-                        Absolute veya fiziksel path gösterilmez. Panelde yalnız güvenli display path yapısı kullanılır.
-                    </div>
-
-                    <div class="flex justify-end">
-                        <button type="submit" class="pd-btn pd-btn-primary">
-                            Kaydet
+            <div class="setup-tab-toolbar">
+                <div class="setup-tab-buttons" role="tablist" aria-label="Kurulum Merkezi Sekmeleri">
+                    @foreach($settingsTabs as $tab)
+                        <button
+                            type="button"
+                            class="setup-tab-button {{ $activeSettingsTab === $tab['key'] ? 'is-active' : '' }}"
+                            data-settings-tab-trigger="{{ $tab['key'] }}"
+                            role="tab"
+                            aria-selected="{{ $activeSettingsTab === $tab['key'] ? 'true' : 'false' }}"
+                        >
+                            {{ $tab['label'] }}
                         </button>
+                    @endforeach
+                </div>
+                @if($activeTabDescription !== '')
+                    <span class="setup-tab-caption" data-settings-tab-caption>{{ $activeTabDescription }}</span>
+                @endif
+            </div>
+
+            <div class="setup-tabs-root">
+                <section class="setup-tab-panel {{ $activeSettingsTab === 'company-profile' ? 'is-active' : '' }}" data-settings-tab-panel="company-profile">
+                    <div class="setup-card-grid-3">
+                        <div class="setup-module-block">
+                            <div class="setup-module-head">
+                                <div>
+                                    <h4 class="setup-module-title">{{ $companyProfileCards['identity']['title'] }}</h4>
+                                    <div class="setup-module-desc">Görünen firma adı, yasal unvan ve temel iletişim alanları.</div>
+                                </div>
+                                <span class="badge badge-green">Hazır</span>
+                            </div>
+                            <div class="setup-info-list">
+                                <div class="setup-info-row"><div class="setup-info-key">Görünen firma adı</div><div class="setup-info-val">{{ $companyProfileCards['identity']['items'][0]['value'] }}</div></div>
+                                <div class="setup-info-row"><div class="setup-info-key">Yasal unvan</div><div class="setup-info-val">{{ $companyProfileCards['identity']['items'][1]['value'] }}</div></div>
+                                <div class="setup-info-row"><div class="setup-info-key">Telefon / E-posta</div><div class="setup-info-val">{{ $companyProfileCards['identity']['items'][2]['value'] }} · {{ $companyProfileCards['identity']['items'][3]['value'] }}</div></div>
+                            </div>
+                            <div class="setup-link-list">
+                                @if($companyProfileCards['identity']['action_url'])
+                                    <a class="setup-action-link primary" href="{{ $companyProfileCards['identity']['action_url'] }}">Firma Bilgilerini Düzenle <span>Yönet</span></a>
+                                @endif
+                            </div>
+                        </div>
+                        <div class="setup-module-block">
+                            <div class="setup-module-head">
+                                <div>
+                                    <h4 class="setup-module-title">{{ $companyProfileCards['locale']['title'] }}</h4>
+                                    <div class="setup-module-desc">Dil, para birimi, zaman dilimi ve web sitesi bilgisi.</div>
+                                </div>
+                                <span class="badge badge-green">Hazır</span>
+                            </div>
+                            <div class="setup-info-list">
+                                @foreach($companyProfileCards['locale']['items'] as $item)
+                                    <div class="setup-info-row">
+                                        <div class="setup-info-key">{{ $item['label'] }}</div>
+                                        <div class="setup-info-val">{{ $item['value'] }}</div>
+                                    </div>
+                                @endforeach
+                                <div class="setup-info-row">
+                                    <div class="setup-info-key">Ülke / Şehir</div>
+                                    <div class="setup-info-val">{{ $companyProfileCards['identity']['items'][5]['value'] }}</div>
+                                </div>
+                                <div class="setup-info-row">
+                                    <div class="setup-info-key">Web sitesi</div>
+                                    <div class="setup-info-val">{{ $companyProfileCards['identity']['items'][4]['value'] }}</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="setup-module-block">
+                            <div class="setup-module-head">
+                                <div>
+                                    <h4 class="setup-module-title">{{ $companyProfileCards['brand']['title'] }}</h4>
+                                    <div class="setup-module-desc">Belge üst alanı ve görsel kimlik bilgileri.</div>
+                                </div>
+                                <span class="badge badge-gray">Sonraki Faz</span>
+                            </div>
+                            <div class="setup-info-list">
+                                @foreach($companyProfileCards['brand']['items'] as $item)
+                                    <div class="setup-info-row">
+                                        <div class="setup-info-key">{{ $item['label'] }}</div>
+                                        <div class="setup-info-val">{{ $item['value'] }}</div>
+                                    </div>
+                                @endforeach
+                            </div>
+                            <div class="setup-note-box">{{ $companyProfileCards['note'] }}</div>
+                        </div>
                     </div>
-                </form>
-        </div>
-</div>
+                </section>
+
+                <section class="setup-tab-panel {{ $activeSettingsTab === 'panel-portal' ? 'is-active' : '' }}" data-settings-tab-panel="panel-portal">
+                    <div class="setup-card-grid-3">
+                        <div class="setup-module-block">
+                            <div class="setup-module-head">
+                                <div>
+                                    <h4 class="setup-module-title">Panel Adresi</h4>
+                                    <div class="setup-module-desc">Panel alt alanı ve giriş adresi.</div>
+                                </div>
+                                <span class="badge {{ filled($domainSummary['panel_url']) ? 'badge-green' : 'badge-red' }}">{{ filled($domainSummary['panel_url']) ? 'Hazır' : 'Eksik' }}</span>
+                            </div>
+                            <div class="setup-info-list">
+                                <div class="setup-info-row"><div class="setup-info-key">Panel alt alanı</div><div class="setup-info-val">{{ $domainSummary['panel_subdomain'] }}</div></div>
+                                <div class="setup-info-row"><div class="setup-info-key">Panel adresi</div><div class="setup-info-val">{{ $domainSummary['panel_url'] ?: 'Ayar gerekiyor' }}</div></div>
+                                <div class="setup-info-row"><div class="setup-info-key">Durum</div><div class="setup-info-val">{{ filled($domainSummary['panel_url']) ? 'Aktif' : 'Kontrol Gerekir' }}</div></div>
+                            </div>
+                        </div>
+                        <div class="setup-module-block">
+                            <div class="setup-module-head">
+                                <div>
+                                    <h4 class="setup-module-title">Portal Durumu</h4>
+                                    <div class="setup-module-desc">Müşteri girişi ve görünür paylaşım bağlantıları.</div>
+                                </div>
+                                <span class="badge {{ $statusPillMap[$portalSummary[0]['value'] ?? 'Kapalı'] ?? 'badge-gray' }}">{{ $portalSummary[0]['value'] ?? 'Kapalı' }}</span>
+                            </div>
+                            <div class="setup-note-box" style="margin-top: 0;">Portal ve Paylaşım Linkleri bu kartta müşteri girişi, görünürlük ve takip bağlantılarıyla birlikte özetlenir.</div>
+                            <div class="setup-info-list">
+                                <div class="setup-info-row"><div class="setup-info-key">Müşteri girişi</div><div class="setup-info-val">{{ $portalSummary[1]['value'] ?? 'Kapalı' }}</div></div>
+                                <div class="setup-info-row"><div class="setup-info-key">Teklif görünürlüğü</div><div class="setup-info-val">{{ $portalSummary[2]['value'] ?? 'Kapalı' }}</div></div>
+                                <div class="setup-info-row"><div class="setup-info-key">Sipariş görünürlüğü</div><div class="setup-info-val">{{ $portalSummary[3]['value'] ?? 'Kapalı' }}</div></div>
+                                <div class="setup-info-row"><div class="setup-info-key">Müşteri Takip Bağlantısı</div><div class="setup-info-val">{{ $domainSummary['portal_url'] ?: 'Sonraki Faz' }}</div></div>
+                            </div>
+                        </div>
+                        <div class="setup-module-block">
+                            <div class="setup-module-head">
+                                <div>
+                                    <h4 class="setup-module-title">Özel Domain</h4>
+                                    <div class="setup-module-desc">Panel ve portal domain bilgisi.</div>
+                                </div>
+                                <span class="badge badge-gray">Sonraki Faz</span>
+                            </div>
+                            <div class="setup-info-list">
+                                <div class="setup-info-row"><div class="setup-info-key">Özel domain</div><div class="setup-info-val">{{ $domainSummary['custom_domain'] }}</div></div>
+                                <div class="setup-info-row"><div class="setup-info-key">Portal domaini</div><div class="setup-info-val">{{ $domainSummary['portal_domain'] }}</div></div>
+                            </div>
+                            <div class="setup-note-box">DNS ve SSL otomasyonu sonraki fazda ele alınacaktır.</div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="setup-tab-panel {{ $activeSettingsTab === 'notifications' ? 'is-active' : '' }}" data-settings-tab-panel="notifications">
+                    <div class="setup-card-grid-2">
+                        <div class="setup-module-block">
+                            <div class="setup-module-head">
+                                <div>
+                                    <h4 class="setup-module-title">Bildirim Durumu</h4>
+                                    <div class="setup-module-desc">SMTP durumu, gönderen bilgisi ve son test sonucu.</div>
+                                </div>
+                                <span class="badge {{ $statusPillMap[$notificationSummary['smtp']['status_label']] ?? 'badge-gray' }}">{{ $notificationSummary['smtp']['status_label'] }}</span>
+                            </div>
+                            <div class="setup-info-list">
+                                <div class="setup-info-row"><div class="setup-info-key">SMTP durumu</div><div class="setup-info-val">{{ $notificationSummary['smtp']['status_label'] }}</div></div>
+                                <div class="setup-info-row"><div class="setup-info-key">Gönderen adı / e-posta</div><div class="setup-info-val">{{ $notificationSummary['smtp']['from_name'] }} / {{ $notificationSummary['smtp']['from_email'] }}</div></div>
+                                <div class="setup-info-row"><div class="setup-info-key">Kullanıcı adı</div><div class="setup-info-val">{{ $notificationSummary['smtp']['username_masked'] }}</div></div>
+                                <div class="setup-info-row"><div class="setup-info-key">Son SMTP testi</div><div class="setup-info-val">{{ $notificationSummary['smtp']['last_test_at'] }}</div></div>
+                                <div class="setup-info-row"><div class="setup-info-key">Son SMTP sonucu</div><div class="setup-info-val">{{ $notificationSummary['smtp']['last_test_status'] }}</div></div>
+                            </div>
+                            <div class="setup-link-list">
+                                @if($notificationSummary['smtp']['route'])
+                                    <a class="setup-action-link primary" href="{{ $notificationSummary['smtp']['route'] }}">SMTP Ayarları <span>Yönet</span></a>
+                                @endif
+                            </div>
+                        </div>
+                        <div class="setup-module-block">
+                            <div class="setup-module-head">
+                                <div>
+                                    <h4 class="setup-module-title">WhatsApp ve Şablonlar</h4>
+                                    <div class="setup-module-desc">WhatsApp telefonu, şablon sayısı ve bildirim geçmişi.</div>
+                                </div>
+                                <span class="badge {{ $statusPillMap[$notificationSummary['whatsapp']['status_label']] ?? 'badge-gray' }}">{{ $notificationSummary['whatsapp']['status_label'] }}</span>
+                            </div>
+                            <div class="setup-info-list">
+                                <div class="setup-info-row"><div class="setup-info-key">WhatsApp telefonu</div><div class="setup-info-val">{{ $notificationSummary['whatsapp']['test_phone_masked'] }}</div></div>
+                                <div class="setup-info-row"><div class="setup-info-key">Şablon sayısı</div><div class="setup-info-val">{{ $notificationSummary['templates']['count'] }} kayıt</div></div>
+                                <div class="setup-info-row"><div class="setup-info-key">Başarısız bildirim</div><div class="setup-info-val">{{ $notificationSummary['logs']['failed_count'] }}</div></div>
+                            </div>
+                            <div class="setup-link-list">
+                                @if($notificationSummary['whatsapp']['route'])
+                                    <a class="setup-action-link" href="{{ $notificationSummary['whatsapp']['route'] }}">WhatsApp Ayarları <span>Yönet</span></a>
+                                @endif
+                                @if($notificationSummary['templates']['route'])
+                                    <a class="setup-action-link" href="{{ $notificationSummary['templates']['route'] }}">Bildirim Şablonları <span>Yönet</span></a>
+                                @endif
+                                @if($notificationSummary['logs']['route'])
+                                    <a class="setup-action-link" href="{{ $notificationSummary['logs']['route'] }}">Bildirim Geçmişi <span>Yönet</span></a>
+                                @endif
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="setup-tab-panel {{ $activeSettingsTab === 'package-limits' ? 'is-active' : '' }}" data-settings-tab-panel="package-limits">
+                    <div class="setup-card-grid-3">
+                        <div class="setup-module-block">
+                            <div class="setup-module-head">
+                                <div>
+                                    <h4 class="setup-module-title">Mevcut Paket</h4>
+                                    <div class="setup-module-desc">Kullandığınız paket ve erişim durumu.</div>
+                                </div>
+                                <span class="badge {{ $statusPillMap[$subscription['label']] ?? 'badge-blue' }}">{{ $subscription['label'] }}</span>
+                            </div>
+                            <div class="setup-info-list">
+                                <div class="setup-info-row"><div class="setup-info-key">Paket</div><div class="setup-info-val">{{ $packageLabel }}</div></div>
+                                <div class="setup-info-row"><div class="setup-info-key">Durum</div><div class="setup-info-val">{{ $subscription['label'] }}</div></div>
+                                <div class="setup-info-row"><div class="setup-info-key">Kalan gün</div><div class="setup-info-val">{{ $subscription['days_remaining'] !== null ? $subscription['days_remaining'] : 'Aktif kullanım' }}</div></div>
+                            </div>
+                            <div class="setup-link-list">
+                                @if($packageOverviewRoute)
+                                    <a class="setup-action-link primary" href="{{ $packageOverviewRoute }}">Paketim ve Kullanımım <span>Yönet</span></a>
+                                @endif
+                            </div>
+                        </div>
+
+                        <div class="setup-module-block">
+                            <div class="setup-module-head">
+                                <div>
+                                    <h4 class="setup-module-title">Aktif Modüller</h4>
+                                    <div class="setup-module-desc">Kategori bazlı modül ve erişim özeti.</div>
+                                </div>
+                                <span class="badge badge-green">Hazır</span>
+                            </div>
+                            <div class="setup-module-grid">
+                                @foreach($moduleCategories as $category)
+                                    <div class="setup-info-list">
+                                        <div class="text-sm font-medium text-gray-900">{{ $category['label'] }}</div>
+                                        @foreach($category['items'] as $item)
+                                            <div class="setup-info-row">
+                                                <div class="setup-info-key">{{ $item['label'] }}</div>
+                                                <div class="setup-info-val"><span class="badge {{ $statusPillMap[$item['status_label']] ?? 'badge-gray' }}">{{ $item['status_label'] }}</span></div>
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+
+                        <div class="setup-module-block">
+                            <div class="setup-module-head">
+                                <div>
+                                    <h4 class="setup-module-title">Kullanım Limitleri</h4>
+                                    <div class="setup-module-desc">Kullanıcı, ürün, sipariş, depolama ve özel domain özeti.</div>
+                                </div>
+                                <span class="badge badge-blue">Bilgi</span>
+                            </div>
+                            <div class="setup-usage-grid">
+                                @foreach($usageSnapshot as $usage)
+                                    <div class="setup-status-card">
+                                        <div class="setup-status-label">{{ $usage['label'] }}</div>
+                                        <div class="setup-status-value">{{ $usage['current'] }} / {{ $usage['limit'] ?? 'Limitsiz' }}</div>
+                                        <div><span class="badge {{ $usageBadgeMap[$usage['status']] ?? 'badge-gray' }}">{{ $usageLabelMap[$usage['status']] ?? ucfirst($usage['status']) }}</span></div>
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="setup-tab-panel {{ $activeSettingsTab === 'users-roles' ? 'is-active' : '' }}" data-settings-tab-panel="users-roles">
+                    <div class="setup-card-grid-2">
+                        <div class="setup-module-block">
+                            <div class="setup-module-head">
+                                <div>
+                                    <h4 class="setup-module-title">Kullanıcı Yönetimi</h4>
+                                    <div class="setup-module-desc">Ekip kullanıcıları ve temel erişim yapısı.</div>
+                                </div>
+                                <span class="badge badge-green">Hazır</span>
+                            </div>
+                            <div class="setup-info-list">
+                                <div class="setup-info-row"><div class="setup-info-key">Toplam kullanıcı</div><div class="setup-info-val">{{ $userRoleSummary['total_users'] }}</div></div>
+                                <div class="setup-info-row"><div class="setup-info-key">Aktif kullanıcı</div><div class="setup-info-val">{{ $userRoleSummary['active_users'] }}</div></div>
+                                <div class="setup-info-row"><div class="setup-info-key">Panel Yetkilisi</div><div class="setup-info-val">{{ $userRoleSummary['has_panel_owner'] ? 'Hazır' : 'Eksik' }}</div></div>
+                            </div>
+                            <div class="setup-link-list">
+                                @if($userRoleSummary['users_route'])
+                                    <a class="setup-action-link primary" href="{{ $userRoleSummary['users_route'] }}">Kullanıcı Yönetimi <span>Yönet</span></a>
+                                @endif
+                            </div>
+                        </div>
+                        <div class="setup-module-block">
+                            <div class="setup-module-head">
+                                <div>
+                                    <h4 class="setup-module-title">Rol ve Yetkiler</h4>
+                                    <div class="setup-module-desc">Rol kurgusu, finans görünürlüğü ve operasyon rol yapısı.</div>
+                                </div>
+                                <span class="badge badge-blue">Bilgi</span>
+                            </div>
+                            <div class="setup-info-list">
+                                <div class="setup-info-row"><div class="setup-info-key">Rol kurgusu</div><div class="setup-info-val">Abone firmada çekirdek roller aktif</div></div>
+                                <div class="setup-info-row"><div class="setup-info-key">Finans görünürlüğü</div><div class="setup-info-val">{{ $userRoleSummary['has_finance_user'] ? 'Yalnız yetkili kullanıcılar görür' : 'Kontrol Gerekir' }}</div></div>
+                                <div class="setup-info-row"><div class="setup-info-key">Operasyon rolü</div><div class="setup-info-val">{{ $userRoleSummary['has_operations_user'] ? 'Hazır' : 'Kontrol Gerekir' }}</div></div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="setup-tab-panel {{ $activeSettingsTab === 'catalog-product-hub' ? 'is-active' : '' }}" data-settings-tab-panel="catalog-product-hub">
+                    <div class="setup-card-grid-3">
+                        <div class="setup-module-block">
+                            <div class="setup-module-head">
+                                <div>
+                                    <h4 class="setup-module-title">Katalog Durumu</h4>
+                                    <div class="setup-module-desc">Teklif ekranına etki eden katalog görünürlüğü.</div>
+                                </div>
+                                <span class="badge {{ $statusPillMap[$catalogSummary['status_label']] ?? 'badge-gray' }}">{{ $catalogSummary['status_label'] }}</span>
+                            </div>
+                            <div class="setup-info-list">
+                                <div class="setup-info-row"><div class="setup-info-key">Katalogdaki Ürünler</div><div class="setup-info-val">{{ number_format($catalogSummary['visible_catalog_rows'] ?? 0, 0, ',', '.') }}</div></div>
+                                <div class="setup-info-row"><div class="setup-info-key">Teklifte Seçilebilir</div><div class="setup-info-val">{{ number_format($catalogSummary['quote_visible_rows'] ?? 0, 0, ',', '.') }}</div></div>
+                                <div class="setup-info-row"><div class="setup-info-key">Kontrol Gereken Ürünler</div><div class="setup-info-val">{{ number_format($catalogSummary['attention_rows'] ?? 0, 0, ',', '.') }}</div></div>
+                            </div>
+                            <div class="setup-link-list">
+                                @if($catalogSummary['catalog_route'])
+                                    <a class="setup-action-link" href="{{ $catalogSummary['catalog_route'] }}">Kataloğu Aç <span>Git</span></a>
+                                @endif
+                                @if($catalogSummary['quote_route'])
+                                    <a class="setup-action-link primary" href="{{ $catalogSummary['quote_route'] }}">Ürün Seç ve Teklif Oluştur <span>Git</span></a>
+                                @endif
+                            </div>
+                        </div>
+                        <div class="setup-module-block">
+                            <div class="setup-module-head">
+                                <div>
+                                    <h4 class="setup-module-title">Product Data Hub Bilgisi</h4>
+                                    <div class="setup-module-desc">Tenant-facing sade bilgi ve yönlendirme.</div>
+                                </div>
+                                <span class="badge badge-blue">Bilgi</span>
+                            </div>
+                            <div class="setup-note-box" style="margin-top: 0;">{{ $catalogSummary['guidance_note'] }}</div>
+                            <div class="setup-note-box">{{ $catalogSummary['technical_note'] }}</div>
+                        </div>
+                        <div class="setup-module-block">
+                            <div class="setup-module-head">
+                                <div>
+                                    <h4 class="setup-module-title">Tedarikçi Erişim Özeti</h4>
+                                    <div class="setup-module-desc">Erişim sayısı ve teklif görünürlüğü bilgisi.</div>
+                                </div>
+                                <span class="badge {{ $catalogSummary['supplier_access_count'] > 0 ? 'badge-green' : 'badge-amber' }}">{{ $catalogSummary['supplier_access_count'] > 0 ? 'Hazır' : 'Kontrol Gerekir' }}</span>
+                            </div>
+                            <div class="setup-info-list">
+                                <div class="setup-info-row"><div class="setup-info-key">Erişim sayısı</div><div class="setup-info-val">{{ $catalogSummary['supplier_access_count'] }} aktif erişim</div></div>
+                                <div class="setup-info-row"><div class="setup-info-key">Teklif görünürlüğü</div><div class="setup-info-val">{{ ($catalogSummary['quote_visible_rows'] ?? 0) > 0 ? 'Açık' : 'Kontrol Gerekir' }}</div></div>
+                            </div>
+                            <div class="setup-link-list">
+                                @if($packageRequestSummary['route'])
+                                    <a class="setup-action-link" href="{{ $packageRequestSummary['route'] }}">Talep Merkezi <span>Git</span></a>
+                                @endif
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="setup-tab-panel {{ $activeSettingsTab === 'request-center' ? 'is-active' : '' }}" data-settings-tab-panel="request-center">
+                    <div class="setup-card-grid-2">
+                        <div class="setup-module-block">
+                            <div class="setup-module-head">
+                                <div>
+                                    <h4 class="setup-module-title">Talep Merkezi</h4>
+                                    <div class="setup-module-desc">Paket, modül ve hizmet taleplerinin özeti.</div>
+                                </div>
+                                <span class="badge {{ $packageRequestSummary['open_count'] > 0 ? 'badge-amber' : 'badge-green' }}">{{ $packageRequestSummary['open_count'] > 0 ? 'Kontrol Gerekir' : 'Hazır' }}</span>
+                            </div>
+                            <div class="setup-info-list">
+                                <div class="setup-info-row"><div class="setup-info-key">Son talep durumu</div><div class="setup-info-val">{{ $packageRequestSummary['latest'] ? ($packageRequestSummary['status_labels'][$packageRequestSummary['latest']->status] ?? $packageRequestSummary['latest']->status) : 'Henüz talep yok' }}</div></div>
+                                <div class="setup-info-row"><div class="setup-info-key">Bekleyen talep</div><div class="setup-info-val">{{ $packageRequestSummary['open_count'] }}</div></div>
+                                <div class="setup-info-row"><div class="setup-info-key">İstenen son paket / modül</div><div class="setup-info-val">{{ $packageRequestSummary['latest']?->requestedPackage?->name ?? ($packageRequestSummary['latest']?->requested_package_key ?: 'Veri yok') }}</div></div>
+                            </div>
+                            <div class="setup-link-list">
+                                @if($packageRequestSummary['route'])
+                                    <a class="setup-action-link primary" href="{{ $packageRequestSummary['route'] }}">Talep Merkezini Aç <span>Git</span></a>
+                                @endif
+                            </div>
+                        </div>
+                        <div class="setup-module-block">
+                            <div class="setup-module-head">
+                                <div>
+                                    <h4 class="setup-module-title">API / Entegrasyon Talepleri</h4>
+                                    <div class="setup-module-desc">Talep edilebilir entegrasyon alanları.</div>
+                                </div>
+                                <span class="badge badge-gray">Sonraki Faz</span>
+                            </div>
+                            <div class="setup-info-list">
+                                <div class="setup-info-row"><div class="setup-info-key">API erişimi</div><div class="setup-info-val">Talep Merkezi’nden talep edilebilir</div></div>
+                                <div class="setup-info-row"><div class="setup-info-key">XML / JSON</div><div class="setup-info-val">Sonraki Faz</div></div>
+                                <div class="setup-info-row"><div class="setup-info-key">Harici bağlantılar</div><div class="setup-info-val">Bu alan yalnız bilgi amaçlıdır</div></div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="setup-tab-panel {{ $activeSettingsTab === 'file-storage' ? 'is-active' : '' }}" data-settings-tab-panel="file-storage">
+                    <div class="setup-card-grid-2">
+                        <div class="setup-module-block">
+                            <div class="setup-module-head">
+                                <div>
+                                    <h4 class="setup-module-title">Çalışma Klasörü Yapısı</h4>
+                                    <div class="setup-module-desc">Sipariş ve iş formu çalışma klasörlerinin güvenli görünümü.</div>
+                                </div>
+                                <span class="badge badge-green">Hazır</span>
+                            </div>
+                            <form method="POST" action="{{ route('admin.settings.update') }}" class="mt-2 space-y-4">
+                                @csrf
+                                <div>
+                                    <label for="work_folder_root_name" class="block text-sm font-medium text-gray-700">Çalışma klasörü kök adı</label>
+                                    <input id="work_folder_root_name" name="work_folder_root_name" type="text" value="{{ old('work_folder_root_name', $workFolderRootName) }}" class="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900">
+                                    @error('work_folder_root_name')
+                                        <p class="mt-2 text-sm text-red-600">{{ $message }}</p>
+                                    @enderror
+                                    <p class="mt-2 setup-mini-text">Yeni oluşacak klasörlerde kullanılır. Mevcut klasörler otomatik yeniden adlandırılmaz.</p>
+                                </div>
+                                <div class="setup-info-list">
+                                    <div class="setup-info-row"><div class="setup-info-key">Örnek güvenli display path</div><div class="setup-info-val">{{ $storageSummary['preview_path'] }}</div></div>
+                                    <div class="setup-info-row"><div class="setup-info-key">Mevcut depolama</div><div class="setup-info-val">{{ $storageSummary['storage_label'] }}</div></div>
+                                </div>
+                                <div class="setup-note-box">Fiziksel veya absolute path gösterilmez. Panelde yalnız güvenli display path yapısı kullanılır.</div>
+                                <div class="flex justify-end">
+                                    <button type="submit" class="pd-btn pd-btn-primary">Kaydet</button>
+                                </div>
+                            </form>
+                        </div>
+                        <div class="setup-module-block">
+                            <div class="setup-module-head">
+                                <div>
+                                    <h4 class="setup-module-title">Depolama Alanı ve Harici Depolama</h4>
+                                    <div class="setup-module-desc">Planlanan sağlayıcılar ve güvenli kullanım notları.</div>
+                                </div>
+                                <span class="badge badge-gray">Sonraki Faz</span>
+                            </div>
+                            <div class="setup-info-list">
+                                <div class="setup-info-row"><div class="setup-info-key">Mevcut depolama</div><div class="setup-info-val">{{ $storageSummary['storage_label'] }}</div></div>
+                                <div class="setup-info-row"><div class="setup-info-key">Harici depolama</div><div class="setup-info-val">Sonraki Faz</div></div>
+                                <div class="setup-info-row"><div class="setup-info-key">Planlanan seçenekler</div><div class="setup-info-val">{{ implode(', ', $storageSummary['planned_providers']) }}</div></div>
+                            </div>
+                            <div class="setup-note-box">{{ $storageSummary['note'] }}</div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </section>
+
+        <aside class="setup-summary-panel">
+            <div class="setup-summary-section">
+                <div class="setup-summary-title">Kurulum Özeti</div>
+                <div class="setup-progress-wrap">
+                    <div class="setup-progress-top">
+                        <span>Canlıya hazırlık</span>
+                        <span>%{{ $settingsOverview['progress_percent'] }}</span>
+                    </div>
+                    <div class="setup-progress-bar"><span></span></div>
+                </div>
+                <div class="setup-chip-row mt-3">
+                    <span class="badge badge-green">{{ $settingsOverview['ready_count'] }} hazır</span>
+                    <span class="badge badge-amber">{{ $settingsOverview['attention_count'] }} kontrol</span>
+                    <span class="badge badge-gray">{{ $settingsOverview['later_count'] }} sonraki faz</span>
+                </div>
+            </div>
+
+            <div class="setup-summary-section">
+                <div class="setup-summary-title">Hızlı Geçiş</div>
+                <div class="setup-quick-actions">
+                    @foreach($settingsOverview['quick_tabs'] as $tab)
+                        <button type="button" class="pd-btn {{ $loop->first ? 'pd-btn-primary' : 'pd-btn-light' }} w-full justify-center" data-settings-tab-jump="{{ $tab['tab'] }}">{{ $tab['label'] }}</button>
+                    @endforeach
+                </div>
+            </div>
+
+            <div class="setup-summary-section">
+                <div class="setup-summary-title">Kontrol Gerekenler</div>
+                <div class="setup-summary-checks">
+                    @forelse($settingsOverview['focus_actions'] as $action)
+                        <div class="setup-check-item">
+                            <span class="setup-check-dot {{ $action['tone'] === 'green' ? 'green' : 'amber' }}"></span>
+                            <div>
+                                <div>{{ $action['title'] }}</div>
+                                <div class="setup-mini-text">{{ $action['description'] }}</div>
+                            </div>
+                        </div>
+                    @empty
+                        <div class="setup-note-box" style="margin-top: 0;">Acil eksik görünmüyor.</div>
+                    @endforelse
+                </div>
+            </div>
+
+            <div class="setup-summary-section">
+                <div class="setup-summary-title">Hızlı Linkler</div>
+                <div class="setup-summary-list">
+                    @foreach($settingsOverview['quick_links'] as $link)
+                        <a href="{{ $link['url'] }}" class="setup-action-link">{{ $link['label'] }} <span>Git</span></a>
+                    @endforeach
+                </div>
+            </div>
+        </aside>
+    </div>
 </div>
 @endsection
 
 @push('scripts')
 <script>
     (function () {
-        const input = document.getElementById('work_folder_root_name');
-        const normalizedOutput = document.getElementById('work-folder-root-name-normalized');
+        const shell = document.querySelector('[data-settings-shell]');
+        const navButtons = Array.from(document.querySelectorAll('[data-settings-tab-trigger]'));
+        const jumpButtons = Array.from(document.querySelectorAll('[data-settings-tab-jump]'));
+        const panels = Array.from(document.querySelectorAll('[data-settings-tab-panel]'));
+        const tabCaption = document.querySelector('[data-settings-tab-caption]');
+        const rootInput = document.getElementById('work_folder_root_name');
+        const tabDescriptions = @json(collect($settingsTabs)->mapWithKeys(fn ($tab) => [$tab['key'] => $tab['description']])->all());
 
-        if (!input || !normalizedOutput) {
+        if (shell) {
+            shell.classList.add('js-settings-tabs');
+        }
+
+        const activateTab = (key, updateUrl = true) => {
+            navButtons.forEach((button) => {
+                const active = button.getAttribute('data-settings-tab-trigger') === key;
+                button.classList.toggle('is-active', active);
+                button.setAttribute('aria-selected', active ? 'true' : 'false');
+            });
+
+            panels.forEach((panel) => {
+                const active = panel.getAttribute('data-settings-tab-panel') === key;
+                panel.classList.toggle('is-active', active);
+            });
+
+            if (tabCaption && tabDescriptions[key]) {
+                tabCaption.textContent = tabDescriptions[key];
+            }
+
+            if (updateUrl && window.history && window.history.replaceState) {
+                const url = new URL(window.location.href);
+                url.searchParams.set('tab', key);
+                window.history.replaceState({}, '', url.toString());
+            }
+        };
+
+        navButtons.forEach((button) => {
+            button.addEventListener('click', () => {
+                activateTab(button.getAttribute('data-settings-tab-trigger'));
+            });
+        });
+
+        jumpButtons.forEach((button) => {
+            button.addEventListener('click', () => {
+                activateTab(button.getAttribute('data-settings-tab-jump'));
+            });
+        });
+
+        const activeFromDom = navButtons.find((button) => button.classList.contains('is-active'));
+        if (activeFromDom) {
+            activateTab(activeFromDom.getAttribute('data-settings-tab-trigger'), false);
+        }
+
+        if (!rootInput) {
             return;
         }
 
@@ -449,23 +1119,20 @@
 
             const replaced = prepared.replace(/[ÇçĞğİIıÖöŞşÜü]/g, (char) => replacements[char] ?? char);
             const ascii = replaced.normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
-            const normalized = ascii
+
+            return ascii
                 .toUpperCase()
                 .replace(/[^A-Z0-9]+/g, '-')
                 .replace(/-+/g, '-')
                 .replace(/^-+|-+$/g, '')
                 .slice(0, 32)
-                .replace(/-+$/g, '');
-
-            return normalized || 'ISLER';
+                .replace(/-+$/g, '') || 'ISLER';
         };
 
-        const syncNormalizedValue = () => {
-            normalizedOutput.textContent = normalizeValue(input.value);
-        };
-
-        input.addEventListener('input', syncNormalizedValue);
-        syncNormalizedValue();
+        rootInput.addEventListener('input', () => {
+            rootInput.value = rootInput.value;
+            rootInput.setAttribute('data-normalized-preview', normalizeValue(rootInput.value));
+        });
     }());
 </script>
 @endpush

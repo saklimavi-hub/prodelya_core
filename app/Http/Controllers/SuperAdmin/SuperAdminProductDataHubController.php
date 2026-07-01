@@ -20,6 +20,11 @@ use App\Models\TenantCatalogProduct;
 use App\Models\TenantSupplierAccess;
 use App\Support\ProductDisplayNameFormatter;
 use App\Services\ProductDataHub\PreviewParserService;
+use App\Services\ProductDataHub\ProductHubFreshnessDiagnosticService;
+use App\Services\ProductDataHub\ProductHubOperationFlowService;
+use App\Services\ProductDataHub\ProductHubReviewQueueService;
+use App\Services\ProductDataHub\ProductAttributeValueNormalizer;
+use App\Services\ProductDataHub\SupplierWarningLabelService;
 use App\Services\ProductDataHub\StandardProductBuilderService;
 use App\Services\ProductDataHub\SourceFetchService;
 use App\Services\ProductDataHub\SourceParserService;
@@ -31,12 +36,19 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Throwable;
 use Illuminate\View\View;
 
 class SuperAdminProductDataHubController extends Controller
 {
-    public function __construct()
-    {
+    public function __construct(
+        private readonly SupplierWarningLabelService $supplierWarningLabelService,
+        private readonly ProductAttributeValueNormalizer $attributeValueNormalizer,
+        private readonly ProductHubFreshnessDiagnosticService $productHubFreshnessDiagnosticService,
+        private readonly ProductHubOperationFlowService $productHubOperationFlowService,
+        private readonly ProductHubReviewQueueService $productHubReviewQueueService,
+        private readonly TenantCatalogProjectionService $tenantCatalogProjectionService,
+    ) {
         // TODO: Add middleware for super admin product data hub
         // $this->middleware('permission:manage_product_data_hub');
     }
@@ -52,6 +64,7 @@ class SuperAdminProductDataHubController extends Controller
         $pipelineCounts = $this->pipelineCounts();
         $processSteps = $this->pipelineSteps($pipelineCounts);
         $catalogOutput = $this->catalogOutputStats();
+        $operationFlow = $this->productHubOperationFlowService->buildOverview();
 
         $platformStats = [
             'global_sources' => $globalSources->count(),
@@ -106,7 +119,8 @@ class SuperAdminProductDataHubController extends Controller
             'superAdminSettings',
             'summary',
             'processSteps',
-            'catalogOutput'
+            'catalogOutput',
+            'operationFlow'
         ));
     }
 
@@ -189,130 +203,201 @@ class SuperAdminProductDataHubController extends Controller
         ));
     }
 
-    public function catalogOutput(): View
+    public function catalogOutput(Request $request): View
     {
         $catalogOutput = $this->catalogOutputStats();
         $counts = $this->pipelineCounts();
         $processSteps = $this->pipelineSteps($counts);
         $supplierRows = $this->supplierPipelineRows();
+        $tenants = TenantAccount::query()
+            ->where('status', 'active')
+            ->orderBy('name')
+            ->get(['id', 'name', 'slug', 'panel_subdomain', 'status']);
+        $selectedTenant = $this->selectedCatalogOutputTenant($request, $tenants);
 
         return view('super-admin.product-data-hub.catalog-output', [
             'catalogOutput' => $catalogOutput,
             'processSteps' => $processSteps,
             'supplierRows' => $supplierRows,
+            'tenants' => $tenants,
+            'selectedTenant' => $selectedTenant,
+            'selectedTenantCatalogUrl' => $selectedTenant ? $this->tenantPanelUrlForPath($request, $selectedTenant, '/admin/catalog') : null,
         ]);
     }
 
-    public function commonProducts(Request $request): View
+    public function catalogOutputProjectMissing(Request $request): RedirectResponse
     {
-        $limit = $this->normalizeProductHubLimit($request->string('limit')->toString() ?: '50');
-        $page = max(1, $request->integer('page', 1));
+        $tenant = $this->validatedCatalogOutputTenant($request);
 
-        $baseQuery = StandardProduct::query();
-        $this->applyCommonProductQueryFilters($baseQuery, $request);
+        if (!$tenant) {
+            return $this->catalogOutputProjectionRedirect($request, null, 'Abone Firma seçilmeden eksik projection kayıtları tamamlanamaz.', 'error');
+        }
 
-        $perPage = $limit === 'all' ? 2000 : (int) $limit;
-        $productPaginator = (clone $baseQuery)
-            ->with([
-                'category',
-                'supplier',
-                'variants.tenantCatalogVariants',
-                'tenantCatalogProducts.variants',
-                'primaryImage',
-            ])
-            ->latest('updated_at')
-            ->paginate($perPage, ['*'], 'page', $page)
-            ->withQueryString();
+        try {
+            $result = $this->tenantCatalogProjectionService->projectForTenant($tenant, [
+                'missing_only' => true,
+            ]);
 
-        $rows = $productPaginator->getCollection()
-            ->flatMap(fn (StandardProduct $product) => $this->buildCommonProductRows($product))
-            ->values();
+            return $this->catalogOutputProjectionRedirect(
+                $request,
+                $tenant,
+                "Eksik katalog/projection kayıtları tamamlandı. Ürün: {$result['products']}, varyant: {$result['variants']}."
+            );
+        } catch (Throwable) {
+            return $this->catalogOutputProjectionRedirect(
+                $request,
+                $tenant,
+                'Eksik projection kayıtları tamamlanamadı. Detaylar sistem kayıtlarına yazıldı.',
+                'error'
+            );
+        }
+    }
 
-        $supplierOptions = $this->commonProductSupplierOptions();
+    public function catalogOutputProjectRefresh(Request $request): RedirectResponse
+    {
+        $tenant = $this->validatedCatalogOutputTenant($request);
 
-        $filtered = $rows
-            ->when($request->filled('product_type'), fn (Collection $collection) => $collection->where('product_type', $request->string('product_type')->toString()))
-            ->when($request->filled('sellable'), function (Collection $collection) use ($request) {
-                return match ($request->string('sellable')->toString()) {
-                    'sellable' => $collection->where('satilabilir_mi', true),
-                    'catalog_group' => $collection->where('product_type', 'parent'),
-                    'quote_hidden' => $collection->where('teklifte_gorunur_mu', false),
-                    default => $collection,
-                };
-            })
-            ->when($request->filled('category_status'), fn (Collection $collection) => $collection->where('kategori_esleme_durumu', $request->string('category_status')->toString()))
-            ->when($request->filled('price_status'), fn (Collection $collection) => $collection->filter(fn (array $row) => in_array($request->string('price_status')->toString(), $row['price_status_tags'], true)))
-            ->when($request->filled('stock_status'), fn (Collection $collection) => $collection->where('stok_durumu', $request->string('stock_status')->toString()))
-            ->when($request->filled('warning_status'), fn (Collection $collection) => $collection->filter(fn (array $row) => in_array($request->string('warning_status')->toString(), $row['warning_tags'], true)))
-            ->when($request->filled('tenant_output'), fn (Collection $collection) => $collection->where('tenant_katalog_durumu', $request->string('tenant_output')->toString()))
-            ->when($request->filled('q'), function (Collection $collection) use ($request) {
-                $needle = mb_strtolower(trim($request->string('q')->toString()));
+        if (!$tenant) {
+            return $this->catalogOutputProjectionRedirect($request, null, 'Abone Firma seçilmeden katalog yansıtma güncellemesi çalıştırılamaz.', 'error');
+        }
 
-                return $collection->filter(function (array $row) use ($needle) {
-                    $haystack = mb_strtolower(implode(' ', array_filter([
-                        $row['urun_kodu'] ?? null,
-                        $row['urun_adi'] ?? null,
-                        $row['parent_grup_kodu'] ?? null,
-                        $row['varyant_kodu'] ?? null,
-                        $row['urun_renk'] ?? null,
-                        $row['urun_olcu'] ?? null,
-                        $row['urun_ebat'] ?? null,
-                        $row['supplier_product_code'] ?? null,
-                        $row['supplier_group_code'] ?? null,
-                        $row['generated_group_code'] ?? null,
-                    ])));
+        try {
+            $result = $this->tenantCatalogProjectionService->projectForTenant($tenant);
 
-                    return str_contains($haystack, $needle);
-                });
-            })
-            ->values();
+            return $this->catalogOutputProjectionRedirect(
+                $request,
+                $tenant,
+                "Değişen projection kayıtları kataloğa yansıtıldı. Ürün: {$result['products']}, varyant: {$result['variants']}."
+            );
+        } catch (Throwable) {
+            return $this->catalogOutputProjectionRedirect(
+                $request,
+                $tenant,
+                'Katalog yansıtma güncellemesi tamamlanamadı. Detaylar sistem kayıtlarına yazıldı.',
+                'error'
+            );
+        }
+    }
 
-        $totalCommonProducts = StandardProduct::query()->count();
-        $projectedCommonProducts = TenantCatalogProduct::query()
-            ->whereNotNull('standard_product_id')
-            ->distinct('standard_product_id')
-            ->count('standard_product_id');
-
-        $stats = [
-            'total' => $totalCommonProducts,
-            'parent' => StandardProduct::query()->has('variants')->count(),
-            'variant' => StandardProductVariant::query()->count(),
-            'flat' => StandardProduct::query()->doesntHave('variants')->count(),
-            'sellable' => StandardProduct::query()->doesntHave('variants')->count() + StandardProductVariant::query()->count(),
-            'catalog_only' => StandardProduct::query()->has('variants')->count(),
-            'projected' => $projectedCommonProducts,
-            'blocked' => TenantCatalogProduct::query()->whereIn('catalog_status', ['missing_category', 'missing_price', 'blocked', 'inactive_candidate', 'missing_from_feed'])->count(),
-        ];
-
-        $paginator = new LengthAwarePaginator(
-            $filtered,
-            $productPaginator->total(),
-            $productPaginator->perPage(),
-            $productPaginator->currentPage(),
-            [
-                'path' => url()->current(),
-                'query' => $request->query(),
-            ]
-        );
-
-        $selectedKey = $request->string('selected')->toString();
-        $selectedRow = $filtered->firstWhere('row_key', $selectedKey) ?: $filtered->first();
-
-        return view('super-admin.product-data-hub.common-products', [
-            'rows' => $paginator,
-            'stats' => $stats,
-            'supplierOptions' => $supplierOptions,
-            'filters' => $request->only([
-                'supplier', 'product_type', 'sellable', 'category_status', 'price_status', 'stock_status', 'warning_status', 'tenant_output', 'q', 'limit',
-            ]),
-            'selectedRow' => $selectedRow,
-            'showAllWarning' => $limit === 'all',
-        ]);
+    public function commonProducts(Request $request): RedirectResponse
+    {
+        return redirect()
+            ->route(
+                'admin.super.product-data-hub.standard-products.index',
+                $this->mapCommonProductsQueryToStandardProducts($request)
+            )
+            ->setStatusCode(301);
     }
 
     public function productPanel(Request $request): View
     {
         $filters = $this->superProductPanelFilters($request);
+        $searchFirstIdle = !$this->hasActiveProductPanelDiagnosticFilters($filters);
+        $page = max(1, $request->integer('page', 1));
+
+        if ($searchFirstIdle) {
+            return view('super-admin.product-data-hub.product-panel', [
+                'rows' => new LengthAwarePaginator(
+                    collect(),
+                    0,
+                    $filters['limit'],
+                    $page,
+                    [
+                        'path' => $request->url(),
+                        'query' => $request->query(),
+                    ]
+                ),
+                'filters' => $filters,
+                'stats' => [
+                    'total' => 0,
+                    'sellable' => 0,
+                    'with_warning' => 0,
+                ],
+                'diagnosticSummary' => [
+                    'total_rows' => 0,
+                    'sellable_variant' => 0,
+                    'sellable_flat' => 0,
+                    'parent_only' => 0,
+                    'stale_price' => 0,
+                    'stale_stock' => 0,
+                    'projection_outdated' => 0,
+                    'standard_variant_outdated' => 0,
+                    'supplier_access_closed' => 0,
+                    'quote_visible' => 0,
+                    'not_quote_visible' => 0,
+                    'auto_updated' => 0,
+                    'review_required' => 0,
+                    'category_waiting' => 0,
+                    'projection_lagging' => 0,
+                    'tenant_output_closed' => 0,
+                    'technical_parent' => 0,
+                ],
+                'flowCards' => [
+                    [
+                        'key' => 'clean_flow',
+                        'title' => 'Temiz Akış',
+                        'count' => 0,
+                        'tone' => 'green',
+                        'copy' => 'Normal fiyat ve stok değişimleri hedefli teşhis sonrası burada görünür.',
+                        'href' => route('admin.super.product-data-hub.product-panel', ['flow_mode' => 'clean_flow']),
+                    ],
+                    [
+                        'key' => 'review_queue',
+                        'title' => 'İnceleme Gerekenler',
+                        'count' => 0,
+                        'tone' => 'amber',
+                        'copy' => 'Yeni ürün, kategori ve freshness istisnaları burada toplanır.',
+                        'href' => route('admin.super.product-data-hub.product-panel', ['flow_mode' => 'review_queue']),
+                    ],
+                    [
+                        'key' => 'category_waiting',
+                        'title' => 'Kategori Bekleyenler',
+                        'count' => 0,
+                        'tone' => 'amber',
+                        'copy' => 'Kategori kararı bekleyen satırlar hedefli taramada görünür.',
+                        'href' => route('admin.super.product-data-hub.product-panel', ['flow_mode' => 'category_waiting']),
+                    ],
+                    [
+                        'key' => 'projection_issues',
+                        'title' => 'Projection Sorunları',
+                        'count' => 0,
+                        'tone' => 'red',
+                        'copy' => 'Projection gecikmeleri arama veya filtre seçildiğinde analiz edilir.',
+                        'href' => route('admin.super.product-data-hub.product-panel', ['flow_mode' => 'projection_issues']),
+                    ],
+                    [
+                        'key' => 'tenant_output_blocks',
+                        'title' => 'Tenant Çıkışı Blokajları',
+                        'count' => 0,
+                        'tone' => 'purple',
+                        'copy' => 'Tenant erişim blokajları hedefli teşhisle açılır.',
+                        'href' => route('admin.super.product-data-hub.product-panel', ['flow_mode' => 'tenant_output_blocks']),
+                    ],
+                ],
+                'reviewQueueSummary' => [
+                    'new_items' => 0,
+                    'category_waiting' => 0,
+                    'identity_issues' => 0,
+                    'anomaly_flags' => 0,
+                    'projection_issues' => 0,
+                    'tenant_output_blocks' => 0,
+                    'total' => 0,
+                ],
+                'reviewQueueCards' => [
+                    ['key' => 'new_items', 'title' => 'Yeni Ürünler', 'count' => 0, 'tone' => 'blue', 'copy' => 'İlk kez görülen ürün ve varyantlar burada toplanır.', 'href' => route('admin.super.product-data-hub.product-panel', ['review_bucket' => 'new_items'])],
+                    ['key' => 'category_waiting', 'title' => 'Kategori Bekleyenler', 'count' => 0, 'tone' => 'amber', 'copy' => 'Kategori kararı bekleyenler burada görünür.', 'href' => route('admin.super.product-data-hub.product-panel', ['review_bucket' => 'category_waiting'])],
+                    ['key' => 'identity_issues', 'title' => 'Kimlik / Variant Sorunları', 'count' => 0, 'tone' => 'red', 'copy' => 'Eksik ürün, eksik varyant ve yapı kırıkları burada toplanır.', 'href' => route('admin.super.product-data-hub.product-panel', ['review_bucket' => 'identity_issues'])],
+                    ['key' => 'anomaly_flags', 'title' => 'Anomali / Freshness', 'count' => 0, 'tone' => 'amber', 'copy' => 'Fiyat, stok ve quote uyumsuzlukları burada görünür.', 'href' => route('admin.super.product-data-hub.product-panel', ['review_bucket' => 'anomaly_flags'])],
+                    ['key' => 'projection_issues', 'title' => 'Projection Sorunları', 'count' => 0, 'tone' => 'red', 'copy' => 'Katalog yansıması geri kalan satırlar burada izlenir.', 'href' => route('admin.super.product-data-hub.product-panel', ['review_bucket' => 'projection_issues'])],
+                    ['key' => 'tenant_output_blocks', 'title' => 'Tenant Çıkışı Blokajları', 'count' => 0, 'tone' => 'purple', 'copy' => 'Erişim ve görünürlük blokları burada filtrelenir.', 'href' => route('admin.super.product-data-hub.product-panel', ['review_bucket' => 'tenant_output_blocks'])],
+                ],
+                'suppliers' => Supplier::query()->whereHas('standardProducts')->orderBy('name')->get(),
+                'categories' => StandardCategory::query()->permanentBackbone()->orderBy('path')->get(),
+                'categoryMappingDrawer' => null,
+                'searchFirstIdle' => true,
+            ]);
+        }
+
         $query = DB::query()->fromSub($this->superProductPanelBaseRowsQuery(), 'product_panel_rows');
 
         if ($filters['search'] !== '') {
@@ -400,17 +485,89 @@ class SuperAdminProductDataHubController extends Controller
                 ->where('stock_quantity', '>', 0);
         }
 
-        $total = (clone $query)->count();
         $page = max(1, $request->integer('page', 1));
-        $rows = $query
-            ->orderByDesc('updated_at')
-            ->offset(($page - 1) * $filters['limit'])
-            ->limit($filters['limit'])
-            ->get();
+        $offset = ($page - 1) * $filters['limit'];
+        $pageRows = collect();
+        $total = 0;
+        $warningCount = 0;
+        $summary = [
+            'total_rows' => 0,
+            'sellable_variant' => 0,
+            'sellable_flat' => 0,
+            'parent_only' => 0,
+            'stale_price' => 0,
+            'stale_stock' => 0,
+            'projection_outdated' => 0,
+            'standard_variant_outdated' => 0,
+            'supplier_access_closed' => 0,
+            'quote_visible' => 0,
+            'not_quote_visible' => 0,
+            'auto_updated' => 0,
+            'review_required' => 0,
+            'category_waiting' => 0,
+            'projection_lagging' => 0,
+            'tenant_output_closed' => 0,
+            'technical_parent' => 0,
+        ];
+        $reviewQueueSummary = [
+            'new_items' => 0,
+            'category_waiting' => 0,
+            'identity_issues' => 0,
+            'anomaly_flags' => 0,
+            'projection_issues' => 0,
+            'tenant_output_blocks' => 0,
+            'total' => 0,
+        ];
 
-        $hydratedRows = $this->hydrateSuperProductPanelRows($rows);
+        $query
+            ->orderByDesc('updated_at')
+            ->chunk(200, function (Collection $chunk) use (&$pageRows, &$total, &$warningCount, &$summary, &$reviewQueueSummary, $filters, $offset) {
+                $hydratedRows = $this->hydrateSuperProductPanelRows($chunk);
+                $diagnostic = $this->productHubFreshnessDiagnosticService->enrichRows($hydratedRows);
+                $reviewQueue = $this->productHubReviewQueueService->build($diagnostic['rows']);
+                $filteredChunk = $this->applySuperProductPanelCollectionFilters(
+                    $diagnostic['rows'],
+                    $filters,
+                    $reviewQueue['bucket_maps'],
+                    $reviewQueue['bucket_product_ids'] ?? []
+                );
+
+                foreach ($reviewQueueSummary as $key => $value) {
+                    $reviewQueueSummary[$key] += (int) ($reviewQueue['summary'][$key] ?? 0);
+                }
+
+                if ($filteredChunk->isEmpty()) {
+                    return;
+                }
+
+                $chunkSummary = $this->productHubFreshnessDiagnosticService->summarizeRows($filteredChunk);
+                foreach ($summary as $key => $value) {
+                    $summary[$key] += (int) ($chunkSummary[$key] ?? 0);
+                }
+
+                $warningCount += $filteredChunk->filter(fn (array $row) => collect($row['diagnostic_badge_keys'] ?? [])->intersect([
+                    'stale_price',
+                    'stale_stock',
+                    'projection_outdated',
+                    'standard_variant_outdated',
+                    'quote_price_outdated',
+                    'supplier_access_closed',
+                ])->isNotEmpty())->count();
+
+                $chunkCount = $filteredChunk->count();
+                $sliceStart = max(0, $offset - $total);
+                if ($pageRows->count() < $filters['limit'] && $sliceStart < $chunkCount) {
+                    $remaining = $filters['limit'] - $pageRows->count();
+                    $pageRows = $pageRows
+                        ->concat($filteredChunk->slice($sliceStart, $remaining)->values())
+                        ->values();
+                }
+
+                $total += $chunkCount;
+            });
+
         $paginator = new LengthAwarePaginator(
-            $hydratedRows,
+            $pageRows,
             $total,
             $filters['limit'],
             $page,
@@ -422,22 +579,74 @@ class SuperAdminProductDataHubController extends Controller
 
         $stats = [
             'total' => $total,
-            'sellable' => StandardProduct::query()->doesntHave('variants')->count()
-                + StandardProductVariant::query()->where('is_active', true)->where('visible_in_catalog', true)->count(),
-            'with_warning' => (clone DB::query()->fromSub($this->superProductPanelBaseRowsQuery(), 'warning_rows'))
-                ->where(function ($inner) {
-                    $this->applySuperProductPanelWarningWhere($inner);
-                })
-                ->count(),
+            'sellable' => $summary['sellable_variant'] + $summary['sellable_flat'],
+            'with_warning' => $warningCount,
+        ];
+
+        $reviewQueueCards = collect($this->productHubReviewQueueService->build($pageRows)['cards'])
+            ->map(function (array $card) use ($request, $reviewQueueSummary) {
+                $card['count'] = (int) ($reviewQueueSummary[$card['key']] ?? 0);
+                $card['href'] = route('admin.super.product-data-hub.product-panel', array_merge($request->except('page'), ['review_bucket' => $card['key']]));
+
+                return $card;
+            })
+            ->all();
+
+        $flowCards = [
+            [
+                'key' => 'clean_flow',
+                'title' => 'Temiz Akış',
+                'count' => $summary['auto_updated'] ?? 0,
+                'tone' => 'green',
+                'copy' => 'Normal fiyat ve stok değişimleri için operatör işi üretmeyen satırlar.',
+                'href' => route('admin.super.product-data-hub.product-panel', array_merge($request->except('page'), ['flow_mode' => 'clean_flow'])),
+            ],
+            [
+                'key' => 'review_queue',
+                'title' => 'İnceleme Gerekenler',
+                'count' => ($summary['review_required'] ?? 0) + ($summary['category_waiting'] ?? 0) + ($summary['projection_lagging'] ?? 0) + ($summary['tenant_output_closed'] ?? 0),
+                'tone' => 'amber',
+                'copy' => 'Yalnız manuel karar gerektiren satırları tek kuyruğa indirir.',
+                'href' => route('admin.super.product-data-hub.product-panel', array_merge($request->except('page'), ['flow_mode' => 'review_queue'])),
+            ],
+            [
+                'key' => 'category_waiting',
+                'title' => 'Kategori Bekleyenler',
+                'count' => $summary['category_waiting'] ?? 0,
+                'tone' => 'amber',
+                'copy' => 'Kategori kararı beklediği için satış zincirine temiz giremeyen kayıtlar.',
+                'href' => route('admin.super.product-data-hub.product-panel', array_merge($request->except('page'), ['flow_mode' => 'category_waiting'])),
+            ],
+            [
+                'key' => 'projection_issues',
+                'title' => 'Projection Sorunları',
+                'count' => $summary['projection_lagging'] ?? 0,
+                'tone' => 'red',
+                'copy' => 'Katalog ve teklif fiyatını eski bırakabilecek projection gecikmeleri.',
+                'href' => route('admin.super.product-data-hub.product-panel', array_merge($request->except('page'), ['flow_mode' => 'projection_issues'])),
+            ],
+            [
+                'key' => 'tenant_output_blocks',
+                'title' => 'Tenant Çıkışı Blokajları',
+                'count' => $summary['tenant_output_closed'] ?? 0,
+                'tone' => 'purple',
+                'copy' => 'Erişim veya görünürlük kapalı olduğu için satışa açılamayan satırlar.',
+                'href' => route('admin.super.product-data-hub.product-panel', array_merge($request->except('page'), ['flow_mode' => 'tenant_output_blocks'])),
+            ],
         ];
 
         return view('super-admin.product-data-hub.product-panel', [
             'rows' => $paginator,
             'filters' => $filters,
             'stats' => $stats,
+            'diagnosticSummary' => $summary,
+            'flowCards' => $flowCards,
+            'reviewQueueSummary' => $reviewQueueSummary,
+            'reviewQueueCards' => $reviewQueueCards,
             'suppliers' => Supplier::query()->whereHas('standardProducts')->orderBy('name')->get(),
             'categories' => StandardCategory::query()->permanentBackbone()->orderBy('path')->get(),
-            'categoryMappingDrawer' => $this->resolveProductPanelCategoryMappingDrawer($request, $hydratedRows),
+            'categoryMappingDrawer' => $this->resolveProductPanelCategoryMappingDrawer($request, $pageRows),
+            'searchFirstIdle' => false,
         ]);
     }
 
@@ -551,7 +760,7 @@ class SuperAdminProductDataHubController extends Controller
             })
             ->when($request->filled('warning_status'), function ($query) use ($request) {
                 match ($request->string('warning_status')->toString()) {
-                    'red_product' => $query->where('warning_flag', true),
+                    'red_product' => $query->where('meta->price_snapshot->supplier_warning_flag', true),
                     'net_price' => $query->where('meta->price_snapshot->net_price_warning', true),
                     'clean' => $query->where(function ($query) {
                         $query->where('warning_flag', false)->orWhereNull('warning_flag');
@@ -592,6 +801,86 @@ class SuperAdminProductDataHubController extends Controller
         return in_array($limit, ['50', '100', '250', '500', 'all'], true) ? $limit : '50';
     }
 
+    private function mapCommonProductsQueryToStandardProducts(Request $request): array
+    {
+        $sellable = trim($request->string('sellable')->toString());
+        $tenantOutput = trim($request->string('tenant_output')->toString());
+        $mapped = [
+            'q' => trim($request->string('q')->toString()) !== ''
+                ? trim($request->string('q')->toString())
+                : trim($request->string('search')->toString()),
+            'supplier' => trim($request->string('supplier')->toString()),
+            'product_type' => trim($request->string('product_type')->toString()),
+            'sellable' => $sellable === 'quote_hidden' ? 'not_sellable' : $sellable,
+            'category_status' => trim($request->string('category_status')->toString()),
+            'price_status' => trim($request->string('price_status')->toString()),
+            'stock_status' => trim($request->string('stock_status')->toString()),
+            'warning_status' => trim($request->string('warning_status')->toString()),
+            'tenant_projection_status' => in_array($tenantOutput, ['projected', 'not_projected', 'pending', 'blocked'], true)
+                ? $tenantOutput
+                : trim($request->string('tenant_projection_status')->toString()),
+            'limit' => $this->normalizeProductHubLimit($request->string('limit')->toString() ?: '50'),
+        ];
+
+        if ($request->integer('page', 1) > 1) {
+            $mapped['page'] = $request->integer('page');
+        }
+
+        return collect($mapped)
+            ->reject(fn ($value) => $value === null || $value === '')
+            ->all();
+    }
+
+    private function selectedCatalogOutputTenant(Request $request, Collection $tenants): ?TenantAccount
+    {
+        $tenantId = $request->integer('tenant_id');
+
+        if ($tenantId <= 0) {
+            return null;
+        }
+
+        return $tenants->firstWhere('id', $tenantId);
+    }
+
+    private function validatedCatalogOutputTenant(Request $request): ?TenantAccount
+    {
+        $tenantId = $request->integer('tenant_id');
+
+        if ($tenantId <= 0) {
+            return null;
+        }
+
+        return TenantAccount::query()
+            ->where('status', 'active')
+            ->find($tenantId);
+    }
+
+    private function catalogOutputProjectionRedirect(Request $request, ?TenantAccount $tenant, string $message, string $flashKey = 'success'): RedirectResponse
+    {
+        $parameters = [];
+
+        if ($tenant) {
+            $parameters['tenant_id'] = $tenant->id;
+        } elseif ($request->filled('tenant_id')) {
+            $parameters['tenant_id'] = $request->input('tenant_id');
+        }
+
+        return redirect()
+            ->route('admin.super.product-data-hub.catalog-output', $parameters)
+            ->with($flashKey, $message);
+    }
+
+    private function tenantPanelUrlForPath(Request $request, TenantAccount $tenant, string $path): string
+    {
+        $scheme = $request->getScheme();
+        $centralHost = $request->getHost();
+        $host = $tenant->panel_subdomain . '.' . ltrim($centralHost, '.');
+        $port = $request->getPort();
+        $portSegment = in_array($port, [null, 80, 443], true) ? '' : ':' . $port;
+
+        return sprintf('%s://%s%s%s', $scheme, $host, $portSegment, $path);
+    }
+
     private function superProductPanelFilters(Request $request): array
     {
         $limit = (int) $this->normalizeProductPanelLimit($request->string('limit')->toString() ?: '50');
@@ -605,9 +894,106 @@ class SuperAdminProductDataHubController extends Controller
             'price_state' => $request->string('price_state')->toString(),
             'image_state' => $request->string('image_state')->toString(),
             'warning_state' => $request->string('warning_state')->toString(),
+            'sales_state' => $request->string('sales_state')->toString(),
+            'freshness_state' => $request->string('freshness_state')->toString() ?: 'all',
+            'flow_mode' => $request->string('flow_mode')->toString(),
+            'review_bucket' => $request->string('review_bucket')->toString(),
             'limit' => $limit,
             'technical_columns' => $request->boolean('technical_columns'),
         ];
+    }
+
+    private function hasActiveProductPanelDiagnosticFilters(array $filters): bool
+    {
+        return $this->productPanelFilterHasValue($filters['search'] ?? null)
+            || $this->productPanelFilterHasValue($filters['supplier'] ?? null)
+            || $this->productPanelFilterHasValue($filters['category'] ?? null)
+            || $this->productPanelFilterHasValue($filters['flow_mode'] ?? null)
+            || $this->productPanelFilterHasValue($filters['review_bucket'] ?? null)
+            || $this->productPanelFilterHasValue($filters['freshness_state'] ?? 'all', ['all']);
+    }
+
+    private function productPanelFilterHasValue(mixed $value, array $emptyAliases = ['all', 'default', 'empty']): bool
+    {
+        if ($value === null) {
+            return false;
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return $value > 0;
+        }
+
+        $normalized = Str::lower(trim((string) $value));
+
+        if ($normalized === '' || $normalized === '0') {
+            return false;
+        }
+
+        return !in_array($normalized, $emptyAliases, true);
+    }
+
+    private function applySuperProductPanelCollectionFilters(
+        Collection $rows,
+        array $filters,
+        array $reviewBuckets = [],
+        array $reviewBucketProductIds = []
+    ): Collection
+    {
+        return $rows
+            ->when(($filters['flow_mode'] ?? '') !== '', function (Collection $collection) use ($filters) {
+                return match ($filters['flow_mode']) {
+                    'clean_flow' => $collection->filter(fn (array $row) => ($row['operation_state_key'] ?? null) === 'auto_updated' && ($row['sellable_state_key'] ?? null) !== 'parent_only'),
+                    'review_queue' => $collection->filter(fn (array $row) => in_array($row['operation_state_key'] ?? '', ['review_required', 'category_waiting', 'projection_lagging', 'tenant_output_closed'], true)),
+                    'category_waiting' => $collection->filter(fn (array $row) => ($row['operation_state_key'] ?? null) === 'category_waiting'),
+                    'projection_issues' => $collection->filter(fn (array $row) => ($row['operation_state_key'] ?? null) === 'projection_lagging' || in_array('quote_price_outdated', $row['diagnostic_badge_keys'] ?? [], true)),
+                    'tenant_output_blocks' => $collection->filter(function (array $row) {
+                        if (($row['operation_state_key'] ?? null) === 'tenant_output_closed') {
+                            return true;
+                        }
+
+                        if (($row['sellable_state_key'] ?? null) === 'parent_only') {
+                            return false;
+                        }
+
+                        return (($row['projection_snapshot']['count'] ?? 0) === 0) || !(bool) ($row['is_quote_visible'] ?? false);
+                    }),
+                    default => $collection,
+                };
+            })
+            ->when($filters['sales_state'] !== '', function (Collection $collection) use ($filters) {
+                return match ($filters['sales_state']) {
+                    'sellable_variant' => $collection->where('sellable_state_key', 'sellable_variant'),
+                    'sellable_flat' => $collection->where('sellable_state_key', 'sellable_flat'),
+                    'parent_only' => $collection->where('sellable_state_key', 'parent_only'),
+                    'quote_visible' => $collection->filter(fn (array $row) => (bool) ($row['is_quote_visible'] ?? false)),
+                    'quote_hidden' => $collection->filter(fn (array $row) => !(bool) ($row['is_quote_visible'] ?? false)),
+                    default => $collection,
+                };
+            })
+            ->when(($filters['freshness_state'] ?? 'all') !== 'all', function (Collection $collection) use ($filters) {
+                return match ($filters['freshness_state']) {
+                    'price_mismatch' => $collection->filter(fn (array $row) => in_array('stale_price', $row['diagnostic_badge_keys'] ?? [], true) || in_array('quote_price_outdated', $row['diagnostic_badge_keys'] ?? [], true)),
+                    'stock_mismatch' => $collection->filter(fn (array $row) => in_array('stale_stock', $row['diagnostic_badge_keys'] ?? [], true)),
+                    'projection_outdated' => $collection->filter(fn (array $row) => in_array('projection_outdated', $row['diagnostic_badge_keys'] ?? [], true)),
+                    'standard_variant_outdated' => $collection->filter(fn (array $row) => in_array('standard_variant_outdated', $row['diagnostic_badge_keys'] ?? [], true)),
+                    'supplier_access_closed' => $collection->filter(fn (array $row) => in_array('supplier_access_closed', $row['diagnostic_badge_keys'] ?? [], true)),
+                    default => $collection,
+                };
+            })
+            ->when(($filters['review_bucket'] ?? '') !== '', function (Collection $collection) use ($filters, $reviewBuckets, $reviewBucketProductIds) {
+                $rowKeys = collect($reviewBuckets[$filters['review_bucket']] ?? [])->filter()->unique();
+                $productIds = collect($reviewBucketProductIds[$filters['review_bucket']] ?? [])->filter()->map(fn ($id) => (int) $id)->unique();
+
+                if ($rowKeys->isEmpty() && $productIds->isEmpty()) {
+                    return collect();
+                }
+
+                return $collection->filter(function (array $row) use ($rowKeys, $productIds) {
+                    return $rowKeys->contains($row['row_key'] ?? null)
+                        || $productIds->contains((int) ($row['standard_product_id'] ?? 0));
+                });
+            })
+            ->values();
     }
 
     private function normalizeProductPanelLimit(string $limit): string
@@ -617,6 +1003,44 @@ class SuperAdminProductDataHubController extends Controller
 
     private function superProductPanelBaseRowsQuery()
     {
+        $parentRows = DB::table('standard_products as sp')
+            ->leftJoin('suppliers as s', 's.id', '=', 'sp.supplier_id')
+            ->leftJoin('standard_categories as sc', 'sc.id', '=', 'sp.standard_category_id')
+            ->whereExists(function ($query) {
+                $query->selectRaw('1')
+                    ->from('standard_product_variants as spv')
+                    ->whereColumn('spv.standard_product_id', 'sp.id')
+                    ->where('spv.is_active', true)
+                    ->where('spv.visible_in_catalog', true);
+            })
+            ->selectRaw("
+                'parent' as row_type,
+                sp.id as standard_product_id,
+                null as standard_product_variant_id,
+                sp.supplier_id as supplier_id,
+                s.name as supplier_name,
+                coalesce(sp.standard_product_code, sp.sku) as product_code,
+                coalesce(sp.product_name, sp.base_product_name, sp.name) as raw_product_name,
+                coalesce(sp.base_product_name, sp.product_name, sp.name) as parent_product_name,
+                null as variant_name,
+                null as color,
+                null as size,
+                null as variant_attributes_json,
+                sp.image_url as image_url,
+                sp.standard_category_id as standard_category_id,
+                coalesce(sc.path, sc.name) as matched_category_name,
+                coalesce(sp.category, '') as supplier_category_name,
+                coalesce(sp.total_stock_quantity, 0) as stock_quantity,
+                sp.min_purchase_price as price_value,
+                coalesce(sp.currency, 'TL') as currency,
+                sp.warning_flag as warning_flag,
+                sp.source_summary as source_summary_json,
+                sp.meta as meta_json,
+                sp.visible_in_catalog as visible_in_catalog,
+                sp.is_active as is_active,
+                sp.updated_at as updated_at
+            ");
+
         $flatRows = DB::table('standard_products as sp')
             ->leftJoin('suppliers as s', 's.id', '=', 'sp.supplier_id')
             ->leftJoin('standard_categories as sc', 'sc.id', '=', 'sp.standard_category_id')
@@ -689,7 +1113,7 @@ class SuperAdminProductDataHubController extends Controller
                 spv.updated_at as updated_at
             ");
 
-        return $flatRows->unionAll($variantRows);
+        return $parentRows->unionAll($flatRows)->unionAll($variantRows);
     }
 
     private function hydrateSuperProductPanelRows(Collection $rows): Collection
@@ -704,17 +1128,23 @@ class SuperAdminProductDataHubController extends Controller
                 'product_code' => $productCode,
                 'sku' => $productCode,
             ])['display_code'];
+            $displayColor = $this->attributeValueNormalizer->normalizeDisplayValue($row->color, 'variant_color');
+            $displaySize = $this->attributeValueNormalizer->normalizeDisplayValue($row->size, 'variant_size');
+            $displayMeasure = $this->attributeValueNormalizer->normalizeDisplayValue(data_get($variantAttributes, 'measure'), 'measure')
+                ?: $this->attributeValueNormalizer->normalizeDisplayValue(data_get($variantAttributes, 'capacity'), 'capacity')
+                ?: $this->attributeValueNormalizer->normalizeDisplayValue(data_get($variantAttributes, 'option'), 'option')
+                ?: $this->attributeValueNormalizer->normalizeDisplayValue(data_get($variantAttributes, 'material'), 'material');
 
             $displayName = $row->row_type === 'variant'
                 ? ProductDisplayNameFormatter::variant(
                     $productCode,
                     $row->parent_product_name,
                     $row->variant_name ?: $row->raw_product_name,
-                    $row->color,
-                    $row->size,
-                    data_get($variantAttributes, 'measure'),
-                    data_get($variantAttributes, 'capacity'),
-                    data_get($variantAttributes, 'option'),
+                    $displayColor,
+                    $displaySize,
+                    $this->attributeValueNormalizer->normalizeDisplayValue(data_get($variantAttributes, 'measure'), 'measure'),
+                    $this->attributeValueNormalizer->normalizeDisplayValue(data_get($variantAttributes, 'capacity'), 'capacity'),
+                    $this->attributeValueNormalizer->normalizeDisplayValue(data_get($variantAttributes, 'option'), 'option'),
                     [
                         data_get($primarySource, 'variant_stock_code'),
                         data_get($primarySource, 'supplier_product_code'),
@@ -781,9 +1211,9 @@ class SuperAdminProductDataHubController extends Controller
                 'price' => $row->price_value,
                 'currency' => $row->currency ?: 'TL',
                 'stock_quantity' => (float) $row->stock_quantity,
-                'color' => $row->color,
-                'size' => $row->size,
-                'measure' => data_get($variantAttributes, 'measure') ?: data_get($variantAttributes, 'capacity') ?: data_get($variantAttributes, 'option'),
+                'color' => $displayColor,
+                'size' => $displaySize,
+                'measure' => $displayMeasure,
                 'warnings' => array_values(array_unique($warnings)),
                 'category_status' => $categoryStatus,
                 'status_label' => (bool) $row->is_active ? 'Aktif' : 'Pasif',
@@ -791,7 +1221,7 @@ class SuperAdminProductDataHubController extends Controller
                 'supplier_source_id' => data_get($primarySource, 'supplier_source_id'),
                 'supplier_category_path' => data_get($primarySource, 'supplier_category_path', data_get($meta, 'supplier_category_path')),
                 'category_action_required' => in_array($categoryStatus, ['Kategori Bekliyor', 'Hedef Bulunamayan'], true),
-                'detail_link' => route('admin.super.product-data-hub.common-products', ['q' => $productCode]),
+                'detail_link' => route('admin.super.product-data-hub.standard-products.index', ['q' => $productCode]),
                 'standard_link' => route('admin.super.product-data-hub.standard-products.index', ['q' => $productCode]),
             ];
         });
@@ -1124,19 +1554,15 @@ class SuperAdminProductDataHubController extends Controller
         $tags = [];
         $snapshot = data_get($product->meta, 'price_snapshot', []);
         $warnings = collect(data_get($product->source_summary, '*.warnings', []))->flatten()->filter();
-
-        if ((bool) data_get($snapshot, 'supplier_warning_flag', false) || (bool) $product->warning_flag) {
-            $tags[] = 'red_product';
-        }
-
-        if ((bool) data_get($snapshot, 'net_price_warning', false)) {
-            $tags[] = 'net_price';
-            $tags[] = 'amber_product';
-        }
-
-        if ((bool) data_get($snapshot, 'price_policy_warning', false)) {
-            $tags[] = 'amber_product';
-        }
+        $tags = array_merge($tags, $this->supplierWarningLabelService->supplierSpecificTags(
+            $this->resolveCommonSupplierName($product),
+            [
+                'net_price_warning' => (bool) data_get($snapshot, 'net_price_warning', false),
+                'pricing_policy_type' => data_get($snapshot, 'pricing_policy_type'),
+                'supplier_warning_flag' => (bool) data_get($snapshot, 'supplier_warning_flag', false),
+                'supplier_warning_type' => data_get($snapshot, 'supplier_warning_type'),
+            ]
+        ));
 
         if (blank($product->standard_category_id)) {
             $tags[] = 'category_missing';
@@ -1166,19 +1592,15 @@ class SuperAdminProductDataHubController extends Controller
     {
         $tags = [];
         $snapshot = data_get($catalogVariant?->meta, 'price_snapshot', data_get($variant->meta, 'price_snapshot', []));
-
-        if ((bool) data_get($snapshot, 'supplier_warning_flag', false)) {
-            $tags[] = 'red_product';
-        }
-
-        if ((bool) data_get($snapshot, 'net_price_warning', false)) {
-            $tags[] = 'net_price';
-            $tags[] = 'amber_product';
-        }
-
-        if ((bool) data_get($snapshot, 'price_policy_warning', false)) {
-            $tags[] = 'amber_product';
-        }
+        $parentProduct = $variant->relationLoaded('standardProduct') ? $variant->getRelation('standardProduct') : $variant->standardProduct()->first();
+        $supplierName = $parentProduct?->supplier?->name
+            ?: data_get($parentProduct?->source_summary, '0.supplier_name');
+        $tags = array_merge($tags, $this->supplierWarningLabelService->supplierSpecificTags($supplierName, [
+            'net_price_warning' => (bool) data_get($snapshot, 'net_price_warning', false),
+            'pricing_policy_type' => data_get($snapshot, 'pricing_policy_type'),
+            'supplier_warning_flag' => (bool) data_get($snapshot, 'supplier_warning_flag', false),
+            'supplier_warning_type' => data_get($snapshot, 'supplier_warning_type'),
+        ]));
 
         if ((float) ($catalogVariant?->stock_quantity ?? $variant->stock_quantity ?? 0) <= 0) {
             $tags[] = 'stock_missing';
@@ -1721,12 +2143,12 @@ class SuperAdminProductDataHubController extends Controller
                 'action_route' => route('admin.super.product-data-hub.raw-products.index'),
             ],
             [
-                'title' => 'Ortak Ürün Havuzu',
+                'title' => 'Standart Ürün Deposu',
                 'count' => $counts['standard_products'],
                 'status' => $counts['standard_products'] > 0 ? 'green' : 'gray',
                 'status_label' => $counts['standard_products'] > 0 ? 'Hazır' : 'Bekliyor',
-                'action_label' => 'Ortak Ürün Havuzu',
-                'action_route' => route('admin.super.product-data-hub.common-products'),
+                'action_label' => 'Standart Ürünler',
+                'action_route' => route('admin.super.product-data-hub.standard-products.index'),
             ],
             [
                 'title' => 'Tenant Erişimi',
@@ -1760,11 +2182,15 @@ class SuperAdminProductDataHubController extends Controller
         $standardProducts = StandardProduct::query();
         $tenantCatalogProducts = TenantCatalogProduct::query();
         $standardProductsCount = (clone $standardProducts)->count();
+        $activeTenantCount = TenantAccount::query()->where('status', 'active')->count();
         $latestRuns = ProductDataHubSyncRun::query()
             ->whereIn('status', ['success', 'partial'])
             ->latest('id')
             ->limit(20)
             ->get();
+        $lastProjectionRunAt = optional(
+            $latestRuns->first(fn (ProductDataHubSyncRun $run) => (int) data_get($run->report_payload, 'projection.updated_products', 0) > 0)
+        ?->finished_at ?? $latestRuns->first()?->finished_at)->format('d.m.Y H:i') ?: 'Henüz yok';
 
         $projectionBlockedMissingCategory = $latestRuns->sum(fn (ProductDataHubSyncRun $run) => (int) data_get($run->report_payload, 'projection.blocked_missing_category', 0));
         $projectionBlockedMissingPrice = $latestRuns->sum(fn (ProductDataHubSyncRun $run) => (int) data_get($run->report_payload, 'projection.blocked_missing_price', 0));
@@ -1777,6 +2203,8 @@ class SuperAdminProductDataHubController extends Controller
             ->value('id');
 
         return [
+            'active_tenants' => $activeTenantCount,
+            'last_projection_run_at' => $lastProjectionRunAt,
             'total_standard_products' => $standardProductsCount,
             'total_variants' => StandardProductVariant::query()->count(),
             'tenant_open_products' => (clone $tenantCatalogProducts)->where('is_active', true)->where('visible_in_catalog', true)->count(),

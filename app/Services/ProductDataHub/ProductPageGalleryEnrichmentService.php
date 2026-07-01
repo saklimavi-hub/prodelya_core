@@ -9,6 +9,12 @@ use Illuminate\Support\Str;
 
 class ProductPageGalleryEnrichmentService
 {
+    public function __construct(
+        private readonly SafeSourceUrlPolicyService $safeUrlPolicy,
+        private readonly SensitiveDataMasker $masker,
+    ) {
+    }
+
     private array $pageCache = [];
 
     public function enrich(array $productRow, SupplierSource $source): array
@@ -28,7 +34,7 @@ class ProductPageGalleryEnrichmentService
         $maxGalleryImages = (int) ($source->config['max_gallery_images'] ?? 10);
         $maxGalleryImages = max(1, min(50, $maxGalleryImages));
 
-        $pageResult = $this->fetchProductPage($pageUrl);
+        $pageResult = $this->fetchProductPage($pageUrl, $source);
         if (!$pageResult['ok']) {
             foreach (($pageResult['warnings'] ?? []) as $warning) {
                 $productRow['warnings'][] = $warning;
@@ -79,58 +85,132 @@ class ProductPageGalleryEnrichmentService
         );
     }
 
-    public function fetchProductPage(string $url): array
+    public function fetchProductPage(string $url, ?SupplierSource $source = null): array
     {
         if (array_key_exists($url, $this->pageCache)) {
             return $this->pageCache[$url];
         }
 
-        if (!$this->isValidHttpUrl($url)) {
+        $policy = $this->safeUrlPolicy->validate($url);
+        if (!$policy['ok']) {
             return $this->pageCache[$url] = [
                 'ok' => false,
                 'content' => null,
-                'warnings' => ['Ürün sayfası linki geçersiz olduğu için galeri zenginleştirme yapılamadı.'],
+                'warnings' => [$this->resolveBlockedPageWarning($url, (string) ($policy['message'] ?? 'Ürün sayfası linki güvenlik politikası nedeniyle reddedildi.'))],
             ];
         }
 
+        $security = config('prodelya_product_data_hub.fetch_security', []);
+        $timeoutSeconds = max(1, min(60, (int) ($security['image_timeout_seconds'] ?? 12)));
+        $connectTimeoutSeconds = max(1, min(60, (int) ($security['connect_timeout_seconds'] ?? 10)));
+        $maxRedirects = max(0, min(10, (int) ($security['max_redirects'] ?? 3)));
+        $maxBytes = max(1024, (int) ($security['max_preview_bytes'] ?? (25 * 1024 * 1024)));
+        $currentUrl = $url;
+        $redirectCount = 0;
+
         try {
-            $response = Http::timeout(15)
-                ->accept('text/html,application/xhtml+xml')
-                ->withUserAgent('Prodelya Product Data Hub Gallery Enrichment')
-                ->get($url);
+            while (true) {
+                $response = Http::timeout($timeoutSeconds)
+                    ->connectTimeout($connectTimeoutSeconds)
+                    ->accept('text/html,application/xhtml+xml')
+                    ->withUserAgent('Prodelya Product Data Hub Gallery Enrichment')
+                    ->withOptions([
+                        'allow_redirects' => false,
+                        'http_errors' => false,
+                    ])
+                    ->get($currentUrl);
 
-            if (!$response->successful()) {
+                if (in_array($response->status(), [301, 302, 303, 307, 308], true)) {
+                    if ($redirectCount >= $maxRedirects) {
+                        return $this->pageCache[$url] = [
+                            'ok' => false,
+                            'content' => null,
+                            'warnings' => ['Ürün sayfası yönlendirme limiti aşıldığı için okunamadı.'],
+                        ];
+                    }
+
+                    $target = $this->safeUrlPolicy->resolveRedirectTarget($currentUrl, (string) $response->header('Location'));
+                    if (!filled($target)) {
+                        return $this->pageCache[$url] = [
+                            'ok' => false,
+                            'content' => null,
+                            'warnings' => ['Ürün sayfası yönlendirme hedefi çözümlenemedi.'],
+                        ];
+                    }
+
+                    $redirectPolicy = $this->safeUrlPolicy->validate($target);
+                    if (!$redirectPolicy['ok']) {
+                        return $this->pageCache[$url] = [
+                            'ok' => false,
+                            'content' => null,
+                            'warnings' => [$this->resolveBlockedPageWarning($target, (string) ($redirectPolicy['message'] ?? 'Ürün sayfası linki güvenlik politikası nedeniyle reddedildi.'))],
+                        ];
+                    }
+
+                    $currentUrl = $target;
+                    $redirectCount++;
+                    continue;
+                }
+
+                if (!$response->successful()) {
+                    return $this->pageCache[$url] = [
+                        'ok' => false,
+                        'content' => null,
+                        'warnings' => ['Ürün sayfası okunamadı. HTTP durum kodu: ' . $response->status()],
+                    ];
+                }
+
+                $contentType = Str::lower(trim((string) strtok((string) $response->header('Content-Type'), ';')));
+                if ($contentType !== '' && !str_contains($contentType, 'html')) {
+                    return $this->pageCache[$url] = [
+                        'ok' => false,
+                        'content' => null,
+                        'warnings' => ['Ürün sayfası güvenlik politikası nedeniyle reddedildi: HTML içerik bekleniyordu.'],
+                    ];
+                }
+
+                $declaredContentLength = (int) ($response->header('Content-Length') ?? 0);
+                if ($declaredContentLength > 0 && $declaredContentLength > $maxBytes) {
+                    return $this->pageCache[$url] = [
+                        'ok' => false,
+                        'content' => null,
+                        'warnings' => ['Ürün sayfası güvenlik politikası nedeniyle reddedildi: yanıt boyutu çok büyük.'],
+                    ];
+                }
+
+                $content = $response->body();
+                if (blank($content)) {
+                    return $this->pageCache[$url] = [
+                        'ok' => false,
+                        'content' => null,
+                        'warnings' => ['Ürün sayfası boş döndüğü için galeri zenginleştirilemedi.'],
+                    ];
+                }
+
+                if (strlen($content) > $maxBytes) {
+                    return $this->pageCache[$url] = [
+                        'ok' => false,
+                        'content' => null,
+                        'warnings' => ['Ürün sayfası güvenlik politikası nedeniyle reddedildi: yanıt boyutu çok büyük.'],
+                    ];
+                }
+
                 return $this->pageCache[$url] = [
-                    'ok' => false,
-                    'content' => null,
-                    'warnings' => ['Ürün sayfası okunamadı. HTTP durum kodu: ' . $response->status()],
+                    'ok' => true,
+                    'content' => $content,
+                    'warnings' => [],
                 ];
             }
-
-            $content = $response->body();
-            if (blank($content)) {
-                return $this->pageCache[$url] = [
-                    'ok' => false,
-                    'content' => null,
-                    'warnings' => ['Ürün sayfası boş döndüğü için galeri zenginleştirilemedi.'],
-                ];
-            }
-
-            return $this->pageCache[$url] = [
-                'ok' => true,
-                'content' => $content,
-                'warnings' => [],
-            ];
         } catch (\Throwable $exception) {
             Log::warning('Product page gallery enrichment failed', [
-                'url' => $url,
-                'message' => $exception->getMessage(),
+                'url' => $this->safeUrlPolicy->maskedUrl($url),
+                'message' => $this->masker->maskExceptionMessage($exception->getMessage()),
             ]);
 
             return $this->pageCache[$url] = [
                 'ok' => false,
                 'content' => null,
-                'warnings' => ['Ürün sayfası okunamadı: ' . $exception->getMessage()],
+                'warnings' => ['Ürün sayfası okunamadı.'],
             ];
         }
     }
@@ -204,7 +284,9 @@ class ProductPageGalleryEnrichmentService
         }
 
         if (Str::startsWith($url, ['http://', 'https://'])) {
-            return $url;
+            $policy = $this->safeUrlPolicy->validate($url);
+
+            return $policy['ok'] ? $url : null;
         }
 
         $base = parse_url($baseUrl);
@@ -215,18 +297,27 @@ class ProductPageGalleryEnrichmentService
         $root = $base['scheme'] . '://' . $base['host'];
 
         if (str_starts_with($url, '//')) {
-            return $base['scheme'] . ':' . $url;
+            $resolved = $base['scheme'] . ':' . $url;
+            $policy = $this->safeUrlPolicy->validate($resolved);
+
+            return $policy['ok'] ? $resolved : null;
         }
+
+        $resolved = null;
 
         if (str_starts_with($url, '/')) {
-            return $root . $url;
+            $resolved = $root . $url;
+        } else {
+            $path = $base['path'] ?? '/';
+            $directory = rtrim(str_replace('\\', '/', dirname($path)), '/.');
+            $directory = $directory === '' ? '' : $directory;
+
+            $resolved = $root . ($directory ? '/' . ltrim($directory, '/') : '') . '/' . ltrim($url, '/');
         }
 
-        $path = $base['path'] ?? '/';
-        $directory = rtrim(str_replace('\\', '/', dirname($path)), '/.');
-        $directory = $directory === '' ? '' : $directory;
+        $policy = $this->safeUrlPolicy->validate($resolved);
 
-        return $root . ($directory ? '/' . ltrim($directory, '/') : '') . '/' . ltrim($url, '/');
+        return $policy['ok'] ? $resolved : null;
     }
 
     private function resolveSelectorNodes(\DOMXPath $xpath, ?string $selector): \DOMNodeList|array
@@ -263,15 +354,16 @@ class ProductPageGalleryEnrichmentService
             || preg_match('/\.(jpg|jpeg|png|webp)(\?.*)?$/i', $normalized) === 1;
     }
 
-    private function isValidHttpUrl(string $url): bool
+    private function resolveBlockedPageWarning(string $url, string $policyMessage): string
     {
-        if (!filter_var($url, FILTER_VALIDATE_URL)) {
-            return false;
+        $scheme = Str::lower((string) parse_url($url, PHP_URL_SCHEME));
+        $host = trim((string) parse_url($url, PHP_URL_HOST));
+
+        if ($scheme === '' || $host === '' || !in_array($scheme, ['http', 'https'], true)) {
+            return 'Ürün sayfası linki geçersiz olduğu için galeri zenginleştirme yapılamadı.';
         }
 
-        $scheme = parse_url($url, PHP_URL_SCHEME);
-
-        return in_array(Str::lower((string) $scheme), ['http', 'https'], true);
+        return $policyMessage;
     }
 
     private function finalize(array $productRow, array $pageOnlyImages, string $origin): array

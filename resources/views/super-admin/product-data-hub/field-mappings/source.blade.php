@@ -1,21 +1,23 @@
 @extends('layouts.prodelya-admin')
 
-@section('page_title', 'Global Alan Eşleme')
+@section('page_title', 'Alan Eşleme')
 
 @section('content')
 <div class="pd-page-head">
     <div>
-        <h1 class="pd-page-title">Global Alan Eşleme — {{ $source->source_name }}</h1>
-        <p class="pd-page-subtitle">Kaynak bazlı alan eşleme kayıtlarını Super Admin olarak yönetin.</p>
+        <h1 class="pd-page-title">Alan Eşleme — {{ $source->source_name }}</h1>
+        <p class="pd-page-subtitle">Kaynak alanı, örnek değer ve Prodelya standart alan ilişkisini sade biçimde kontrol edin.</p>
     </div>
     <div class="pd-page-actions">
-        <a href="{{ route('admin.super.product-data-hub.sources.preview', $source) }}" class="pd-btn pd-btn-light">Preview'a Dön</a>
+        <a href="{{ route('admin.super.product-data-hub.sources.preview', $source) }}" class="pd-btn pd-btn-light">Önizlemeye Dön</a>
     </div>
 </div>
 
-<div class="pd-note mb-6">Bu ekran Super Admin tarafından yönetilir. Tenant bu verileri değiştiremez.</div>
+<div class="pd-note mb-6">Bu ekran Super Admin tarafından yönetilir. Abone Firma bu verileri değiştiremez.</div>
 
-<div class="pd-grid pd-grid-4 mb-6">
+<div class="pd-note mb-6">Tedarikçiden gelen alanları Prodelya standart alanlarına bağlayın. Zorunlu alanlar tamamlanmadan güvenli ürün işleme başlatılmamalıdır.</div>
+
+<div class="pd-kpi-strip mb-6">
     <div class="pd-card"><div class="pd-card-body"><div class="pd-kpi-label">Kaynak Alan</div><div class="pd-kpi-value">{{ $stats['source_fields'] }}</div></div></div>
     <div class="pd-card"><div class="pd-card-body"><div class="pd-kpi-label">Eşlenen</div><div class="pd-kpi-value">{{ $stats['mapped'] }}</div></div></div>
     <div class="pd-card"><div class="pd-card-body"><div class="pd-kpi-label">Zorunlu Eksik</div><div class="pd-kpi-value">{{ $stats['missing_required'] }}</div></div></div>
@@ -23,7 +25,10 @@
 </div>
 
 <div class="pd-card mb-6">
-    <div class="pd-card-body pd-grid pd-grid-3">
+    <div class="pd-card-header">
+        <h2 class="pd-section-title">Kaynak Özeti</h2>
+    </div>
+    <div class="pd-card-body pd-mini-kpi-strip">
         <div><label class="pd-label">Tedarikçi</label><input class="pd-input" value="{{ $source->supplier?->name }}" readonly></div>
         <div><label class="pd-label">Kaynak Tipi</label><input class="pd-input" value="{{ strtoupper($source->source_type) }}" readonly></div>
         <div><label class="pd-label">Tedarikçi Profili</label><input class="pd-input" value="{{ $profileKey ?? '-' }}" readonly></div>
@@ -34,13 +39,38 @@
     </div>
 </div>
 
+<div class="pd-card mb-6">
+    <div class="pd-card-header">
+        <h2 class="pd-section-title">Örnek Veri Bağlamı</h2>
+    </div>
+    <div class="pd-card-body pd-mini-kpi-strip">
+        <div><label class="pd-label">Node Path</label><input class="pd-input" value="{{ $sourceFieldContext['node_path'] ?: '-' }}" readonly></div>
+        <div><label class="pd-label">Okunan Örnek Kayıt</label><input class="pd-input" value="{{ $sourceFieldContext['records_read'] }}" readonly></div>
+        <div><label class="pd-label">Alan Kaynağı</label><input class="pd-input" value="{{ $sourceFieldContext['source_mode'] === 'live_source' ? 'Gerçek XML / API örneği' : 'Profil / kayıtlı mapping fallback' }}" readonly></div>
+    </div>
+</div>
+
 @if(!empty($requiredWarnings))
     <div class="pd-card mb-6">
         <div class="pd-card-body">
             <div class="pd-warn">Bu kaynak import için hazır değil. Zorunlu alan eşlemeleri eksik.</div>
-            @foreach($requiredWarnings as $warning)
-                <div class="pd-note mt-2">{{ $warning }}</div>
-            @endforeach
+            <div class="pd-note mt-3">Zorunlu alanlar tamamlanmadan güvenli ürün işleme başlatılmamalıdır.</div>
+            <div class="pd-chip-group mt-3">
+                @foreach($missingRequiredLabels as $label)
+                    <span class="pd-badge pd-badge-amber">{{ $label }}</span>
+                @endforeach
+            </div>
+            <div class="mt-3">
+                @foreach($requiredWarnings as $warning)
+                    <div class="pd-note mt-2">{{ $warning }}</div>
+                @endforeach
+            </div>
+        </div>
+    </div>
+@else
+    <div class="pd-card mb-6">
+        <div class="pd-card-body">
+            <span class="pd-badge pd-badge-green">Zorunlu alanlar tamam.</span>
         </div>
     </div>
 @endif
@@ -51,32 +81,42 @@
         <div class="pd-card-header">
             <h2 class="pd-section-title">Kaynak Alan Eşlemeleri</h2>
             <div class="pd-page-actions">
-                <button type="button" class="pd-btn pd-btn-light" id="applySuggestedMappings">Önerileri Uygula</button>
-                <button type="submit" class="pd-btn pd-btn-primary">Mapping Kaydet</button>
+                @foreach($availableFilters as $filterKey => $filterLabel)
+                    <a href="{{ route('admin.super.product-data-hub.field-mappings.source', ['source' => $source->id, 'filter' => $filterKey]) }}" class="pd-btn {{ $activeFilter === $filterKey ? 'pd-btn-primary' : 'pd-btn-light' }}">{{ $filterLabel }}</a>
+                @endforeach
             </div>
         </div>
         <div class="pd-card-body">
+            <div class="pd-note mb-4">Hızlı filtrelerle yalnız zorunlu eksikleri, eşlenmemiş alanları veya fiyat, görsel, kategori ve varyant alanlarını açabilirsiniz.</div>
+            <div class="pd-form-actions mb-4">
+                <button type="button" class="pd-btn pd-btn-light" id="applySuggestedMappings">Önerilenleri Doldur</button>
+                <button type="submit" class="pd-btn pd-btn-primary">Eşlemeleri Kaydet</button>
+            </div>
             <div class="pd-table-wrap">
                 <table class="pd-table">
                     <thead>
                         <tr>
                             <th>Kaynak Alan</th>
-                            <th>Normalize / Alias</th>
+                            <th>Örnek Değer</th>
                             <th>Önerilen Standart Alan</th>
                             <th>Seçilen Standart Alan</th>
-                            <th>Zorunlu</th>
-                            <th>Tür</th>
                             <th>Durum</th>
-                            <th>Dönüşüm</th>
-                            <th>Not</th>
+                            <th>Detay</th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach($mappingRows as $row)
-                            <tr>
+                            <tr @class(['pd-table-row-selected' => $activeFilter === 'required_missing' && blank($row['selected_standard_field']) && in_array($row['suggested_standard_field'], collect($requiredSummary['missing'])->pluck('accepted_fields')->flatten()->all(), true)])>
                                 <td><code>{{ $row['source_field_name'] }}</code></td>
-                                <td>{{ $row['legacy_field_name'] ?? $row['normalized_source_field'] }}</td>
-                                <td><code>{{ $row['suggested_standard_field'] ?? '-' }}</code></td>
+                                <td class="pd-compact-meta-cell">{{ filled($row['sample_value']) ? $row['sample_value'] : 'Örnek değer bulunamadı' }}</td>
+                                <td>
+                                    @if($row['suggested_standard_field'])
+                                        {{ $standardFields[$row['suggested_standard_field']]['label'] ?? $row['suggested_standard_field'] }}
+                                        <div><code>{{ $row['suggested_standard_field'] }}</code></div>
+                                    @else
+                                        <span class="pd-badge pd-badge-gray">Öneri yok</span>
+                                    @endif
+                                </td>
                                 <td>
                                     <select
                                         name="mappings[{{ $row['source_field_name'] }}][standard_field_key]"
@@ -86,7 +126,18 @@
                                         data-suggested-field="{{ $row['suggested_standard_field'] ?? '' }}"
                                     >
                                         <option value="">Standart alan seçin</option>
+                                        @foreach($standardFieldGroups as $group)
+                                            <optgroup label="{{ $group['label'] }}">
+                                                @foreach($group['fields'] as $fieldKey)
+                                                    @continue(!isset($standardFields[$fieldKey]))
+                                                    <option value="{{ $fieldKey }}" @selected($row['selected_standard_field'] === $fieldKey)>
+                                                        {{ $standardFields[$fieldKey]['label'] }} ({{ $fieldKey }})
+                                                    </option>
+                                                @endforeach
+                                            </optgroup>
+                                        @endforeach
                                         @foreach($standardFields as $fieldKey => $fieldMeta)
+                                            @continue(collect($standardFieldGroups)->pluck('fields')->flatten()->contains($fieldKey))
                                             <option value="{{ $fieldKey }}" @selected($row['selected_standard_field'] === $fieldKey)>
                                                 {{ $fieldMeta['label'] }} ({{ $fieldKey }})
                                             </option>
@@ -102,8 +153,13 @@
                                         @endforeach
                                     </select>
                                 </td>
-                                <td><input type="text" name="mappings[{{ $row['source_field_name'] }}][transform_rule]" value="{{ $row['transform_rule'] }}" class="pd-input" placeholder="trim|upper|price"></td>
-                                <td><input type="text" name="mappings[{{ $row['source_field_name'] }}][note]" value="{{ $row['note'] }}" class="pd-input" placeholder="İsteğe bağlı not"></td>
+                                <td>
+                                    <div class="pd-muted mb-2">Normalize / Alias: {{ $row['legacy_field_name'] ?? $row['normalized_source_field'] }}</div>
+                                    <div class="pd-muted mb-2">Zorunlu: {{ $row['is_required'] ? 'Evet' : 'Hayır' }}</div>
+                                    <div class="pd-muted mb-2">Tür: {{ $row['type_label'] }}</div>
+                                    <input type="text" name="mappings[{{ $row['source_field_name'] }}][transform_rule]" value="{{ $row['transform_rule'] }}" class="pd-input mb-2" placeholder="trim|upper|price">
+                                    <input type="text" name="mappings[{{ $row['source_field_name'] }}][note]" value="{{ $row['note'] }}" class="pd-input" placeholder="İsteğe bağlı not">
+                                </td>
                             </tr>
                         @endforeach
                     </tbody>
@@ -115,23 +171,37 @@
 @endsection
 
 @section('side_summary')
-<div class="pd-card">
+<div class="pd-side-summary">
     <div class="pd-card-body">
         <h3 class="pd-summary-title">Özet</h3>
         <div class="pd-summary-row"><span>Tedarikçi</span><strong>{{ $source->supplier?->name }}</strong></div>
         <div class="pd-summary-row"><span>Profil</span><strong>{{ $profileKey ?? '-' }}</strong></div>
+        <div class="pd-summary-row"><span>Node path</span><strong>{{ $sourceFieldContext['node_path'] ?: '-' }}</strong></div>
+        <div class="pd-summary-row"><span>Örnek kayıt</span><strong>{{ $sourceFieldContext['records_read'] }}</strong></div>
         @if(!empty($profileAliases))
             <div class="pd-summary-row"><span>Alias</span><strong>{{ collect($profileAliases)->take(3)->map(fn ($target, $sourceField) => $sourceField . ' → ' . $target)->implode(' | ') }}</strong></div>
         @endif
         <div class="pd-summary-row"><span>Son İnceleme</span><strong>{{ now()->format('d.m.Y') }}</strong></div>
-        @if(($profileKey ?? null) === 'YENI-NESIL')
-            <div class="pd-note mt-3">
-                <strong>Yeni Nesil Alias:</strong><br>
-                turuncu → warning_flag<br>
-                isim → product_name<br>
-                baslik → display_product_name
+
+        <div class="pd-summary-section">
+            <h4 class="pd-summary-section-title">Hızlı Geçişler</h4>
+            <div class="pd-summary-action-list">
+                <a href="{{ route('admin.super.product-data-hub.sources.preview', $source) }}" class="pd-summary-action">
+                    <span>Kaynak Önizleme</span>
+                    <span class="pd-badge pd-badge-blue">Preview</span>
+                </a>
+                <a href="{{ route('admin.super.product-data-hub.sources.index') }}" class="pd-summary-action">
+                    <span>Tedarikçi Akışları</span>
+                    <span class="pd-badge pd-badge-green">Akış</span>
+                </a>
+                <a href="{{ route('admin.super.product-data-hub.category-mappings.index') }}" class="pd-summary-action">
+                    <span>Kategori Eşleme</span>
+                    <span class="pd-badge pd-badge-amber">Kategori</span>
+                </a>
             </div>
-        @endif
+        </div>
+
+        <div class="pd-side-note">Zorunlu alanlar tamamlanmadan güvenli ürün işleme, staging veya standart ürün oluşturma adımına geçilmemelidir.</div>
     </div>
 </div>
 @endsection

@@ -344,8 +344,8 @@ class ProductDataHubCategoryMappingCenterTest extends TestCase
         $response->assertSee('Alias Kaydet');
         $response->assertSee('Ayrı Bırak');
         $response->assertSee('Eşlemeyi İptal Et');
-        $response->assertSee('Sol Blok — Tedarikçi Kategorisi');
-        $response->assertSee('Orta Blok — Sistem Önerisi');
+        $response->assertSee('Sol Blok — Orijinal Tedarikçi Kategorisi');
+        $response->assertSee('Orta Blok — Önerilen Prodelya Kategorisi');
         $response->assertSee('Sağ Blok — Karar');
         $response->assertSee('class="pd-hidden-form"', false);
         $response->assertSee('form="mapping-cancel-' . $mappingId . '"', false);
@@ -997,11 +997,11 @@ class ProductDataHubCategoryMappingCenterTest extends TestCase
             ->get('/admin/super-admin/product-data-hub/category-mappings?mode=advanced');
 
         $response->assertOk();
-        $response->assertSee('Safe Apply Adayı');
+        $response->assertSee('Güvenli Karar Adayı');
         $response->assertSee('Hedef Bulunamayan');
-        $response->assertSee('Review Required');
-        $response->assertSee('Refresh Bekleyen Ürün');
-        $response->assertSee('Refresh Bekleyen Tenant');
+        $response->assertSee('Kontrollü İnceleme');
+        $response->assertSee('Kategori Bekleyen Ürün');
+        $response->assertSee('Abone Firma Kataloğu Bekleyen');
     }
 
     public function test_mapping_queue_supplier_dropdown_deduplicates_real_active_supplier_labels(): void
@@ -1173,7 +1173,7 @@ class ProductDataHubCategoryMappingCenterTest extends TestCase
         $response->assertOk()
             ->assertSeeText('Manuel Review Listesi')
             ->assertSeeText('Yeni Nesil')
-            ->assertSeeText('Pending 1')
+            ->assertSeeText('Bekleyen 1')
             ->assertSeeText('Hedef yok 1')
             ->assertSeeText('Manuel Review');
 

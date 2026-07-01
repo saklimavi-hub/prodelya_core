@@ -8,6 +8,10 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
+Schedule::command('prodelya:heartbeat-scheduler')
+    ->everyFiveMinutes()
+    ->withoutOverlapping();
+
 Schedule::command('product-data-hub:sync-sources --frequency=hourly')
     ->hourly()
     ->withoutOverlapping();

@@ -1,8 +1,8 @@
 @extends('layouts.prodelya-admin')
 
-@section('title', 'Kategori Review Paketi ' . $batch)
-@section('page_title', 'Kategori Review Paketi ' . $batch)
-@section('page_subtitle', 'İlk kritik kayıtları kullanıcı kararı için inceleyin. Kararlar kaydedilir; mapping apply ve category refresh ayrı fazdadır.')
+@section('title', 'Kategori Karar Paketi ' . $batch)
+@section('page_title', 'Kategori Karar Paketi ' . $batch)
+@section('page_subtitle', 'İlk kritik kayıtları kullanıcı kararı için inceleyin. Kararlar kaydedilir; eşleme uygulaması ve kategori yenileme ayrı fazdadır.')
 
 @php
     $statusLabels = [
@@ -21,19 +21,19 @@
         <div class="pd-card-body">
             <div class="pd-hero-main">
                 <div class="pd-hero-copy">
-                    <h1 class="pd-hero-title">Kategori Review Paketi {{ $batch }}</h1>
-                    <p class="pd-hero-subtitle">Bu ekran kategori eşleme kuyruğundaki ilk kritik kayıtları kullanıcı kararı için gösterir. Karar kaydı apply değildir.</p>
+                    <h1 class="pd-hero-title">Kategori Karar Paketi {{ $batch }}</h1>
+                    <p class="pd-hero-subtitle">Bu ekran kategori eşleme kuyruğundaki ilk kritik kayıtları kullanıcı kararı için gösterir. Buradaki kayıt karar taslağıdır; doğrudan kategori ağacını değiştirmez.</p>
                     <div class="pd-hero-badges">
                         <span class="pd-badge pd-badge-blue">Paket {{ $batch }}</span>
-                        <span class="pd-badge pd-badge-amber">Apply durumu: uygulanmadı</span>
+                        <span class="pd-badge pd-badge-amber">Uygulama durumu: yapılmadı</span>
                         <span class="pd-badge pd-badge-green">{{ $summary['row_count'] }} kayıt</span>
                         <span class="pd-badge pd-badge-purple">{{ $summary['pending'] }} karar bekleyen</span>
                     </div>
                 </div>
                 <div class="pd-hero-actions">
                     <a href="{{ route('admin.super.product-data-hub.category-mappings.index') }}" class="pd-btn pd-btn-light">Eşleme Kuyruğu</a>
-                    <a href="{{ route('admin.super.product-data-hub.category-review-batches.export', [$batch, 'csv']) }}" class="pd-btn pd-btn-light">CSV Export</a>
-                    <a href="{{ route('admin.super.product-data-hub.category-review-batches.export', [$batch, 'json']) }}" class="pd-btn pd-btn-primary">JSON Export</a>
+                    <a href="{{ route('admin.super.product-data-hub.category-review-batches.export', [$batch, 'csv']) }}" class="pd-btn pd-btn-light">CSV Dışa Aktar</a>
+                    <a href="{{ route('admin.super.product-data-hub.category-review-batches.export', [$batch, 'json']) }}" class="pd-btn pd-btn-primary">JSON Dışa Aktar</a>
                 </div>
             </div>
         </div>
@@ -53,7 +53,7 @@
         <div class="pd-metric-card pd-metric-card-soft-green">
             <div class="pd-metric-card-label">Onaylanan</div>
             <div class="pd-metric-card-value">{{ $summary['approved'] }}</div>
-            <div class="pd-metric-card-note">Sonraki apply fazına aday</div>
+            <div class="pd-metric-card-note">Sonraki onaylı uygulama fazına aday</div>
         </div>
         <div class="pd-metric-card pd-metric-card-soft-purple">
             <div class="pd-metric-card-label">Değiştirilen / Bekletilen</div>
@@ -146,7 +146,7 @@
             <div class="pd-section-heading">
                 <div>
                     <h2>Özel Kural Hatırlatmaları</h2>
-                    <p>Bu kurallar karar verirken rehberdir; kayıt sadece review karar havuzuna yazılır.</p>
+                    <p>Bu kurallar karar verirken rehberdir; kayıt yalnız karar havuzuna yazılır.</p>
                 </div>
             </div>
             <div class="pd-review-rule-grid">
@@ -285,21 +285,21 @@
     .pd-chip-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
     .pd-review-rule-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;color:#334155}
     .pd-review-list{display:grid;gap:18px}
-    .pd-review-card{display:grid;grid-template-columns:32% 28% 40%;gap:14px;background:#fff;border:1px solid #e2e8f0;border-radius:22px;padding:18px;box-shadow:0 14px 36px rgba(15,23,42,.07)}
-    .pd-review-block{border:1px solid #edf2f7;border-radius:18px;padding:14px;background:#f8fafc}
+    .pd-review-card{display:grid;grid-template-columns:32% 28% 40%;gap:14px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:18px;box-shadow:0 14px 36px rgba(15,23,42,.07)}
+    .pd-review-block{border:1px solid #edf2f7;border-radius:6px;padding:14px;background:#f8fafc}
     .pd-review-decision{background:#fff}
     .pd-block-title{font-size:12px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px}
     .pd-priority{font-weight:900;color:#0f766e;margin-bottom:6px}
     .pd-muted{color:#64748b}
     .pd-meta-stack{display:grid;gap:6px;color:#475569;font-size:13px}
-    .pd-sample-products{margin-top:12px;padding:10px;border-radius:12px;background:#fff;color:#334155}
+    .pd-sample-products{margin-top:12px;padding:10px;border-radius:6px;background:#fff;color:#334155}
     .pd-badge-row,.pd-current-decision{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
     .pd-decision-dl{display:grid;grid-template-columns:120px 1fr;gap:7px;font-size:13px}
     .pd-decision-dl dt{color:#64748b;font-weight:800}
     .pd-decision-dl dd{margin:0;color:#0f172a}
     .pd-reason{color:#334155;line-height:1.5}
     .pd-review-form{display:grid;gap:10px}
-    .pd-category-results{border:1px solid #cbd5e1;border-radius:12px;background:#fff;max-height:180px;overflow:auto}
+    .pd-category-results{border:1px solid #cbd5e1;border-radius:6px;background:#fff;max-height:180px;overflow:auto}
     .pd-category-result{display:block;width:100%;padding:8px 10px;text-align:left;border:0;background:#fff;color:#0f172a;cursor:pointer}
     .pd-category-result:hover{background:#eff6ff}
     @media (max-width:1100px){.pd-review-card{grid-template-columns:1fr 1fr}.pd-review-decision{grid-column:1/-1}}

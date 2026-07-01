@@ -2,11 +2,12 @@
 
 @section('title', 'Prodelya Ortak Ürün Havuzu')
 @section('page_title', 'Prodelya Ortak Ürün Havuzu')
-@section('page_subtitle', 'Tüm tedarikçi ürünleri Prodelya standart alanlarına dönüştürülür. Tenant katalog, teklif, sipariş ve XML export çıkışları bu havuzdan beslenir.')
+@section('page_subtitle', 'Bu ekran teknik ortak ürün havuzudur. Günlük satış operasyonu için ana ekran Ürün Paneli olmalıdır; burada parent/grup, varyant ve teknik eşleşme ilişkileri incelenir.')
 
 @section('page_actions')
+    <a href="{{ route('admin.super.product-data-hub.product-panel') }}" class="pd-btn pd-btn-primary">Ürün Paneline Git</a>
     <a href="{{ route('admin.super.product-data-hub.index') }}" class="pd-btn pd-btn-light">Genel Bakış</a>
-    <a href="{{ route('admin.super.product-data-hub.catalog-output') }}" class="pd-btn pd-btn-primary">Tenant Çıkışları</a>
+    <a href="{{ route('admin.super.product-data-hub.catalog-output') }}" class="pd-btn pd-btn-light">Abone Katalog Yayını</a>
 @endsection
 
 @section('content')
@@ -30,7 +31,7 @@
         ['label' => 'Varyant', 'value' => $stats['variant'], 'class' => 'pd-metric-card-soft-purple'],
         ['label' => 'Flat', 'value' => $stats['flat'], 'class' => 'pd-metric-card-soft-green'],
         ['label' => 'Teklifte satılabilir', 'value' => $stats['sellable'], 'class' => 'pd-metric-card-soft-green'],
-        ['label' => 'Projection blocked', 'value' => $stats['blocked'], 'class' => 'pd-metric-card-soft-amber'],
+        ['label' => 'Kataloğa yansıtma engelli', 'value' => $stats['blocked'], 'class' => 'pd-metric-card-soft-amber'],
     ];
 @endphp
 
@@ -40,15 +41,16 @@
             <div class="pd-hero-main">
                 <div class="pd-hero-copy">
                     <h1 class="pd-hero-title">Prodelya Ortak Ürün Havuzu</h1>
-                    <p class="pd-hero-subtitle">XML, JSON, CSV ve API kaynaklarından gelen ürünler burada ortak ürün diline çevrilir. Teklif, sipariş, tenant katalog ve export akışları bu normalize havuzu kullanır.</p>
+                    <p class="pd-hero-subtitle">Bu ekran günlük satış kaynağı değildir. Ortak ürün yapısı, parent/grup ilişkileri, kategori durumu ve teknik ürün rolü burada incelenir; günlük operasyon ve freshness takibi için Ürün Paneli kullanılmalıdır.</p>
                     <div class="pd-hero-badges">
-                        <span class="pd-badge pd-badge-blue">Ortak Alan Seti</span>
-                        <span class="pd-badge pd-badge-green">Tenant Çıkışı</span>
-                        <span class="pd-badge pd-badge-purple">Teklif / Sipariş</span>
-                        <span class="pd-badge pd-badge-amber">Parent / Varyant / Flat</span>
+                        <span class="pd-badge pd-badge-blue">Teknik Havuz</span>
+                        <span class="pd-badge pd-badge-purple">Parent / Varyant / Flat</span>
+                        <span class="pd-badge pd-badge-amber">Teknik Teşhis</span>
+                        <span class="pd-badge pd-badge-gray">Günlük Operasyon Değil</span>
                     </div>
                 </div>
                 <div class="pd-hero-actions">
+                    <a href="{{ route('admin.super.product-data-hub.product-panel') }}" class="pd-btn pd-btn-primary">Ürün Paneli</a>
                     <a href="{{ route('admin.super.product-data-hub.sources.index') }}" class="pd-btn pd-btn-light">Tedarikçi Kaynakları</a>
                     <a href="{{ route('admin.super.product-data-hub.category-mappings.index') }}" class="pd-btn pd-btn-light">Kategori Eşleme</a>
                     <a href="{{ route('admin.super.product-data-hub.standard-products.index') }}" class="pd-btn pd-btn-light">Standart Ürünler</a>
@@ -57,7 +59,7 @@
         </div>
     </section>
 
-    <section class="pd-metric-grid">
+    <section class="pd-kpi-strip">
         @foreach($metricCards as $metric)
             <div class="pd-metric-card {{ $metric['class'] }}">
                 <div class="pd-metric-card-label">{{ $metric['label'] }}</div>
@@ -66,11 +68,15 @@
         @endforeach
     </section>
 
+    <div class="pd-note pd-note-soft-blue pd-gap-bottom-md">
+        Bu ekran satış kaynağı değildir. Tenant katalog, teklif ve sipariş tarafı satılabilir projection satırlarından beslenir. Günlük operasyon için Ürün Paneli ekranını kullanın; bu ekran yalnız gelişmiş teknik teşhis ve ürün rolü kontrolü içindir.
+    </div>
+
     <section class="pd-section-card">
         <div class="pd-section-header">
             <div>
                 <h3 class="pd-section-title">Filtreler ve Arama</h3>
-                <p class="pd-section-subtitle">Tedarikçi, ürün tipi, satılabilirlik, uyarı, stok ve tenant projection durumuna göre ortak havuzu daraltın.</p>
+                <p class="pd-section-subtitle">Tedarikçi, ürün tipi, satılabilirlik, uyarı, stok ve Abone Firma çıkış durumuna göre ortak havuzu daraltın.</p>
             </div>
         </div>
         <div class="pd-section-body">
@@ -139,19 +145,19 @@
                     <label class="pd-label" for="warning_status">Uyarı</label>
                     <select id="warning_status" name="warning_status" class="pd-select">
                         <option value="">Tümü</option>
-                        <option value="red_product" @selected($filters['warning_status'] === 'red_product')>Kırmızı ürün</option>
-                        <option value="amber_product" @selected($filters['warning_status'] === 'amber_product')>Turuncu ürün</option>
+                        <option value="red_product" @selected($filters['warning_status'] === 'red_product')>Kırmızı Ürün</option>
+                        <option value="amber_product" @selected($filters['warning_status'] === 'amber_product')>Turuncu Ürün</option>
                         <option value="net_price" @selected($filters['warning_status'] === 'net_price')>Net fiyat uyarısı</option>
                         <option value="warning" @selected($filters['warning_status'] === 'warning')>Normal uyarı</option>
                     </select>
                 </div>
                 <div class="pd-field">
-                    <label class="pd-label" for="tenant_output">Tenant çıkışı</label>
+                    <label class="pd-label" for="tenant_output">Abone Firma çıkışı</label>
                     <select id="tenant_output" name="tenant_output" class="pd-select">
                         <option value="">Tümü</option>
-                        <option value="projected" @selected($filters['tenant_output'] === 'projected')>Tenant kataloğa çıktı</option>
-                        <option value="not_projected" @selected($filters['tenant_output'] === 'not_projected')>Tenant kataloğa çıkmadı</option>
-                        <option value="blocked" @selected($filters['tenant_output'] === 'blocked')>Projection blocked</option>
+                        <option value="projected" @selected($filters['tenant_output'] === 'projected')>Abone Firma kataloğuna çıktı</option>
+                        <option value="not_projected" @selected($filters['tenant_output'] === 'not_projected')>Abone Firma kataloğuna çıkmadı</option>
+                        <option value="blocked" @selected($filters['tenant_output'] === 'blocked')>Kataloğa yansıtma engelli</option>
                         <option value="hidden" @selected($filters['tenant_output'] === 'hidden')>Teklifte gizli</option>
                     </select>
                 </div>
@@ -172,7 +178,7 @@
             </form>
 
             @if($showAllWarning)
-                <div class="pd-note pd-note-amber" style="margin-top: 16px;">
+                <div class="pd-note pd-note-amber pd-gap-top-md">
                     Tüm ürünleri göstermek ekranı yavaşlatabilir.
                 </div>
             @endif
@@ -184,7 +190,7 @@
             <div class="pd-section-header">
                 <div>
                     <h3 class="pd-section-title">Ortak Ürün Listesi</h3>
-                    <p class="pd-section-subtitle">Parent, varyant ve flat kayıtları tek standart satırda görün. Teklifte satılabilirlik ve tenant projection durumu aynı listede izlenir.</p>
+                    <p class="pd-section-subtitle">Parent, varyant ve flat kayıtları tek standart satırda görün. Teklifte satılabilirlik ve Abone Firma çıkış durumu aynı listede izlenir.</p>
                 </div>
             </div>
             <div class="pd-section-body">
@@ -206,7 +212,7 @@
                                 <th>KDV</th>
                                 <th>Uyarılar</th>
                                 <th>Satılabilir</th>
-                                <th>Tenant çıkışı</th>
+                                <th>Abone Firma çıkışı</th>
                                 <th>Son sync</th>
                                 <th>Aksiyonlar</th>
                             </tr>
@@ -239,13 +245,13 @@
                                     <td>
                                         <div class="pd-chip-group">
                                             @if(in_array('red_product', $row['warning_tags'], true))
-                                                <span class="pd-badge pd-badge-red">Kırmızı ürün</span>
+                                                <span class="pd-badge pd-badge-red">Kırmızı Ürün</span>
                                             @endif
                                             @if(in_array('amber_product', $row['warning_tags'], true))
-                                                <span class="pd-badge pd-badge-amber">Turuncu ürün</span>
+                                                <span class="pd-badge pd-badge-amber">Turuncu Ürün</span>
                                             @endif
                                             @if(in_array('net_price', $row['warning_tags'], true))
-                                                <span class="pd-badge pd-badge-amber">Net fiyat</span>
+                                                <span class="pd-badge pd-badge-amber">Net fiyat uyarısı</span>
                                             @endif
                                             @if(in_array('category_missing', $row['warning_tags'], true))
                                                 <span class="pd-badge pd-badge-gray">Kategori eksik</span>
@@ -313,7 +319,7 @@
             <div class="pd-section-header">
                 <div>
                     <h3 class="pd-section-title">Ürün Detayı</h3>
-                    <p class="pd-section-subtitle">Ham bilgi, normalize alanlar, tenant çıkışı ve parent/varyant ilişkisini tek panelde görün.</p>
+                    <p class="pd-section-subtitle">Ham bilgi, normalize alanlar, Abone Firma çıkışı ve parent/varyant ilişkisini tek panelde görün.</p>
                 </div>
             </div>
             <div class="pd-section-body">
@@ -327,7 +333,7 @@
                         <div class="pd-status-row"><span>Grup kodu</span><span class="font-medium">{{ $selectedRow['parent_grup_kodu'] ?: '-' }}</span></div>
                         <div class="pd-status-row"><span>Varyant kodu</span><span class="font-medium">{{ $selectedRow['varyant_kodu'] ?: '-' }}</span></div>
                         <div class="pd-status-row"><span>Kategori durumu</span><span class="font-medium">{{ $selectedRow['kategori_esleme_durumu'] }}</span></div>
-                        <div class="pd-status-row"><span>Tenant çıkışı</span><span class="font-medium">{{ $selectedRow['tenant_output_label'] }}</span></div>
+                        <div class="pd-status-row"><span>Abone Firma çıkışı</span><span class="font-medium">{{ $selectedRow['tenant_output_label'] }}</span></div>
                         <div class="pd-status-row"><span>Son sync</span><span class="font-medium">{{ $selectedRow['son_sync'] ?: '-' }}</span></div>
                     </div>
 
@@ -362,8 +368,8 @@
             <div class="pd-status-row"><span>Toplam kayıt</span><span class="pd-badge pd-badge-blue">{{ $stats['total'] }}</span></div>
             <div class="pd-status-row"><span>Teklifte satılabilir</span><span class="pd-badge pd-badge-green">{{ $stats['sellable'] }}</span></div>
             <div class="pd-status-row"><span>Sadece katalog grup</span><span class="pd-badge pd-badge-gray">{{ $stats['catalog_only'] }}</span></div>
-            <div class="pd-status-row"><span>Tenant çıkışı var</span><span class="pd-badge pd-badge-green">{{ $stats['projected'] }}</span></div>
-            <div class="pd-status-row"><span>Projection blocked</span><span class="pd-badge pd-badge-amber">{{ $stats['blocked'] }}</span></div>
+            <div class="pd-status-row"><span>Abone Firma çıkışı var</span><span class="pd-badge pd-badge-green">{{ $stats['projected'] }}</span></div>
+            <div class="pd-status-row"><span>Kataloğa yansıtma engelli</span><span class="pd-badge pd-badge-amber">{{ $stats['blocked'] }}</span></div>
         </div>
 
         <div class="pd-summary-section">
@@ -372,7 +378,7 @@
                 <a href="{{ route('admin.super.product-data-hub.sources.index') }}" class="pd-summary-action"><span>1. Tedarikçi Kaynakları</span><span class="pd-badge pd-badge-blue">Kaynak</span></a>
                 <a href="{{ route('admin.super.product-data-hub.raw-products.index') }}" class="pd-summary-action"><span>2. Normalize / Staging</span><span class="pd-badge pd-badge-purple">Staging</span></a>
                 <a href="{{ route('admin.super.product-data-hub.common-products') }}" class="pd-summary-action"><span>3. Ortak Ürün Havuzu</span><span class="pd-badge pd-badge-green">Merkez</span></a>
-                <a href="{{ route('admin.super.product-data-hub.catalog-output') }}" class="pd-summary-action"><span>4. Tenant Çıkışı</span><span class="pd-badge pd-badge-amber">Çıkış</span></a>
+                <a href="{{ route('admin.super.product-data-hub.catalog-output') }}" class="pd-summary-action"><span>4. Abone Katalog Yayını</span><span class="pd-badge pd-badge-amber">Yayın</span></a>
             </div>
         </div>
     </div>
@@ -387,6 +393,6 @@
 <div class="pd-bottom-action-buttons">
     <a href="{{ route('admin.super.product-data-hub.sources.index') }}" class="pd-btn pd-btn-light">Tedarikçi Kaynakları</a>
     <a href="{{ route('admin.super.product-data-hub.category-mappings.index') }}" class="pd-btn pd-btn-light">Kategori Eşleme</a>
-    <a href="{{ route('admin.super.product-data-hub.catalog-output') }}" class="pd-btn pd-btn-primary">Tenant Çıkışları</a>
+    <a href="{{ route('admin.super.product-data-hub.catalog-output') }}" class="pd-btn pd-btn-primary">Abone Katalog Yayını</a>
 </div>
 @endsection

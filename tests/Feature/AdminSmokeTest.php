@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Company;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\Role;
 use App\Models\StandardCategory;
 use App\Models\StandardProduct;
 use App\Models\StandardProductImage;
@@ -17,6 +18,7 @@ use App\Models\TenantAccount;
 use App\Models\TenantCatalogProduct;
 use App\Models\TenantCatalogProductImage;
 use App\Models\User;
+use App\Models\UserRole;
 use App\Services\ProductFieldDictionaryService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -31,12 +33,19 @@ class AdminSmokeTest extends TestCase
     private const CENTRAL_HOST = 'prodelya_core.test';
 
     private User $adminUser;
+    private User $tenantUser;
+    private TenantAccount $tenant;
 
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->adminUser = User::where('email', 'admin@prodelya.local')->firstOrFail();
+        $this->tenant = TenantAccount::query()
+            ->where('panel_subdomain', 'demo')
+            ->first()
+            ?? TenantAccount::query()->orderBy('id')->firstOrFail();
+        $this->tenantUser = $this->makeTenantOwner($this->tenant, 'catalog-smoke-owner@example.test');
     }
 
     public static function tenantAdminUrls(): array
@@ -589,7 +598,7 @@ class AdminSmokeTest extends TestCase
         $response->assertSeeText('Önerildi');
         $response->assertSeeText('Eşlendi');
         $response->assertSeeText('Metin');
-        $response->assertSeeText('Önerileri Uygula');
+        $response->assertSeeText('Önerilenleri Doldur');
         $response->assertDontSeeText('product_name veya base_product_name eşlemesi eksik.');
         $response->assertDontSeeText('product_name veya base_product_name veya display_product_name eşlemesi eksik.');
     }
@@ -598,7 +607,7 @@ class AdminSmokeTest extends TestCase
     {
         $customer = Company::where('legal_name', 'ABC İnşaat A.Ş.')->firstOrFail();
 
-        $response = $this->actingAs($this->adminUser)
+        $response = $this->actingAs($this->tenantUser)
             ->postOnCentralHost('/admin/promotion-quotes', [
                 'customer_company_id' => $customer->id,
                 'quote_date' => now()->format('Y-m-d'),
@@ -704,11 +713,8 @@ class AdminSmokeTest extends TestCase
     {
         $this->projectCatalogFromSource('Etkin Promosyon XML');
 
-        $response = $this->actingAs($this->adminUser)
-            ->withServerVariables([
-                'HTTP_HOST' => self::CENTRAL_HOST,
-            ])
-            ->post('/admin/catalog/project');
+        $response = $this->actingAs($this->tenantUser)
+            ->post($this->tenantUrl('/admin/catalog/project'));
 
         $response->assertRedirect('/admin/catalog');
 
@@ -805,11 +811,8 @@ class AdminSmokeTest extends TestCase
                 ->count()
         );
 
-        $this->actingAs($this->adminUser)
-            ->withServerVariables([
-                'HTTP_HOST' => self::CENTRAL_HOST,
-            ])
-            ->post('/admin/catalog/project')
+        $this->actingAs($this->tenantUser)
+            ->post($this->tenantUrl('/admin/catalog/project'))
             ->assertRedirect('/admin/catalog');
 
         $catalogProduct = TenantCatalogProduct::query()->where('standard_product_id', $standardProduct->id)->firstOrFail();
@@ -869,11 +872,8 @@ class AdminSmokeTest extends TestCase
             'visible_in_catalog' => true,
         ]);
 
-        $response = $this->actingAs($this->adminUser)
-            ->withServerVariables([
-                'HTTP_HOST' => self::CENTRAL_HOST,
-            ])
-            ->get('/admin/catalog/search?q=Kalem');
+        $response = $this->actingAs($this->tenantUser)
+            ->getJson($this->tenantUrl('/admin/catalog/search?q=Kalem'));
 
         $response->assertOk();
         $response->assertJsonFragment([
@@ -974,11 +974,8 @@ class AdminSmokeTest extends TestCase
             ->post("/admin/super-admin/product-data-hub/raw-products/{$rawProduct->id}/build-standard")
             ->assertRedirect('/admin/super-admin/product-data-hub/raw-products');
 
-        $this->actingAs($this->adminUser)
-            ->withServerVariables([
-                'HTTP_HOST' => self::CENTRAL_HOST,
-            ])
-            ->post('/admin/catalog/project')
+        $this->actingAs($this->tenantUser)
+            ->post($this->tenantUrl('/admin/catalog/project'))
             ->assertRedirect('/admin/catalog');
 
         return TenantCatalogProduct::query()->latest('id')->firstOrFail();
@@ -1091,5 +1088,37 @@ XML;
         return $this->withServerVariables([
             'HTTP_HOST' => self::CENTRAL_HOST,
         ])->delete($url);
+    }
+
+    private function tenantHost(): string
+    {
+        return $this->tenant->panel_subdomain . '.' . self::CENTRAL_HOST;
+    }
+
+    private function tenantUrl(string $path): string
+    {
+        return 'http://' . $this->tenantHost() . $path;
+    }
+
+    private function makeTenantOwner(TenantAccount $tenant, string $email): User
+    {
+        $user = User::query()->firstOrCreate(
+            ['email' => $email],
+            [
+                'name' => $tenant->name . ' Catalog Owner',
+                'password' => 'secret-password',
+                'is_platform_admin' => false,
+            ]
+        );
+
+        $tenantOwnerRole = Role::query()->where('key', 'tenant_owner')->firstOrFail();
+
+        UserRole::query()->firstOrCreate([
+            'tenant_account_id' => $tenant->id,
+            'user_id' => $user->id,
+            'role_id' => $tenantOwnerRole->id,
+        ]);
+
+        return $user;
     }
 }

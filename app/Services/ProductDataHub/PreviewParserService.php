@@ -13,7 +13,8 @@ class PreviewParserService
     public function __construct(
         private readonly ProductFieldDictionaryService $fieldDictionary,
         private readonly ProductCodeNormalizerService $productCodeNormalizer,
-        private readonly ProductPageGalleryEnrichmentService $productPageGalleryEnrichment
+        private readonly ProductPageGalleryEnrichmentService $productPageGalleryEnrichment,
+        private readonly ProductAttributeValueNormalizer $attributeValueNormalizer,
     ) {
     }
 
@@ -23,10 +24,10 @@ class PreviewParserService
 
     private int $galleryEnrichmentLimit = 0;
 
-    public function previewSource(SupplierSource $source, ?array $parsedRows = null): array
+    public function previewSource(SupplierSource $source, ?array $parsedRows = null, array $options = []): array
     {
         $profileKey = $this->getSupplierProfileKey($source);
-        $profile = $this->fieldDictionary->getSupplierProfile($profileKey);
+        $profile = $this->effectiveProfileSettings($source, $profileKey);
         $dbMappings = SupplierFieldMapping::query()
             ->forSource($source->id)
             ->get()
@@ -40,6 +41,9 @@ class PreviewParserService
             ->all();
 
         $sourceFields = $this->fieldDictionary->getSourceFields($profileKey);
+        if ($sourceFields === [] && !empty($parsedRows)) {
+            $sourceFields = $this->collectPreviewSourceFields($parsedRows);
+        }
         $suggestedMappings = $this->fieldDictionary->suggestMappings($sourceFields, $profileKey);
         $mappingSource = !empty($dbMappings) ? 'db' : 'suggestion';
         $effectiveMappings = !empty($dbMappings)
@@ -48,7 +52,8 @@ class PreviewParserService
         $mappingWarnings = $this->fieldDictionary->validateRequiredMappings($effectiveMappings);
         $payloadRows = !empty($parsedRows) ? $parsedRows : $this->getDemoPayloadForProfile($profileKey);
         $sourceMode = !empty($parsedRows) ? 'live_source' : 'demo_fallback';
-        $this->allowGalleryEnrichment = $sourceMode === 'live_source';
+        $allowGalleryEnrichment = $options['allow_gallery_enrichment'] ?? true;
+        $this->allowGalleryEnrichment = $sourceMode === 'live_source' && $allowGalleryEnrichment === true;
         $this->galleryEnrichmentCount = 0;
         $this->galleryEnrichmentLimit = max(1, min(50, (int) ($source->config['max_gallery_enrichment_products'] ?? 5)));
 
@@ -92,11 +97,8 @@ class PreviewParserService
 
     public function getSupplierProfileKey(SupplierSource $source): string
     {
-        if (filled($source->config['profile_key'] ?? null) && ($source->config['profile_key'] ?? null) !== 'CUSTOM') {
-            return (string) $source->config['profile_key'];
-        }
-
-        return $this->fieldDictionary->detectSupplierKey(
+        return $this->fieldDictionary->resolveProfileTemplateKey(
+            (array) ($source->config ?? []),
             $source->supplier?->code,
             $source->supplier?->name
         ) ?? 'ETKIN';
@@ -214,6 +216,34 @@ class PreviewParserService
                 'kdv' => '20',
                 'kategori' => 'Termos Matara',
             ]],
+            'POZITRON_JSON' => [[
+                'id' => 1,
+                'urun_sku' => 'PZ-100',
+                'urun_adi' => 'Pozitron Matara',
+                'urun_aciklamasi' => 'Paslanmaz çelik promosyon matara.',
+                'urun_url' => 'https://pozitronpromosyon.com/urun/pozitron-matara',
+                'kategoriler' => [
+                    ['id' => 11, 'ad' => 'Matara', 'slug' => 'matara'],
+                ],
+                'urun_gorselleri' => [
+                    'https://pozitronpromosyon.com/uploads/pz-parent.jpg',
+                ],
+                'urun_fiyati' => '12.50',
+                'kdv_orani' => '20',
+                'varyasyonlar' => [
+                    [
+                        'varyasyon_id' => 101,
+                        'stok_kodu' => 'PZ-100-KRM',
+                        'renk' => 'Kırmızı',
+                        'stok_adedi' => 25,
+                        'fiyat' => '12.50',
+                        'gorseller' => [
+                            'https://pozitronpromosyon.com/uploads/pz-kirmizi.jpg',
+                        ],
+                        'urun_url' => 'https://pozitronpromosyon.com/urun/pozitron-matara?attribute_pa_renk=kirmizi',
+                    ],
+                ],
+            ]],
             default => [[
                 'urun_id' => '',
                 'urun_kodu' => '0506-L',
@@ -231,7 +261,7 @@ class PreviewParserService
     public function normalizeRows(SupplierSource $source, array $payloadRows, array $mappings): array
     {
         $profileKey = $this->getSupplierProfileKey($source);
-        $profile = $this->fieldDictionary->getSupplierProfile($profileKey);
+        $profile = $this->effectiveProfileSettings($source, $profileKey);
         $productModel = $profile['product_model'] ?? 'flat_single_row';
 
         $result = [
@@ -243,6 +273,7 @@ class PreviewParserService
             $normalizedRows = match ($productModel) {
                 'record_variant_row' => $this->normalizeRecordVariantRow($source, $row, $mappings, $profileKey),
                 'parent_nested_variant' => $this->normalizeParentVariantRow($source, $row, $mappings, $profileKey),
+                'parent_nested_variant_json' => $this->normalizeParentVariantRow($source, $row, $mappings, $profileKey),
                 default => $this->normalizeFlatRow($source, $row, $mappings, $profileKey, $productModel === 'flat_group_variant'),
             };
 
@@ -298,7 +329,7 @@ class PreviewParserService
 
     public function normalizeParentVariantRow(SupplierSource $source, array $row, array $mappings, string $profileKey): array
     {
-        $parentRow = collect($row)->except(['Varyasyonlar', 'UrunSecenek', 'varyantlar'])->all();
+        $parentRow = collect($row)->except(['Varyasyonlar', 'UrunSecenek', 'varyantlar', 'varyasyonlar'])->all();
         $normalizedParent = $this->mapRowToStandardFields($parentRow, $mappings);
         $product = $this->buildProductPayload($source, $parentRow, $normalizedParent, $profileKey);
         $product['warnings'][] = $this->warningMessage('parent_card_found');
@@ -310,7 +341,10 @@ class PreviewParserService
             $variantRows = data_get($row, 'UrunSecenek.Secenek');
         }
         if (!is_array($variantRows)) {
-            $variantRows = $row['varyantlar'] ?? [];
+            $variantRows = $row['varyantlar'] ?? null;
+        }
+        if (!is_array($variantRows)) {
+            $variantRows = $row['varyasyonlar'] ?? [];
         }
         if (is_array($variantRows) && !array_is_list($variantRows)) {
             $variantRows = [$variantRows];
@@ -326,6 +360,13 @@ class PreviewParserService
             $normalizedVariant = $this->mapRowToStandardFields($combinedRaw, $mappings);
             $variant = $this->buildVariantPayload($source, $combinedRaw, $normalizedVariant, $profileKey, $product);
             $variants[$variant['import_hash']] = $variant;
+        }
+
+        if ($profileKey === 'POZITRON_JSON' && $variants === []) {
+            $flatVariant = $this->buildVariantPayload($source, $parentRow, $normalizedParent, $profileKey, $product);
+            $flatVariant['warnings'][] = 'Bu üründe varyasyon listesi boş geldiği için flat/satılabilir ürün olarak değerlendirildi.';
+            $flatVariant['warnings'] = array_values(array_unique(array_filter($flatVariant['warnings'])));
+            $variants[$flatVariant['import_hash']] = $flatVariant;
         }
 
         $variantStockTotal = collect($variants)
@@ -376,15 +417,15 @@ class PreviewParserService
     {
         $normalized = [];
 
-        foreach ($row as $sourceField => $value) {
-            if (is_array($value)) {
-                continue;
-            }
-
-            $mapping = $mappings[$sourceField] ?? null;
+        foreach ($mappings as $sourceField => $mapping) {
             $standardField = $mapping['standard_field_key'] ?? null;
 
             if (blank($standardField)) {
+                continue;
+            }
+
+            $value = data_get($row, $sourceField);
+            if (is_array($value)) {
                 continue;
             }
 
@@ -394,17 +435,67 @@ class PreviewParserService
         return $normalized;
     }
 
+    private function collectPreviewSourceFields(array $rows): array
+    {
+        $fields = [];
+
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            foreach ($this->flattenSourceFieldPaths($row) as $field) {
+                $fields[$field] = $field;
+            }
+        }
+
+        return array_values($fields);
+    }
+
+    private function flattenSourceFieldPaths(array $payload, string $prefix = ''): array
+    {
+        $fields = [];
+
+        foreach ($payload as $key => $value) {
+            if (is_int($key)) {
+                continue;
+            }
+
+            $path = $prefix === '' ? (string) $key : $prefix . '.' . $key;
+
+            if (is_array($value) && !array_is_list($value)) {
+                $fields = array_merge($fields, $this->flattenSourceFieldPaths($value, $path));
+                continue;
+            }
+
+            $fields[] = $path;
+        }
+
+        return $fields;
+    }
+
     private function buildProductPayload(SupplierSource $source, array $rawRow, array $normalized, string $profileKey): array
     {
-        $profile = $this->fieldDictionary->getSupplierProfile($profileKey);
+        $profile = $this->effectiveProfileSettings($source, $profileKey);
         $warnings = [];
         $errors = [];
         $normalized = $this->applyProfileSpecificNormalization($rawRow, $normalized, $profileKey, $warnings);
         $normalized = $this->applySupplierWarningNormalization($rawRow, $normalized, $warnings);
-        $galleryData = $this->extractGalleryImages($rawRow, $profileKey);
+        $displayNormalized = $this->applyDisplayAttributeNormalization($normalized);
+        $galleryData = $this->extractGalleryImages($source, $rawRow, $profileKey);
         $galleryImages = $galleryData['images'];
-        $productImage = $this->resolveProductImage($rawRow, $profileKey, $galleryImages);
+        $productImage = $this->resolveProductImage($source, $rawRow, $profileKey, $galleryImages);
+        if ($profileKey === 'CUSTOM') {
+            $productImage = $this->firstFilled([
+                $this->normalizeSourceUrl($source, $displayNormalized['image_url'] ?? null),
+                $this->normalizeSourceUrl($source, $displayNormalized['parent_image_url'] ?? null),
+                $productImage,
+            ]);
+        }
         $imageSourceField = $this->resolveProductImageSourceField($rawRow, $profileKey, $galleryImages);
+        if ($profileKey === 'CUSTOM' && blank($imageSourceField) && filled($displayNormalized['image_url'] ?? null)) {
+            $imageSourceField = 'mapped:image_url';
+        }
 
         $generatedProductCode = $this->productCodeNormalizer->generateProductCode([
             'PREFIX' => $profile['supplier_code_prefix'] ?? '',
@@ -421,16 +512,19 @@ class PreviewParserService
             $warnings[] = $this->warningMessage('code_normalized');
         }
 
-        if (filled($profile['supplier_code_prefix'] ?? null)) {
-            $warnings[] = $this->warningMessage('prefix_applied');
-        }
-
         if (blank($generatedProductCode)) {
             $errors[] = $this->warningMessage('required_field_missing');
         }
 
         if (blank($normalized['supplier_product_id'] ?? null) && blank($normalized['parent_supplier_product_id'] ?? null) && filled($normalized['supplier_product_code'] ?? null)) {
             $warnings[] = $this->warningMessage('fallback_to_product_code');
+        }
+
+        if (blank($normalized['supplier_product_code'] ?? null) && filled($generatedProductCode)) {
+            $warnings[] = $this->warningMessage('temporary_product_code_generated');
+            if (str_starts_with((string) $generatedProductCode, 'ET-') && (($profile['supplier_code_prefix'] ?? null) === 'EL')) {
+                $warnings[] = $this->warningMessage('wrong_supplier_prefix');
+            }
         }
 
         if (($normalized['warning_flag'] ?? null) === true) {
@@ -447,13 +541,14 @@ class PreviewParserService
             'supplier_product_code' => $normalized['supplier_product_code'] ?? $normalized['variant_stock_code'] ?? null,
             'supplier_group_code' => $normalized['supplier_group_code'] ?? null,
             'generated_product_code' => $generatedProductCode,
-            'product_name' => $normalized['product_name'] ?? $normalized['base_product_name'] ?? null,
-            'base_product_name' => $normalized['base_product_name'] ?? null,
+            'product_name' => $displayNormalized['product_name'] ?? $displayNormalized['base_product_name'] ?? null,
+            'base_product_name' => $displayNormalized['base_product_name'] ?? null,
             'supplier_category_name' => $normalized['supplier_category_name'] ?? $normalized['supplier_subcategory_name'] ?? null,
+            'supplier_category_slug' => $normalized['supplier_category_slug'] ?? null,
             'standard_category_id' => $standardCategoryId,
-            'product_url' => $this->normalizeHttpUrl($normalized['product_url'] ?? $normalized['supplier_page'] ?? null),
-            'detail_url' => $this->normalizeHttpUrl($normalized['detail_url'] ?? null),
-            'artwork_template_url' => $normalized['artwork_template_url'] ?? null,
+            'product_url' => $this->normalizeSourceUrl($source, $displayNormalized['product_url'] ?? $displayNormalized['supplier_page'] ?? null),
+            'detail_url' => $this->normalizeSourceUrl($source, $displayNormalized['detail_url'] ?? null),
+            'artwork_template_url' => $this->normalizeSourceUrl($source, $displayNormalized['artwork_template_url'] ?? null),
             'purchase_price' => $normalized['purchase_price'] ?? null,
             'net_price' => $normalized['net_price'] ?? null,
             'list_price' => $normalized['list_price'] ?? null,
@@ -464,7 +559,7 @@ class PreviewParserService
             'vat_rate' => $normalized['vat_rate'] ?? null,
             'usd_price' => $normalized['usd_price'] ?? null,
             'image_url' => $productImage,
-            'parent_image_url' => $normalized['parent_image_url'] ?? $productImage,
+            'parent_image_url' => $displayNormalized['parent_image_url'] ?? $productImage,
             'gallery_images' => $galleryImages,
             'feed_gallery_images' => $galleryImages,
             'page_gallery_images' => [],
@@ -478,10 +573,12 @@ class PreviewParserService
             'net_price_warning' => (bool) ($normalized['net_price_warning'] ?? false),
             'price_policy_warning' => (bool) ($normalized['price_policy_warning'] ?? false),
             'pricing_policy_type' => $normalized['pricing_policy_type'] ?? null,
+            'supplier_price_note' => $normalized['supplier_price_note'] ?? null,
+            'temporary_product_code' => blank($normalized['supplier_product_code'] ?? null) && filled($generatedProductCode),
             'raw_payload' => $rawRow,
-            'normalized_payload' => array_merge($normalized, [
+            'normalized_payload' => array_merge($displayNormalized, [
                 'image_url' => $productImage,
-                'parent_image_url' => $normalized['parent_image_url'] ?? $productImage,
+                'parent_image_url' => $displayNormalized['parent_image_url'] ?? $productImage,
                 'gallery_images' => $galleryImages,
                 'feed_gallery_images' => $galleryImages,
                 'page_gallery_images' => [],
@@ -489,14 +586,18 @@ class PreviewParserService
                 'image_source_field' => $imageSourceField,
                 'gallery_source_fields' => $galleryData['source_fields'],
                 'image_fallback_used' => false,
-                'product_url' => $this->normalizeHttpUrl($normalized['product_url'] ?? $normalized['supplier_page'] ?? null),
-                'detail_url' => $this->normalizeHttpUrl($normalized['detail_url'] ?? null),
-                'artwork_template_url' => $normalized['artwork_template_url'] ?? null,
+                'product_url' => $this->normalizeSourceUrl($source, $displayNormalized['product_url'] ?? $displayNormalized['supplier_page'] ?? null),
+                'detail_url' => $this->normalizeSourceUrl($source, $displayNormalized['detail_url'] ?? null),
+                'artwork_template_url' => $this->normalizeSourceUrl($source, $displayNormalized['artwork_template_url'] ?? null),
                 'alternative_price' => $normalized['alternative_price'] ?? null,
                 'usd_price' => $normalized['usd_price'] ?? null,
                 'pricing_policy_type' => $normalized['pricing_policy_type'] ?? null,
+                'supplier_price_note' => $normalized['supplier_price_note'] ?? null,
                 'supplier_warning_flag' => (bool) ($normalized['supplier_warning_flag'] ?? false),
                 'supplier_warning_type' => $normalized['supplier_warning_type'] ?? null,
+                'supplier_category_slug' => $normalized['supplier_category_slug'] ?? null,
+                'stock_source_type' => $normalized['stock_source_type'] ?? null,
+                'bundle_component_count' => $normalized['bundle_component_count'] ?? 0,
             ]),
             'warnings' => array_values(array_unique(array_filter($warnings))),
             'errors' => array_values(array_unique(array_filter($errors))),
@@ -511,12 +612,12 @@ class PreviewParserService
             'product_model' => $profile['product_model'] ?? 'flat_single_row',
             'mapping_mode' => null,
             'mapping_badge' => null,
-            'description' => $normalized['description'] ?? null,
+            'description' => $displayNormalized['description'] ?? null,
             'stock_quantity' => $normalized['stock_quantity'] ?? $normalized['total_variant_stock_quantity'] ?? $normalized['variant_stock_quantity'] ?? null,
             'variant_stock_quantity' => $normalized['variant_stock_quantity'] ?? null,
             'total_variant_stock_quantity' => $normalized['total_variant_stock_quantity'] ?? null,
-            'color' => $normalized['variant_color'] ?? null,
-            'size' => $normalized['size'] ?? null,
+            'color' => $displayNormalized['display_variant_color'] ?? $displayNormalized['variant_color'] ?? null,
+            'size' => $displayNormalized['display_size'] ?? $displayNormalized['size'] ?? null,
             'extracted_color_source' => $normalized['extracted_color_source'] ?? null,
         ];
 
@@ -540,22 +641,37 @@ class PreviewParserService
             $productPayload['warnings'] = array_values(array_unique(array_filter($productPayload['warnings'])));
         }
 
+        if (blank($productPayload['image_url'] ?? null)) {
+            $productPayload['warnings'][] = $this->warningMessage('missing_product_image');
+            $productPayload['warnings'] = array_values(array_unique(array_filter($productPayload['warnings'])));
+        }
+
         return $productPayload;
     }
 
     private function buildVariantPayload(SupplierSource $source, array $rawRow, array $normalized, string $profileKey, array $product): array
     {
-        $profile = $this->fieldDictionary->getSupplierProfile($profileKey);
+        $profile = $this->effectiveProfileSettings($source, $profileKey);
         $warnings = [];
         $errors = [];
         $normalized = $this->applyProfileSpecificNormalization($rawRow, $normalized, $profileKey, $warnings);
         $normalized = $this->applySupplierWarningNormalization($rawRow, $normalized, $warnings);
+        $displayNormalized = $this->applyDisplayAttributeNormalization($normalized);
         $resolvedVariantImage = $this->resolveVariantImage(
+            $source,
             $rawRow,
             $product['parent_image_url'] ?? $product['image_url'] ?? null,
             $profileKey,
             $product['gallery_images'] ?? []
         );
+        if ($profileKey === 'CUSTOM' && blank($resolvedVariantImage['url'] ?? null) && filled($displayNormalized['variant_image_url'] ?? null)) {
+            $resolvedVariantImage = [
+                'url' => $this->normalizeSourceUrl($source, $displayNormalized['variant_image_url']),
+                'fallback_used' => false,
+                'warning' => null,
+                'source_field' => 'mapped:variant_image_url',
+            ];
+        }
         $variantGallery = $this->buildVariantGalleryImages(
             $resolvedVariantImage['url'] ?? null,
             $product['gallery_images'] ?? []
@@ -584,8 +700,8 @@ class PreviewParserService
             'variant_code' => $normalized['variant_stock_code'] ?? $normalized['supplier_product_code'] ?? null,
             'variant_stock_code' => $normalized['variant_stock_code'] ?? $normalized['supplier_product_code'] ?? null,
             'generated_variant_code' => $generatedVariantCode,
-            'variant_name' => $normalized['variant_name'] ?? $normalized['variant_color'] ?? null,
-            'variant_color' => $normalized['variant_color'] ?? null,
+            'variant_name' => $displayNormalized['variant_name'] ?? $displayNormalized['display_variant_color'] ?? $displayNormalized['variant_color'] ?? null,
+            'variant_color' => $displayNormalized['display_variant_color'] ?? $displayNormalized['variant_color'] ?? null,
             'variant_stock_quantity' => $normalized['variant_stock_quantity'] ?? $normalized['stock_quantity'] ?? null,
             'purchase_price' => $normalized['purchase_price'] ?? $product['purchase_price'] ?? null,
             'net_price' => $normalized['net_price'] ?? $product['net_price'] ?? null,
@@ -598,25 +714,29 @@ class PreviewParserService
             'net_price_warning' => (bool) ($normalized['net_price_warning'] ?? $product['net_price_warning'] ?? false),
             'price_policy_warning' => (bool) ($normalized['price_policy_warning'] ?? $product['price_policy_warning'] ?? false),
             'pricing_policy_type' => $normalized['pricing_policy_type'] ?? $product['pricing_policy_type'] ?? null,
-            'artwork_template_url' => $normalized['artwork_template_url'] ?? $product['artwork_template_url'] ?? null,
+            'artwork_template_url' => $this->normalizeSourceUrl($source, $displayNormalized['artwork_template_url'] ?? $product['artwork_template_url'] ?? null),
+            'variant_product_url' => $this->normalizeSourceUrl($source, $displayNormalized['variant_product_url'] ?? $displayNormalized['product_url'] ?? $product['product_url'] ?? null),
             'warning_flag' => (bool) ($normalized['warning_flag'] ?? false),
             'supplier_warning_flag' => (bool) ($normalized['supplier_warning_flag'] ?? $product['supplier_warning_flag'] ?? false),
             'supplier_warning_type' => $normalized['supplier_warning_type'] ?? $product['supplier_warning_type'] ?? null,
             'variant_image_url' => $resolvedVariantImage['url'] ?? null,
-            'parent_image_url' => $product['parent_image_url'] ?? $normalized['parent_image_url'] ?? $normalized['image_url'] ?? null,
+            'parent_image_url' => $product['parent_image_url'] ?? $displayNormalized['parent_image_url'] ?? $displayNormalized['image_url'] ?? null,
             'image_fallback_used' => (bool) ($resolvedVariantImage['fallback_used'] ?? false),
             'variant_image_source_field' => $resolvedVariantImage['source_field'] ?? null,
             'gallery_images' => $variantGallery,
+            'variant_gallery_images' => $variantGallery,
             'gallery_origin' => $product['gallery_origin'] ?? 'feed',
+            'temporary_variant_code' => blank($normalized['variant_stock_code'] ?? null) && filled($generatedVariantCode),
             'warnings' => $warnings,
             'errors' => $errors,
             'raw_payload' => $rawRow,
-            'normalized_payload' => array_merge($normalized, [
+            'normalized_payload' => array_merge($displayNormalized, [
                 'variant_image_url' => $resolvedVariantImage['url'] ?? null,
-                'parent_image_url' => $product['parent_image_url'] ?? $normalized['parent_image_url'] ?? $normalized['image_url'] ?? null,
+                'parent_image_url' => $product['parent_image_url'] ?? $displayNormalized['parent_image_url'] ?? $displayNormalized['image_url'] ?? null,
                 'image_fallback_used' => (bool) ($resolvedVariantImage['fallback_used'] ?? false),
                 'variant_image_source_field' => $resolvedVariantImage['source_field'] ?? null,
                 'gallery_images' => $variantGallery,
+                'variant_gallery_images' => $variantGallery,
                 'gallery_origin' => $product['gallery_origin'] ?? 'feed',
                 'purchase_price' => $normalized['purchase_price'] ?? $product['purchase_price'] ?? null,
                 'net_price' => $normalized['net_price'] ?? $product['net_price'] ?? null,
@@ -629,14 +749,20 @@ class PreviewParserService
                 'net_price_warning' => (bool) ($normalized['net_price_warning'] ?? $product['net_price_warning'] ?? false),
                 'price_policy_warning' => (bool) ($normalized['price_policy_warning'] ?? $product['price_policy_warning'] ?? false),
                 'pricing_policy_type' => $normalized['pricing_policy_type'] ?? $product['pricing_policy_type'] ?? null,
+                'supplier_price_note' => $normalized['supplier_price_note'] ?? $product['supplier_price_note'] ?? null,
                 'supplier_warning_flag' => (bool) ($normalized['supplier_warning_flag'] ?? $product['supplier_warning_flag'] ?? false),
                 'supplier_warning_type' => $normalized['supplier_warning_type'] ?? $product['supplier_warning_type'] ?? null,
-                'artwork_template_url' => $normalized['artwork_template_url'] ?? $product['artwork_template_url'] ?? null,
+                'artwork_template_url' => $this->normalizeSourceUrl($source, $displayNormalized['artwork_template_url'] ?? $product['artwork_template_url'] ?? null),
+                'variant_product_url' => $this->normalizeSourceUrl($source, $displayNormalized['variant_product_url'] ?? $displayNormalized['product_url'] ?? $product['product_url'] ?? null),
                 'extracted_color_source' => $normalized['extracted_color_source'] ?? null,
             ]),
-            'variant_size' => $normalized['size'] ?? null,
+            'variant_size' => $displayNormalized['display_size'] ?? $displayNormalized['size'] ?? null,
             'variant_attributes' => array_filter([
-                'size' => $normalized['size'] ?? null,
+                'size' => $displayNormalized['display_size'] ?? $displayNormalized['size'] ?? null,
+                'measure' => data_get($displayNormalized, 'variant_attributes.measure'),
+                'capacity' => data_get($displayNormalized, 'variant_attributes.capacity'),
+                'material' => data_get($displayNormalized, 'variant_attributes.material'),
+                'option' => data_get($displayNormalized, 'variant_attributes.option'),
                 'warning_flag' => $normalized['warning_flag'] ?? null,
                 'supplier_warning_flag' => $normalized['supplier_warning_flag'] ?? $product['supplier_warning_flag'] ?? null,
                 'supplier_warning_type' => $normalized['supplier_warning_type'] ?? $product['supplier_warning_type'] ?? null,
@@ -657,6 +783,10 @@ class PreviewParserService
             $variant['errors'][] = $this->warningMessage('required_field_missing');
         }
 
+        if (blank($normalized['variant_stock_code'] ?? null) && filled($generatedVariantCode)) {
+            $variant['warnings'][] = $this->warningMessage('temporary_variant_code_generated');
+        }
+
         if (blank($variant['variant_image_url'] ?? null)) {
             $variant = $this->applyImageFallback($variant, $product);
         }
@@ -672,13 +802,14 @@ class PreviewParserService
         return $variant;
     }
 
-    private function extractGalleryImages(array $row, string $profileKey): array
+    private function extractGalleryImages(SupplierSource $source, array $row, string $profileKey): array
     {
         $sourceFields = match ($profileKey) {
             'ETKIN' => array_map(fn (int $index) => 'resim' . $index, range(1, 9)),
             'AKDENIZ' => array_merge(['stokresim', 'urunresim'], array_map(fn (int $index) => 'urunresim' . $index, range(1, 13))),
             'ILPEN' => ['ResimUrl'],
             'YENI-NESIL' => array_map(fn (int $index) => 'resim' . $index, range(1, 9)),
+            'POZITRON_JSON' => ['urun_gorselleri'],
             default => ['urun_resim', 'resim', 'image', 'image_url'],
         };
 
@@ -687,17 +818,20 @@ class PreviewParserService
 
         foreach ($sourceFields as $field) {
             $value = $row[$field] ?? null;
-            if (!filled($value)) {
-                continue;
-            }
 
-            $value = trim((string) $value);
-            if (in_array($value, $images, true)) {
-                continue;
-            }
+            foreach ((is_array($value) ? $value : [$value]) as $candidate) {
+                if (!filled($candidate)) {
+                    continue;
+                }
 
-            $images[] = $value;
-            $usedSourceFields[] = $field;
+                $candidate = $this->normalizeSourceUrl($source, $candidate);
+                if (!filled($candidate) || in_array($candidate, $images, true)) {
+                    continue;
+                }
+
+                $images[] = $candidate;
+                $usedSourceFields[] = $field;
+            }
         }
 
         return [
@@ -706,9 +840,9 @@ class PreviewParserService
         ];
     }
 
-    private function resolveProductImage(array $row, string $profileKey, array $galleryImages): ?string
+    private function resolveProductImage(SupplierSource $source, array $row, string $profileKey, array $galleryImages): ?string
     {
-        return match ($profileKey) {
+        return $this->normalizeSourceUrl($source, match ($profileKey) {
             'ETKIN' => $this->firstFilled([
                 $row['resim1'] ?? null,
                 $row['urun_resim'] ?? null,
@@ -727,6 +861,10 @@ class PreviewParserService
                 $row['ResimUrl'] ?? null,
                 $galleryImages[0] ?? null,
             ]),
+            'POZITRON_JSON' => $this->firstFilled([
+                data_get($row, 'urun_gorselleri.0'),
+                $galleryImages[0] ?? null,
+            ]),
             'YENI-NESIL' => $this->firstFilled([
                 $row['resim1'] ?? null,
                 $galleryImages[0] ?? null,
@@ -736,7 +874,7 @@ class PreviewParserService
                 $row['image_url'] ?? null,
                 $galleryImages[0] ?? null,
             ]),
-        };
+        });
     }
 
     private function resolveProductImageSourceField(array $row, string $profileKey, array $galleryImages): ?string
@@ -749,6 +887,9 @@ class PreviewParserService
                 ?? (!empty($galleryImages) ? 'gallery_images' : null),
             'ILPEN' => $this->firstFilledField($row, ['ResimUrl'])
                 ?? (!empty($galleryImages) ? 'gallery_images' : null),
+            'POZITRON_JSON' => filled(data_get($row, 'urun_gorselleri.0'))
+                ? 'urun_gorselleri.0'
+                : (!empty($galleryImages) ? 'gallery_images' : null),
             'YENI-NESIL' => $this->firstFilledField($row, ['resim1'])
                 ?? (!empty($galleryImages) ? 'gallery_images' : null),
             default => $this->firstFilledField($row, ['urun_resim', 'image_url'])
@@ -756,16 +897,17 @@ class PreviewParserService
         };
     }
 
-    private function resolveVariantImage(array $row, ?string $parentImage, string $profileKey, array $galleryImages = []): array
+    private function resolveVariantImage(SupplierSource $source, array $row, ?string $parentImage, string $profileKey, array $galleryImages = []): array
     {
         $variantFieldCandidates = match ($profileKey) {
             'ETKIN' => ['resim1', 'urun_resim', 'resim', 'image', 'image_url'],
             'AKDENIZ' => ['stokresim', 'urunresim', 'urunresim1'],
             'ILPEN' => ['VaryasyonResim', 'ResimUrl'],
+            'POZITRON_JSON' => ['gorseller.0'],
             'YENI-NESIL' => ['resim1'],
             default => ['urun_resim', 'resim', 'image', 'image_url'],
         };
-        $variantImage = $this->firstFilled(array_map(fn (string $field) => $row[$field] ?? null, $variantFieldCandidates));
+        $variantImage = $this->normalizeSourceUrl($source, $this->firstFilled(array_map(fn (string $field) => data_get($row, $field), $variantFieldCandidates)));
         $variantSourceField = $this->firstFilledField($row, $variantFieldCandidates);
 
         if (filled($variantImage)) {
@@ -782,10 +924,10 @@ class PreviewParserService
             ];
         }
 
-        $fallbackImage = $this->firstFilled([
+        $fallbackImage = $this->normalizeSourceUrl($source, $this->firstFilled([
             $parentImage,
             $galleryImages[0] ?? null,
-        ]);
+        ]));
 
         return [
             'url' => $fallbackImage,
@@ -869,8 +1011,200 @@ class PreviewParserService
                 $warnings
             ),
             'ILPEN' => $this->applyIlpenNormalization($rawRow, $normalized, $warnings),
+            'POZITRON_JSON' => $this->applyPozitronNormalization($rawRow, $normalized, $warnings),
             default => $normalized,
         };
+    }
+
+    private function applyPozitronNormalization(array $rawRow, array $normalized, array &$warnings): array
+    {
+        $isVariantRow = filled($rawRow['varyasyon_id'] ?? null)
+            || filled($rawRow['stok_kodu'] ?? null)
+            || filled(data_get($rawRow, 'nitelikler.pa_renk'));
+        $parentListPrice = $this->resolvePozitronListPrice($rawRow, [
+            'urun_fiyati',
+            'fiyat',
+            'fiyat_normal',
+        ], $warnings, 'parent');
+        $variantListPrice = $this->resolvePozitronListPrice($rawRow, [
+            'fiyat',
+            'fiyat_normal',
+            'urun_fiyati',
+        ], $warnings, 'variant');
+        $variantStock = $this->toDecimal($rawRow['stok_adedi'] ?? null);
+
+        $normalized['supplier_product_id'] = $normalized['supplier_product_id'] ?? ($rawRow['id'] ?? null);
+        $normalized['parent_supplier_product_id'] = $normalized['parent_supplier_product_id'] ?? ($rawRow['id'] ?? null);
+        $normalized['supplier_product_code'] = $this->firstFilled([
+            $rawRow['urun_sku'] ?? null,
+            $normalized['supplier_product_code'] ?? null,
+        ]);
+        $normalized['supplier_group_code'] = $this->firstFilled([
+            $normalized['supplier_group_code'] ?? null,
+            $rawRow['urun_sku'] ?? null,
+            $rawRow['id'] ?? null,
+        ]);
+        $normalized['product_name'] = $this->firstFilled([
+            $rawRow['urun_adi'] ?? null,
+            $normalized['product_name'] ?? null,
+            $normalized['supplier_product_code'] ?? null,
+        ]);
+        $normalized['description'] = $normalized['description'] ?? ($rawRow['urun_aciklamasi'] ?? null);
+        $normalized['supplier_category_id'] = $normalized['supplier_category_id'] ?? data_get($rawRow, 'kategoriler.0.id');
+        $normalized['supplier_category_name'] = $this->firstFilled([
+            $normalized['supplier_category_name'] ?? null,
+            data_get($rawRow, 'kategoriler.0.ad'),
+        ]);
+        $normalized['supplier_category_slug'] = $normalized['supplier_category_slug'] ?? data_get($rawRow, 'kategoriler.0.slug');
+        $normalized['product_url'] = $normalized['product_url'] ?? ($rawRow['urun_url'] ?? null);
+        $normalized['variant_product_url'] = $normalized['variant_product_url'] ?? ($isVariantRow ? ($rawRow['urun_url'] ?? null) : null);
+        $normalized['list_price'] = $isVariantRow
+            ? ($variantListPrice ?? $parentListPrice)
+            : ($parentListPrice ?? $variantListPrice);
+        $normalized['purchase_price'] = null;
+        $normalized['net_price'] = null;
+        $normalized['net_price_warning'] = false;
+        $normalized['price_policy_warning'] = false;
+        $normalized['pricing_policy_type'] = 'list_price';
+        $normalized['currency'] = 'USD';
+        $normalized['vat_rate'] = $this->toDecimal($rawRow['kdv_orani'] ?? $normalized['vat_rate'] ?? null);
+        $normalized['stock_quantity'] = $isVariantRow ? null : ($normalized['stock_quantity'] ?? null);
+        $normalized['variant_stock_quantity'] = $isVariantRow
+            ? ($variantStock ?? $normalized['variant_stock_quantity'] ?? null)
+            : ($normalized['variant_stock_quantity'] ?? null);
+        $normalized['variant_id'] = $normalized['variant_id'] ?? ($rawRow['varyasyon_id'] ?? null);
+        $normalized['variant_stock_code'] = $this->firstFilled([
+            $rawRow['stok_kodu'] ?? null,
+            $normalized['variant_stock_code'] ?? null,
+            filled($rawRow['varyasyon_id'] ?? null) && filled($normalized['supplier_product_code'] ?? null)
+                ? ($normalized['supplier_product_code'] . '-' . $rawRow['varyasyon_id'])
+                : null,
+            !$isVariantRow ? ($normalized['supplier_product_code'] ?? null) : null,
+        ]);
+        $normalized['variant_color'] = $this->firstFilled([
+            $rawRow['renk'] ?? null,
+            data_get($rawRow, 'nitelikler.pa_renk'),
+            $normalized['variant_color'] ?? null,
+        ]);
+        $normalized['extracted_color_source'] = $normalized['extracted_color_source'] ?? $this->firstFilled([
+            filled($rawRow['renk'] ?? null) ? 'renk' : null,
+            filled(data_get($rawRow, 'nitelikler.pa_renk')) ? 'nitelikler.pa_renk' : null,
+        ]);
+        $normalized['gallery_images'] = collect((array) ($rawRow['urun_gorselleri'] ?? []))
+            ->filter(fn ($value) => filled($value))
+            ->values()
+            ->all();
+        $normalized['variant_gallery_images'] = collect((array) ($rawRow['gorseller'] ?? []))
+            ->filter(fn ($value) => filled($value))
+            ->values()
+            ->all();
+        $normalized['image_url'] = $normalized['image_url'] ?? ($normalized['gallery_images'][0] ?? null);
+        $normalized['variant_image_url'] = $normalized['variant_image_url'] ?? ($normalized['variant_gallery_images'][0] ?? null);
+        $normalized['supplier_price_note'] = 'Pozitron liste fiyatı USD olarak gelir.';
+        $normalized['bundle_component_count'] = is_array($rawRow['bilesenler'] ?? null) ? count($rawRow['bilesenler']) : 0;
+        $normalized['stock_source_type'] = data_get($rawRow, 'stok_kaynagi.tip');
+        if (
+            filled($rawRow['fiyat'] ?? null)
+            && filled($rawRow['fiyat_normal'] ?? null)
+            && !$this->pricesAreEqual($this->toDecimal($rawRow['fiyat']), $this->toDecimal($rawRow['fiyat_normal']))
+        ) {
+            $normalized['price_policy_warning'] = true;
+        }
+
+        if (!$isVariantRow && blank($normalized['supplier_category_name'] ?? null)) {
+            $warnings[] = 'Kategori bekliyor.';
+        }
+        if ($isVariantRow && blank($normalized['variant_stock_code'] ?? null)) {
+            $warnings[] = $this->warningMessage('temporary_variant_code_generated');
+        }
+        if (blank($normalized['list_price'])) {
+            $warnings[] = 'Liste fiyatı eksik.';
+        }
+
+        return $normalized;
+    }
+
+    private function applyDisplayAttributeNormalization(array $normalized): array
+    {
+        $display = $normalized;
+        $originalAttributes = is_array($normalized['variant_attributes'] ?? null) ? $normalized['variant_attributes'] : [];
+
+        $display['original_variant_color'] = $normalized['variant_color'] ?? null;
+        $display['original_variant_size'] = $normalized['variant_size'] ?? $normalized['size'] ?? null;
+        $display['original_variant_attributes'] = $originalAttributes;
+
+        $displayColor = $this->attributeValueNormalizer->normalize('variant_color', $normalized['variant_color'] ?? null);
+        $displaySize = $this->attributeValueNormalizer->normalize('variant_size', $normalized['variant_size'] ?? $normalized['size'] ?? null);
+        $displayAttributes = $this->attributeValueNormalizer->normalizeAttributes($originalAttributes);
+
+        if (filled($displayColor)) {
+            $display['display_variant_color'] = $displayColor;
+            $display['variant_color'] = $displayColor;
+        }
+
+        if (filled($displaySize)) {
+            $display['display_size'] = $displaySize;
+            $display['variant_size'] = $displaySize;
+            $display['size'] = $displaySize;
+        }
+
+        if ($displayAttributes !== []) {
+            $display['display_variant_attributes'] = $displayAttributes;
+            $display['variant_attributes'] = $displayAttributes;
+        }
+
+        foreach (['measure', 'capacity', 'material', 'option_name'] as $field) {
+            $normalizedValue = $this->attributeValueNormalizer->normalize($field, $normalized[$field] ?? null);
+            if (filled($normalizedValue)) {
+                $display['display_' . $field] = $normalizedValue;
+                $display[$field] = $normalizedValue;
+            }
+        }
+
+        $display['variant_attributes'] = array_filter(array_merge(
+            is_array($display['variant_attributes'] ?? null) ? $display['variant_attributes'] : [],
+            [
+                'size' => $display['size'] ?? null,
+                'measure' => $display['display_measure'] ?? data_get($display, 'variant_attributes.measure'),
+                'capacity' => $display['display_capacity'] ?? data_get($display, 'variant_attributes.capacity'),
+                'material' => $display['display_material'] ?? data_get($display, 'variant_attributes.material'),
+                'option' => data_get($display, 'variant_attributes.option'),
+            ]
+        ), fn ($value) => !is_null($value) && $value !== '');
+
+        return $display;
+    }
+
+    private function resolvePozitronListPrice(array $rawRow, array $orderedFields, array &$warnings, string $scope): ?float
+    {
+        $resolved = null;
+        $resolvedField = null;
+        $resolvedValues = [];
+
+        foreach ($orderedFields as $field) {
+            $value = $this->toDecimal($rawRow[$field] ?? null);
+            if ($value !== null) {
+                $resolvedValues[$field] = $value;
+            }
+
+            if ($resolved === null && $value !== null) {
+                $resolved = $value;
+                $resolvedField = $field;
+            }
+        }
+
+        if (
+            isset($resolvedValues['fiyat'], $resolvedValues['fiyat_normal'])
+            && abs($resolvedValues['fiyat'] - $resolvedValues['fiyat_normal']) >= 0.01
+        ) {
+            $warnings[] = sprintf(
+                'Pozitron %s fiyat alanlarında fark var; %s liste fiyatı olarak kullanıldı.',
+                $scope === 'variant' ? 'varyant' : 'ürün',
+                $resolvedField ?? 'uygun alan'
+            );
+        }
+
+        return $resolved;
     }
 
     private function applyEtkinNormalization(array $rawRow, array $normalized, array &$warnings): array
@@ -1186,6 +1520,72 @@ class PreviewParserService
         return $url;
     }
 
+    private function normalizeSourceUrl(SupplierSource $source, mixed $value): ?string
+    {
+        if (!filled($value)) {
+            return null;
+        }
+
+        $url = trim((string) $value);
+        if ($url === '') {
+            return null;
+        }
+
+        if (preg_match('/^https?:\/\//i', $url)) {
+            return $url;
+        }
+
+        $base = $source->url ?? null;
+        if (!filled($base) || !preg_match('/^https?:\/\//i', (string) $base)) {
+            return $url;
+        }
+
+        $parts = parse_url((string) $base);
+        if (!is_array($parts) || blank($parts['scheme'] ?? null) || blank($parts['host'] ?? null)) {
+            return null;
+        }
+
+        $origin = ($parts['scheme'] ?? 'https') . '://' . $parts['host'];
+        if (filled($parts['port'] ?? null)) {
+            $origin .= ':' . $parts['port'];
+        }
+
+        if (str_starts_with($url, '/')) {
+            return $origin . $url;
+        }
+
+        $path = $parts['path'] ?? '/';
+        $directory = rtrim(str_replace('\\', '/', dirname($path)), '/');
+        $directory = $directory === '.' ? '' : $directory;
+
+        return $origin . ($directory !== '' ? $directory : '') . '/' . ltrim($url, '/');
+    }
+
+    private function effectiveProfileSettings(SupplierSource $source, string $profileKey): array
+    {
+        $profile = $this->fieldDictionary->getSupplierProfile($profileKey);
+        $config = (array) ($source->config ?? []);
+
+        if ($profileKey === 'CUSTOM') {
+            $profile['supplier_code_prefix'] = $config['supplier_prefix'] ?? $profile['supplier_code_prefix'] ?? $this->deriveFallbackPrefix($source);
+            $profile['generated_code_template'] = $config['generated_code_template'] ?? $profile['generated_code_template'] ?? '{PREFIX}-{SUPPLIER_PRODUCT_CODE}';
+            $profile['generated_variant_code_template'] = $config['generated_variant_code_template'] ?? $profile['generated_variant_code_template'] ?? '{PREFIX}-{VARIANT_STOCK_CODE}';
+            $profile['generated_name_template'] = $config['generated_name_template'] ?? $profile['generated_name_template'] ?? '{PRODUCT_NAME}';
+            $profile['product_model'] = $config['product_model'] ?? $profile['product_model'] ?? 'flat_single_row';
+            $profile['product_node_path'] = $config['product_node_path'] ?? $profile['product_node_path'] ?? null;
+        }
+
+        return $profile;
+    }
+
+    private function deriveFallbackPrefix(SupplierSource $source): string
+    {
+        $seed = $source->supplier?->code ?: $source->supplier?->name ?: $source->source_name;
+        $normalized = $this->productCodeNormalizer->normalizeCode((string) $seed);
+
+        return substr($normalized, 0, 2) ?: 'PD';
+    }
+
     private function buildVariantGalleryImages(?string $variantImage, array $productGalleryImages): array
     {
         return collect([$variantImage, ...$productGalleryImages])
@@ -1469,7 +1869,7 @@ class PreviewParserService
     private function firstFilledField(array $row, array $fields): ?string
     {
         foreach ($fields as $field) {
-            if (filled($row[$field] ?? null)) {
+            if (filled(data_get($row, $field))) {
                 return $field;
             }
         }

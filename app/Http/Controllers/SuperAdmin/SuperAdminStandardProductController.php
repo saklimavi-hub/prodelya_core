@@ -7,6 +7,8 @@ use App\Models\StandardCategory;
 use App\Models\StandardProduct;
 use App\Models\StandardProductVariant;
 use App\Models\TenantCatalogProduct;
+use App\Services\ProductDataHub\ProductAttributeValueNormalizer;
+use App\Services\ProductDataHub\SupplierWarningLabelService;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
@@ -14,6 +16,12 @@ use Illuminate\View\View;
 
 class SuperAdminStandardProductController extends Controller
 {
+    public function __construct(
+        private readonly SupplierWarningLabelService $supplierWarningLabelService,
+        private readonly ProductAttributeValueNormalizer $attributeValueNormalizer,
+    ) {
+    }
+
     public function index(Request $request): View
     {
         $limit = $this->normalizeLimit($request->string('limit')->toString() ?: '50');
@@ -199,7 +207,7 @@ class SuperAdminStandardProductController extends Controller
                     'clean' => $query->where(function ($query) {
                         $query->where('warning_flag', false)->orWhereNull('warning_flag');
                     }),
-                    'red_product' => $query->where('warning_flag', true),
+                    'red_product' => $query->where('meta->price_snapshot->supplier_warning_flag', true),
                     'net_price' => $query->where('meta->price_snapshot->net_price_warning', true),
                     default => null,
                 };
@@ -349,8 +357,11 @@ class SuperAdminStandardProductController extends Controller
                 'image_url' => $catalogVariant?->image_url ?: $variant->image_url ?: $product->image_url,
                 'variant_code' => $variant->generated_variant_code ?: $variant->variant_code,
                 'supplier_product_code' => data_get($variant->source_summary, 'variant_stock_code', data_get($variant->source_summary, 'supplier_product_code')),
-                'color' => $variant->variant_color,
-                'measure' => $variant->variant_size ?: data_get($variant->variant_attributes, 'measure') ?: data_get($variant->variant_attributes, 'capacity'),
+                'color' => $this->attributeValueNormalizer->normalizeDisplayValue($variant->variant_color, 'variant_color'),
+                'measure' => $this->attributeValueNormalizer->normalizeDisplayValue($variant->variant_size, 'variant_size')
+                    ?: $this->attributeValueNormalizer->normalizeDisplayValue(data_get($variant->variant_attributes, 'measure'), 'measure')
+                    ?: $this->attributeValueNormalizer->normalizeDisplayValue(data_get($variant->variant_attributes, 'capacity'), 'capacity')
+                    ?: $this->attributeValueNormalizer->normalizeDisplayValue(data_get($variant->variant_attributes, 'material'), 'material'),
                 'stock' => (float) ($catalogVariant?->stock_quantity ?? $variant->stock_quantity ?? 0),
                 'list_price' => $catalogVariant?->display_price ?? $variant->min_purchase_price ?? $product->min_purchase_price,
                 'vat_rate' => data_get($catalogVariant?->meta, 'price_snapshot.vat_rate', data_get($variant->meta, 'price_snapshot.vat_rate', $product->vat_rate)),
@@ -442,18 +453,16 @@ class SuperAdminStandardProductController extends Controller
     {
         $tags = [];
         $meta = (array) ($product->meta ?? []);
-
-        if ((bool) ($product->warning_flag ?? false) || (bool) data_get($meta, 'supplier_warning_flag')) {
-            $tags[] = 'red_product';
-        }
-
-        if ((bool) data_get($meta, 'price_policy_warning')) {
-            $tags[] = 'amber_product';
-        }
-
-        if ((bool) data_get($meta, 'net_price_warning') || (string) data_get($meta, 'pricing_policy_type') === 'net_price') {
-            $tags[] = 'net_price';
-        }
+        $supplierName = $parent?->supplier?->name
+            ?? ($product instanceof StandardProduct ? $product->supplier?->name : null)
+            ?? data_get($parent?->source_summary, '0.supplier_name')
+            ?? data_get($product->source_summary, '0.supplier_name');
+        $tags = array_merge($tags, $this->supplierWarningLabelService->supplierSpecificTags($supplierName, [
+            'net_price_warning' => (bool) data_get($meta, 'net_price_warning'),
+            'pricing_policy_type' => data_get($meta, 'pricing_policy_type'),
+            'supplier_warning_flag' => (bool) data_get($meta, 'supplier_warning_flag'),
+            'supplier_warning_type' => data_get($meta, 'supplier_warning_type'),
+        ]));
 
         if ($parent && blank($parent->standard_category_id)) {
             $tags[] = 'category_missing';
@@ -461,6 +470,19 @@ class SuperAdminStandardProductController extends Controller
 
         if ($catalog && (string) ($catalog->catalog_status ?? '') === 'blocked') {
             $tags[] = 'projection_blocked';
+        }
+
+        if ($parent && $product instanceof StandardProductVariant) {
+            $parentPrice = $parent->min_purchase_price;
+            $variantPrice = $product->min_purchase_price;
+
+            if ($parentPrice !== null && $variantPrice !== null && abs((float) $parentPrice - (float) $variantPrice) > 0.0001) {
+                $tags[] = 'variant_price_stale';
+            }
+
+            if ($catalog && $catalog->display_price !== null && $variantPrice !== null && abs((float) $catalog->display_price - (float) $variantPrice) > 0.0001) {
+                $tags[] = 'variant_projection_lag';
+            }
         }
 
         return array_values(array_unique(array_filter($tags)));

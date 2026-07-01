@@ -2,10 +2,13 @@
 
 namespace App\Services\Notifications;
 
+use App\Models\NotificationLog;
+use App\Models\NotificationTemplate;
 use App\Models\TenantAccount;
 use App\Models\TenantSetting;
 use App\Models\User;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Str;
 
 class TenantNotificationSettingsService
 {
@@ -133,6 +136,87 @@ class TenantNotificationSettingsService
         return $this->getWhatsappConfig($tenant);
     }
 
+    public function readinessSummary(TenantAccount $tenant): array
+    {
+        $smtp = $this->getSmtpConfig($tenant);
+        $whatsapp = $this->getWhatsappConfig($tenant);
+        $smtpLastLog = NotificationLog::query()
+            ->forTenant($tenant->id)
+            ->where('notification_key', 'smtp_test_mail')
+            ->latest()
+            ->first();
+        $lastNotificationLog = NotificationLog::query()
+            ->forTenant($tenant->id)
+            ->latest()
+            ->first();
+        $templateCount = NotificationTemplate::query()
+            ->where(function ($query) use ($tenant): void {
+                $query->where('tenant_account_id', $tenant->id)
+                    ->orWhereNull('tenant_account_id');
+            })
+            ->count();
+        $failedLogCount = NotificationLog::query()
+            ->forTenant($tenant->id)
+            ->where('status', NotificationLog::STATUS_FAILED)
+            ->count();
+        $totalLogCount = NotificationLog::query()
+            ->forTenant($tenant->id)
+            ->count();
+
+        $smtpConfigured = filled($smtp['host'] ?? null)
+            || filled($smtp['from_email'] ?? null)
+            || filled($smtp['username'] ?? null);
+        $smtpReady = (bool) ($smtp['is_active'] ?? false)
+            && filled($smtp['host'] ?? null)
+            && filled($smtp['from_email'] ?? null);
+        $whatsappConfigured = filled($whatsapp['sender_label'] ?? null)
+            || filled($whatsapp['test_phone'] ?? null)
+            || filled($whatsapp['default_signature'] ?? null);
+        $whatsappReady = (bool) ($whatsapp['is_active'] ?? false)
+            && filled($whatsapp['test_phone'] ?? null);
+
+        return [
+            'smtp' => [
+                'status_label' => $smtpReady ? 'Hazır' : ($smtpConfigured ? 'Kontrol Edilmeli' : ((bool) ($smtp['is_active'] ?? false) ? 'Eksik' : 'Pasif')),
+                'is_ready' => $smtpReady,
+                'is_active' => (bool) ($smtp['is_active'] ?? false),
+                'host' => $smtp['host'] ?: 'Tanımlı değil',
+                'port' => $smtp['port'] ?: 'Tanımlı değil',
+                'username_masked' => $this->maskCredential((string) ($smtp['username'] ?? '')),
+                'password_configured' => filled($smtp['password'] ?? null),
+                'from_name' => $smtp['from_name'] ?: 'Tanımlı değil',
+                'from_email' => $smtp['from_email'] ?: 'Tanımlı değil',
+                'reply_to_email' => $smtp['reply_to_email'] ?: 'Tanımlı değil',
+                'test_email' => $smtp['test_email'] ?: 'Tanımlı değil',
+                'last_test_at' => $smtpLastLog?->created_at?->format('d.m.Y H:i') ?: 'Henüz test yok',
+                'last_test_status' => $smtpLastLog?->safeStatusLabel() ?: 'Henüz test yok',
+                'last_test_note' => $smtpLastLog?->safeDisplayError()
+                    ?: ($smtpLastLog?->safeDisplayPreview() ?: 'Bu fazda gerçek gönderim yerine güvenli önizleme/log davranışı kullanılır.'),
+            ],
+            'whatsapp' => [
+                'status_label' => $whatsappReady ? 'Hazır' : ($whatsappConfigured ? 'Kontrol Edilmeli' : ((bool) ($whatsapp['is_active'] ?? false) ? 'Eksik' : 'Pasif')),
+                'is_ready' => $whatsappReady,
+                'is_active' => (bool) ($whatsapp['is_active'] ?? false),
+                'country_code' => '+' . ltrim((string) ($whatsapp['default_country_code'] ?? '90'), '+'),
+                'sender_label' => $whatsapp['sender_label'] ?: 'Tanımlı değil',
+                'test_phone_masked' => $this->maskPhone((string) ($whatsapp['test_phone'] ?? '')),
+                'signature_ready' => filled($whatsapp['default_signature'] ?? null),
+                'api_note' => 'Gerçek WhatsApp Business API entegrasyonu sonraki faz.',
+            ],
+            'templates' => [
+                'status_label' => $templateCount > 0 ? 'Hazır' : 'Kontrol Edilmeli',
+                'count' => $templateCount,
+            ],
+            'logs' => [
+                'status_label' => $totalLogCount > 0 ? 'Hazır' : 'Veri yok',
+                'count' => $totalLogCount,
+                'failed_count' => $failedLogCount,
+                'last_log_at' => $lastNotificationLog?->created_at?->format('d.m.Y H:i') ?: 'Veri yok',
+                'last_log_status' => $lastNotificationLog?->safeStatusLabel() ?: 'Veri yok',
+            ],
+        ];
+    }
+
     public function getSmtpConfig(TenantAccount $tenant): array
     {
         $settings = $this->getSettings($tenant);
@@ -224,6 +308,53 @@ class TenantNotificationSettingsService
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    private function maskCredential(string $value): string
+    {
+        $trimmed = trim($value);
+
+        if ($trimmed === '') {
+            return 'Tanımlı değil';
+        }
+
+        if (filter_var($trimmed, FILTER_VALIDATE_EMAIL)) {
+            [$local, $domain] = array_pad(explode('@', $trimmed, 2), 2, '');
+
+            return $this->maskText($local) . '@' . $this->maskText($domain);
+        }
+
+        return $this->maskText($trimmed);
+    }
+
+    private function maskPhone(string $value): string
+    {
+        $digits = preg_replace('/\D+/', '', $value) ?: '';
+
+        if ($digits === '') {
+            return 'Tanımlı değil';
+        }
+
+        if (strlen($digits) <= 4) {
+            return str_repeat('*', strlen($digits));
+        }
+
+        return substr($digits, 0, 3) . str_repeat('*', max(strlen($digits) - 5, 1)) . substr($digits, -2);
+    }
+
+    private function maskText(string $value): string
+    {
+        $trimmed = trim($value);
+
+        if ($trimmed === '') {
+            return 'Tanımlı değil';
+        }
+
+        if (Str::length($trimmed) <= 2) {
+            return Str::substr($trimmed, 0, 1) . '*';
+        }
+
+        return Str::substr($trimmed, 0, 2) . str_repeat('*', max(Str::length($trimmed) - 3, 1)) . Str::substr($trimmed, -1);
     }
 
     private function defaults(): array

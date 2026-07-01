@@ -137,10 +137,10 @@ class PermanentCategoryBackboneLockTest extends TestCase
 
         $this->getOnCentralHost('/admin/super-admin/product-data-hub')
             ->assertOk()
-            ->assertSeeText('Kategori Reset Durumu')
-            ->assertSeeText('Kalıcı kategori')
-            ->assertSeeText('Arşiv kategori')
-            ->assertSeeText('Yeniden eşleme');
+            ->assertSeeText('Kategori Bekleyen')
+            ->assertSeeText('Kontrol Bekleyen Ürün')
+            ->assertSeeText('Abone Katalog Yayını Bekleyen')
+            ->assertSeeText('Kategori Bekleyenleri Aç');
     }
 
     private function permanentCategory(string $code, string $name): StandardCategory

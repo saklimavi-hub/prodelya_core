@@ -85,7 +85,7 @@
     </div>
 </section>
 
-<div class="pd-grid pd-grid-5 mb-6">
+<div class="pd-mini-kpi-strip mb-6">
     <div class="pd-profile-metric">
         <div class="pd-stat-icon pd-profile-metric-icon pd-profile-metric-icon-blue">{{ $profileCount }}</div>
         <div>
@@ -126,7 +126,7 @@
 <section class="pd-card">
     <div class="pd-card-header">
         <h3 class="pd-card-title">Standart Veri Akışı</h3>
-        <p class="pd-card-subtitle">Kategori eşleme ve tenant katalog projeksiyonu öncesi kontrol adımları.</p>
+        <p class="pd-card-subtitle">Kategori eşleme ve Abone Firma kataloğuna yansıtma öncesi kontrol adımları.</p>
     </div>
     <div class="pd-card-body">
         <div class="pd-profile-flow">
@@ -152,7 +152,7 @@
             </div>
             <div class="pd-profile-flow-step">
                 <div class="pd-profile-flow-no">5</div>
-                <strong>Tenant Katalog</strong>
+                <strong>Abone Firma Kataloğu</strong>
                 <div class="pd-card-subtitle">Satışa hazır görünüm</div>
             </div>
         </div>
@@ -408,7 +408,7 @@
         </div>
 
         <div class="pd-note mt-3">
-            Bir sonraki adımda tedarikçi kategori adları Prodelya Standart Kategori Ağacı’na bağlanacak. Tenant katalog projeksiyonu bu eşlemeden sonra daha temiz çalışır.
+            Bir sonraki adımda tedarikçi kategori adları Prodelya Standart Kategori Ağacı’na bağlanacak. Abone Firma kataloğuna yansıtma bu eşlemeden sonra daha temiz çalışır.
         </div>
     </div>
 </section>
@@ -419,16 +419,16 @@
 @section('bottom_actions')
 <div>
     <strong>Sonraki adım:</strong>
-    <span class="pd-muted">Kategori eşlemeleri tamamlanıp Gelişmiş Ürün ve Katalog projeksiyonu güncellenecek.</span>
+    <span class="pd-muted">Kategori eşlemeleri tamamlanıp Abone Firma katalog yansıtması güncellenecek.</span>
 </div>
 <div class="pd-bottom-action-buttons">
     <a href="{{ $sourcesRoute }}" class="pd-btn pd-btn-light {{ $sourcesRoute === '#' ? 'pd-btn-disabled' : '' }}">Global Kaynaklar</a>
     <a href="{{ $fieldMappingRoute }}" class="pd-btn pd-btn-light {{ $fieldMappingRoute === '#' ? 'pd-btn-disabled' : '' }}">Alan Eşleme</a>
     <a href="{{ $categoryRoute }}" class="pd-btn pd-btn-warning {{ $categoryRoute === '#' ? 'pd-btn-disabled' : '' }}">Kategori Eşleme</a>
     @if($catalogProjectionRoute)
-        <a href="{{ $catalogProjectionRoute }}" class="pd-btn pd-btn-primary">Katalog Projeksiyonunu Güncelle</a>
+        <a href="{{ $catalogProjectionRoute }}" class="pd-btn pd-btn-primary">Abone Katalog Güncelle</a>
     @else
-        <span class="pd-btn pd-btn-primary pd-btn-disabled">Katalog Projeksiyonunu Güncelle</span>
+        <span class="pd-btn pd-btn-primary pd-btn-disabled">Abone Katalog Güncelle</span>
     @endif
 </div>
 @endsection
@@ -463,7 +463,7 @@
             </div>
         </div>
 
-        <div class="pd-side-note">Bu ekran kategori eşleme ve Gelişmiş Ürün ve Katalog sunumu öncesi kontrol amaçlıdır.</div>
+        <div class="pd-side-note">Bu ekran kategori eşleme ve Abone Firma kataloğuna yansıtma öncesi kontrol amaçlıdır.</div>
     </div>
 </div>
 @endsection

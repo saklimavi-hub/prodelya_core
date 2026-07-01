@@ -279,19 +279,38 @@ class TenantAccessService
     {
         $tenant->loadMissing('modules');
 
-        return $tenant->modules->first(function (TenantModule $module) use ($featureKey, $moduleKey) {
-            if (blank($module->feature_key)) {
-                return false;
-            }
+        return $tenant->modules
+            ->filter(function (TenantModule $module) use ($featureKey, $moduleKey) {
+                if (blank($module->feature_key)) {
+                    return false;
+                }
 
-            $normalizedFeatureKey = $this->normalizeFeatureKey((string) $module->feature_key);
-            $normalizedModuleKey = filled($module->module_key)
-                ? $this->normalizeModuleKey((string) $module->module_key)
-                : null;
+                $normalizedFeatureKey = $this->normalizeFeatureKey((string) $module->feature_key);
+                $normalizedModuleKey = filled($module->module_key)
+                    ? $this->normalizeModuleKey((string) $module->module_key)
+                    : null;
 
-            return $normalizedFeatureKey === $featureKey
-                && ($moduleKey === null || $normalizedModuleKey === $moduleKey);
-        });
+                return $normalizedFeatureKey === $featureKey
+                    && ($moduleKey === null || $normalizedModuleKey === $moduleKey);
+            })
+            ->sortByDesc(function (TenantModule $module) use ($featureKey, $moduleKey) {
+                $score = 0;
+
+                if ((string) $module->feature_key === $featureKey) {
+                    $score += 8;
+                }
+
+                if ($moduleKey !== null && (string) $module->module_key === $moduleKey) {
+                    $score += 4;
+                }
+
+                if ((bool) $module->is_enabled) {
+                    $score += 2;
+                }
+
+                return $score * 100000 + (int) $module->id;
+            })
+            ->first();
     }
 
     private function resolveModuleKeyForFeature(string $featureKey): ?string

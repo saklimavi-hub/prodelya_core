@@ -5,6 +5,10 @@ namespace App\Services\TenantCatalog;
 use App\Models\Supplier;
 use App\Models\TenantAccount;
 use App\Models\TenantCatalogProduct;
+use App\Models\TenantCatalogProductVariant;
+use App\Services\ProductDataHub\ProductHubSellableTruthService;
+use App\Services\ProductDataHub\ProductAttributeValueNormalizer;
+use App\Services\ProductDataHub\SupplierWarningLabelService;
 use App\Support\ProductDisplayNameFormatter;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Query\Builder;
@@ -16,6 +20,13 @@ use Illuminate\Support\Str;
 
 class TenantCatalogListRowQueryService
 {
+    public function __construct(
+        private readonly SupplierWarningLabelService $supplierWarningLabelService,
+        private readonly ProductAttributeValueNormalizer $attributeValueNormalizer,
+        private readonly ProductHubSellableTruthService $sellableTruthService,
+    ) {
+    }
+
     public function paginate(TenantAccount $tenant, array $filters, Request $request, string $pageName = 'products'): LengthAwarePaginator
     {
         $limit = $filters['limit'] ?? 50;
@@ -72,7 +83,7 @@ class TenantCatalogListRowQueryService
     public function metrics(TenantAccount $tenant): array
     {
         $effectiveStockSql = $this->effectiveStockSql();
-        $warningSql = "display_price IS NULL OR image_url IS NULL OR standard_category_id IS NULL OR {$effectiveStockSql} <= 0 OR meta_json LIKE '%warning%' OR meta_json LIKE '%net_price%' OR meta_json LIKE '%supplier_warning%'";
+        $warningSql = $this->attentionSql('meta_json', 'standard_category_id', 'display_price', $effectiveStockSql);
         $row = DB::query()
             ->fromSub($this->baseRowsQuery($tenant), 'catalog_rows')
             ->selectRaw("
@@ -83,6 +94,9 @@ class TenantCatalogListRowQueryService
                 SUM(CASE WHEN display_price IS NULL THEN 1 ELSE 0 END) as missing_price_total,
                 SUM(CASE WHEN {$warningSql} THEN 1 ELSE 0 END) as warning_total,
                 SUM(CASE WHEN visible_in_catalog = 1 THEN 1 ELSE 0 END) as visible_total,
+                SUM(CASE WHEN visible_in_catalog = 1 AND is_active = 1 THEN 1 ELSE 0 END) as active_visible_total,
+                SUM(CASE WHEN visible_in_catalog = 1 AND is_active = 1 AND visible_in_quote = 1 THEN 1 ELSE 0 END) as active_quote_visible_total,
+                SUM(CASE WHEN visible_in_catalog = 1 AND is_active = 1 AND {$warningSql} THEN 1 ELSE 0 END) as visible_warning_total,
                 SUM(CASE WHEN visible_in_catalog = 0 THEN 1 ELSE 0 END) as hidden_total,
                 SUM(CASE WHEN local_stock_quantity > 0 THEN 1 ELSE 0 END) as local_stock_priority_total
             ")
@@ -101,6 +115,9 @@ class TenantCatalogListRowQueryService
             'missing_price' => (int) ($row->missing_price_total ?? 0),
             'warning' => (int) ($row->warning_total ?? 0),
             'visible' => (int) ($row->visible_total ?? 0),
+            'active_visible' => (int) ($row->active_visible_total ?? 0),
+            'quote_visible' => (int) ($row->active_quote_visible_total ?? 0),
+            'visible_warning' => (int) ($row->visible_warning_total ?? 0),
             'hidden' => (int) ($row->hidden_total ?? 0),
         ];
 
@@ -108,6 +125,9 @@ class TenantCatalogListRowQueryService
             'stats' => $stats,
             'summary' => [
                 'total_products' => $stats['total'],
+                'visible_catalog_rows' => $stats['active_visible'],
+                'quote_visible_rows' => $stats['quote_visible'],
+                'attention_rows' => $stats['visible_warning'],
                 'local_stock_priority' => (int) ($row->local_stock_priority_total ?? 0),
                 'supplier_products' => $stats['supplier'],
                 'missing_price' => $stats['missing_price'],
@@ -293,11 +313,11 @@ class TenantCatalogListRowQueryService
         }
 
         if ($warningState === 'red_product') {
-            $query->where('meta_json', 'like', '%supplier_warning_flag%');
+            $query->whereRaw($this->jsonTrueSql('meta_json', 'supplier_warning_flag'));
         }
 
         if ($warningState === 'net_price') {
-            $query->where('meta_json', 'like', '%net_price_warning%');
+            $query->whereRaw($this->jsonTrueSql('meta_json', 'net_price_warning'));
         }
 
         return $query;
@@ -409,6 +429,8 @@ class TenantCatalogListRowQueryService
             CASE WHEN tcp.catalog_source = 'local_product' THEN 'local_product' WHEN COALESCE(tcp.local_stock_quantity, 0) > 0 THEN 'local_stocked_supplier_product' ELSE 'supplier_flat' END as row_type,
             tcp.id as id,
             tcp.id as tenant_catalog_product_id,
+            tcp.standard_product_id as standard_product_id,
+            NULL as standard_product_variant_id,
             NULL as tenant_catalog_product_variant_id,
             sp.supplier_id as supplier_id,
             NULL as supplier_source_id,
@@ -447,6 +469,8 @@ class TenantCatalogListRowQueryService
             'supplier_variant' as row_type,
             tcp.id as id,
             tcp.id as tenant_catalog_product_id,
+            tcp.standard_product_id as standard_product_id,
+            tcpv.standard_product_variant_id as standard_product_variant_id,
             tcpv.id as tenant_catalog_product_variant_id,
             sp.supplier_id as supplier_id,
             NULL as supplier_source_id,
@@ -462,7 +486,11 @@ class TenantCatalogListRowQueryService
             COALESCE(tcpv.display_price, tcp.display_price) as display_price,
             COALESCE(tcpv.currency, tcp.currency) as currency,
             tcpv.visible_in_catalog as visible_in_catalog,
-            tcp.visible_in_quote as visible_in_quote,
+            CASE
+                WHEN COALESCE(tcpv.meta, '') LIKE '%\"quote_search_visible\":true%' OR COALESCE(tcpv.meta, '') LIKE '%\"quote_search_visible\": true%' THEN 1
+                WHEN COALESCE(tcpv.meta, '') LIKE '%\"quote_search_visible\":false%' OR COALESCE(tcpv.meta, '') LIKE '%\"quote_search_visible\": false%' THEN 0
+                ELSE tcp.visible_in_quote
+            END as visible_in_quote,
             tcp.catalog_status as catalog_status,
             tcpv.is_active as is_active,
             tcp.local_stock_priority as local_stock_priority,
@@ -484,16 +512,31 @@ class TenantCatalogListRowQueryService
         return $rows->map(function (object $row) {
             $sourceSummary = $this->decodeJson($row->source_summary_json);
             $meta = $this->decodeJson($row->meta_json);
-            $displayName = $row->row_type === 'supplier_variant'
+            $isVariantRow = $row->row_type === 'supplier_variant';
+            $isParentRow = !$isVariantRow && ((bool) data_get($meta, 'is_parent', false) || data_get($meta, 'is_sellable') === false);
+            $isSellableRow = $isVariantRow || !$isParentRow;
+            $resolvedVisibleInQuote = $this->resolveRowVisibleInQuote($row, $meta, $isVariantRow, $isParentRow);
+            $displayVariantColor = $this->attributeValueNormalizer->normalizeDisplayValue($row->variant_color ?? data_get($meta, 'variant_color'), 'variant_color');
+            $displayVariantSize = $this->attributeValueNormalizer->normalizeDisplayValue($row->variant_size ?? data_get($meta, 'variant_size'), 'variant_size');
+            $displayVariantAttributes = array_merge(
+                (array) data_get($meta, 'variant_attributes', []),
+                array_filter([
+                    'measure' => $this->attributeValueNormalizer->normalizeDisplayValue(data_get($meta, 'variant_attributes.measure'), 'measure'),
+                    'capacity' => $this->attributeValueNormalizer->normalizeDisplayValue(data_get($meta, 'variant_attributes.capacity'), 'capacity'),
+                    'material' => $this->attributeValueNormalizer->normalizeDisplayValue(data_get($meta, 'variant_attributes.material'), 'material'),
+                    'option' => $this->attributeValueNormalizer->normalizeDisplayValue(data_get($meta, 'variant_attributes.option'), 'option'),
+                ], fn ($value) => filled($value))
+            );
+            $displayName = $isVariantRow
                 ? ProductDisplayNameFormatter::variant(
                     $row->product_code,
                     data_get($meta, 'parent_product_name') ?: $row->product_name,
                     data_get($meta, 'variant_name') ?: $row->product_name,
-                    data_get($meta, 'variant_color'),
-                    data_get($meta, 'variant_size'),
-                    data_get($meta, 'variant_attributes.measure'),
-                    data_get($meta, 'variant_attributes.capacity'),
-                    data_get($meta, 'variant_attributes.option'),
+                    $displayVariantColor,
+                    $displayVariantSize,
+                    data_get($displayVariantAttributes, 'measure'),
+                    data_get($displayVariantAttributes, 'capacity'),
+                    data_get($displayVariantAttributes, 'option'),
                     [
                         data_get($sourceSummary, 'supplier_group_code'),
                         data_get($sourceSummary, 'supplier_product_code'),
@@ -519,7 +562,7 @@ class TenantCatalogListRowQueryService
                 'display_price' => $row->display_price,
                 'currency' => $row->currency ?: 'TL',
                 'visible_in_catalog' => (bool) $row->visible_in_catalog,
-                'visible_in_quote' => (bool) $row->visible_in_quote,
+                'visible_in_quote' => $resolvedVisibleInQuote,
                 'catalog_status' => $row->catalog_status,
                 'catalog_source' => $row->catalog_source,
                 'is_active' => (bool) $row->is_active,
@@ -531,11 +574,12 @@ class TenantCatalogListRowQueryService
                 'source_summary' => json_encode($sourceSummary, JSON_UNESCAPED_UNICODE),
                 'meta' => json_encode(array_merge($meta, [
                     'standard_category_name' => $row->category_name,
-                    'is_parent' => false,
-                    'is_sellable' => true,
-                    'variant_color' => $row->variant_color,
-                    'variant_size' => $row->variant_size,
-                    'variant_attributes' => data_get($meta, 'variant_attributes', []),
+                    'is_parent' => $isParentRow,
+                    'is_variant' => $isVariantRow,
+                    'is_sellable' => $isSellableRow,
+                    'variant_color' => $displayVariantColor,
+                    'variant_size' => $displayVariantSize,
+                    'variant_attributes' => $displayVariantAttributes,
                 ]), JSON_UNESCAPED_UNICODE),
             ], true);
             $product->exists = true;
@@ -544,17 +588,100 @@ class TenantCatalogListRowQueryService
             $product->setRelation('primaryImage', null);
             $product->setRelation('images', collect());
             $product->setRelation('variants', collect());
-            $product->setAttribute('catalog_row_type', $row->row_type === 'supplier_variant' ? 'variant' : 'flat');
+
+            $variant = null;
+            if ($isVariantRow) {
+                $variant = new TenantCatalogProductVariant();
+                $variant->setRawAttributes([
+                    'id' => (int) $row->tenant_catalog_product_variant_id,
+                    'tenant_account_id' => 0,
+                    'tenant_catalog_product_id' => (int) $row->tenant_catalog_product_id,
+                    'standard_product_variant_id' => $row->standard_product_variant_id ? (int) $row->standard_product_variant_id : null,
+                    'variant_code' => $row->product_code,
+                    'variant_name' => $displayName,
+                    'variant_color' => $displayVariantColor,
+                    'variant_size' => $displayVariantSize,
+                    'image_url' => $row->image_url,
+                    'display_price' => $row->display_price,
+                    'currency' => $row->currency ?: 'TL',
+                    'stock_quantity' => (float) ($row->supplier_stock_quantity ?? 0),
+                    'local_stock_quantity' => (float) ($row->local_stock_quantity ?? 0),
+                    'supplier_stock_quantity' => (float) ($row->supplier_stock_quantity ?? 0),
+                    'visible_in_catalog' => (bool) $row->visible_in_catalog,
+                    'is_active' => (bool) $row->is_active,
+                    'source_summary' => json_encode($sourceSummary, JSON_UNESCAPED_UNICODE),
+                    'meta' => json_encode($meta, JSON_UNESCAPED_UNICODE),
+                ], true);
+                $variant->exists = true;
+                $variant->setRelation('catalogProduct', $product);
+            }
+
+            $sellableTruth = $this->sellableTruthService->resolve($product, $variant);
+            if ($sellableTruth['effective_price'] !== null) {
+                $product->setAttribute('display_price', $sellableTruth['effective_price']);
+            }
+
+            $product->setAttribute('catalog_row_type', $isVariantRow ? 'variant' : ($isParentRow ? 'parent' : 'flat'));
             $product->setAttribute('catalog_row_variant_id', $row->tenant_catalog_product_variant_id ? (int) $row->tenant_catalog_product_variant_id : null);
             $product->setAttribute('catalog_source_label', $row->catalog_source === 'local_product' ? 'Local Ürün' : 'Tedarikçi Ürünü');
-            $product->setAttribute('effective_stock_quantity', $this->effectiveStock((float) $row->local_stock_quantity, (float) $row->supplier_stock_quantity, (bool) $row->local_stock_priority));
+            $product->setAttribute('effective_stock_quantity', $sellableTruth['effective_stock']);
             $product->setAttribute('has_local_stock_priority', (bool) $row->local_stock_priority && (float) $row->local_stock_quantity > 0);
             $product->setAttribute('warning_items', $this->warningsForRow($row, $meta));
             $product->setAttribute('supplier_label', $row->supplier_name ?: 'Tedarikçi');
             $product->setAttribute('local_stock_action_available', true);
+            $product->setAttribute('catalog_row_role_label', $isVariantRow ? 'Satılabilir varyant' : ($isParentRow ? 'Grup ürün' : 'Satılabilir ürün'));
+            $product->setAttribute('quote_visibility_label', $this->quoteVisibilityLabel($isVariantRow, $isParentRow, $resolvedVisibleInQuote));
+            $product->setAttribute('quote_visibility_hint', $isParentRow ? 'Varyanttan seçilir' : null);
+            $product->setAttribute('quote_visibility_badge_class', $this->quoteVisibilityBadgeClass($isVariantRow, $isParentRow, $resolvedVisibleInQuote));
+            $product->setAttribute('quote_toggle_available', !$isVariantRow && !$isParentRow);
+            $product->setAttribute('quote_toggle_action_label', $resolvedVisibleInQuote ? 'Teklifte Kapat' : 'Teklifte Kullan');
+            $product->setAttribute('sellable_truth', $sellableTruth);
 
             return $product;
         });
+    }
+
+    private function resolveRowVisibleInQuote(object $row, array $meta, bool $isVariantRow, bool $isParentRow): bool
+    {
+        if ($isVariantRow) {
+            if (array_key_exists('quote_search_visible', $meta)) {
+                return (bool) $meta['quote_search_visible'];
+            }
+
+            return (bool) $row->visible_in_quote;
+        }
+
+        if ($isParentRow) {
+            return false;
+        }
+
+        return (bool) $row->visible_in_quote;
+    }
+
+    private function quoteVisibilityLabel(bool $isVariantRow, bool $isParentRow, bool $visibleInQuote): string
+    {
+        if ($isParentRow) {
+            return 'Grup ürün';
+        }
+
+        if ($isVariantRow) {
+            return $visibleInQuote ? 'Teklifte kullanılabilir' : 'Teklifte kapalı';
+        }
+
+        return $visibleInQuote ? 'Teklifte kullanılabilir' : 'Teklifte kapalı';
+    }
+
+    private function quoteVisibilityBadgeClass(bool $isVariantRow, bool $isParentRow, bool $visibleInQuote): string
+    {
+        if ($isParentRow) {
+            return 'light';
+        }
+
+        if ($isVariantRow) {
+            return $visibleInQuote ? 'blue' : 'gray';
+        }
+
+        return $visibleInQuote ? 'blue' : 'gray';
     }
 
     private function effectiveStock(float $localStock, float $supplierStock, bool $localPriority): float
@@ -572,6 +699,13 @@ class TenantCatalogListRowQueryService
             (array) data_get($meta, 'warning_snapshot', []),
             (array) data_get($meta, 'warnings', [])
         ));
+        $supplierName = $row->supplier_name ?: data_get($meta, 'supplier_name');
+        $warnings = $warnings->merge($this->supplierWarningLabelService->supplierSpecificBadges($supplierName, [
+            'net_price_warning' => (bool) data_get($meta, 'net_price_warning', data_get($meta, 'price_snapshot.net_price_warning', false)),
+            'pricing_policy_type' => data_get($meta, 'pricing_policy_type', data_get($meta, 'price_snapshot.pricing_policy_type')),
+            'supplier_warning_flag' => (bool) data_get($meta, 'supplier_warning_flag', data_get($meta, 'price_snapshot.supplier_warning_flag', false)),
+            'supplier_warning_type' => data_get($meta, 'supplier_warning_type', data_get($meta, 'price_snapshot.supplier_warning_type')),
+        ]));
 
         if (blank($row->display_price)) {
             $warnings->push('Fiyat eksik');
@@ -592,14 +726,6 @@ class TenantCatalogListRowQueryService
             $warnings->push('Stok yok');
         }
 
-        if ((bool) data_get($meta, 'net_price_warning', data_get($meta, 'price_snapshot.net_price_warning', false))) {
-            $warnings->push('Net fiyat uyarısı');
-        }
-
-        if ((bool) data_get($meta, 'supplier_warning_flag', data_get($meta, 'price_snapshot.supplier_warning_flag', false))) {
-            $warnings->push('Tedarikçi özel fiyat uyarısı');
-        }
-
         return $warnings->filter()->unique()->values()->all();
     }
 
@@ -612,28 +738,55 @@ class TenantCatalogListRowQueryService
             'Kategori eksik' => 'Standart kategori eşlemesi tamamlanmamış.',
             'Stok yok' => 'Local veya tedarikçi stok bilgisi satış için yetersiz.',
             'Net fiyat uyarısı' => 'Bu ürün net/sabit fiyatlı olabilir; iskonto kontrolü gerekli.',
-            'Tedarikçi özel fiyat uyarısı' => 'Tedarikçi özel fiyat veya kırmızı ürün uyarısı gönderiyor.',
+            'Kırmızı Ürün' => 'Bu ürün Etkin kaynağında kırmızı ürün olarak işaretlenmiş.',
+            'Turuncu Ürün' => 'Bu ürün Yeni Nesil kaynağında turuncu ürün olarak işaretlenmiş.',
             default => 'Ürün için kontrol öneriliyor.',
         };
     }
 
     private function applyWarningWhere(Builder $query): void
     {
-        $query
-            ->whereNull('display_price')
-            ->orWhereNull('image_url')
-            ->orWhereNull('standard_category_id')
-            ->orWhere('meta_json', 'like', '%category_missing%')
-            ->orWhere('meta_json', 'like', '%PROMO-ESLENMEMIS-KATEGORI-BEKLEYEN%')
-            ->orWhereRaw($this->effectiveStockSql() . ' <= 0')
-            ->orWhere('meta_json', 'like', '%warning%')
-            ->orWhere('meta_json', 'like', '%net_price%')
-            ->orWhere('meta_json', 'like', '%supplier_warning%');
+        $query->whereRaw($this->attentionSql('meta_json', 'standard_category_id', 'display_price', $this->effectiveStockSql()));
     }
 
     private function effectiveStockSql(): string
     {
         return "CASE WHEN COALESCE(local_stock_priority, 1) = 1 AND COALESCE(local_stock_quantity, 0) > 0 THEN COALESCE(local_stock_quantity, 0) WHEN COALESCE(supplier_stock_quantity, 0) > 0 THEN COALESCE(supplier_stock_quantity, 0) ELSE COALESCE(local_stock_quantity, 0) END";
+    }
+
+    private function attentionSql(string $metaColumn, string $categoryColumn, string $priceColumn, string $effectiveStockSql): string
+    {
+        $flagSql = implode(' OR ', [
+            $this->jsonTrueSql($metaColumn, 'supplier_warning_flag'),
+            $this->jsonTrueSql($metaColumn, 'net_price_warning'),
+            $this->jsonTrueSql($metaColumn, 'warning_sellable'),
+            $this->jsonTrueSql($metaColumn, 'warning_flag'),
+            $this->jsonTrueSql($metaColumn, 'price_warning'),
+            $this->jsonTrueSql($metaColumn, 'stock_warning'),
+            $this->jsonTrueSql($metaColumn, 'review_flag'),
+            $this->jsonTrueSql($metaColumn, 'attention_flag'),
+        ]);
+
+        $categoryAttentionSql = implode(' OR ', [
+            "{$categoryColumn} IS NULL",
+            "(" . $this->jsonTrueSql($metaColumn, 'category_missing_warning') . " AND {$categoryColumn} IS NULL)",
+            "({$metaColumn} LIKE '%PROMO-ESLENMEMIS-KATEGORI-BEKLEYEN%' AND {$categoryColumn} IS NULL)",
+            "({$metaColumn} LIKE '%\"category_status\":\"unmapped\"%' AND {$categoryColumn} IS NULL)",
+            "({$metaColumn} LIKE '%\"category_status\": \"unmapped\"%' AND {$categoryColumn} IS NULL)",
+        ]);
+
+        return '(' . implode(' OR ', [
+            "{$priceColumn} IS NULL",
+            "image_url IS NULL",
+            $categoryAttentionSql,
+            $flagSql,
+            "{$effectiveStockSql} <= 0",
+        ]) . ')';
+    }
+
+    private function jsonTrueSql(string $column, string $key): string
+    {
+        return "({$column} LIKE '%\"{$key}\":true%' OR {$column} LIKE '%\"{$key}\": true%')";
     }
 
     private function orWhereJsonSupplierId(Builder $query, string $column, int $supplierId): void

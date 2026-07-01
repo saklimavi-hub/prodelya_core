@@ -127,9 +127,15 @@ class TenantSetting extends Model
             default => 'string',
         };
 
+        $storedValue = match ($type) {
+            'boolean' => $value ? '1' : '0',
+            'json', 'array' => json_encode($value),
+            default => (string) $value,
+        };
+
         return static::updateOrCreate(
             ['tenant_account_id' => $tenantId, 'key' => $key],
-            ['value' => $value, 'type' => $type]
+            ['value' => $storedValue, 'type' => $type]
         );
     }
 

@@ -112,6 +112,55 @@ class ProductDataHubUnmappedCategoryProjectionTest extends TestCase
         ]);
     }
 
+    public function test_category_conflict_warns_but_does_not_block_projection_price_and_quote_visibility(): void
+    {
+        $tenant = $this->tenant();
+        $source = $this->source('ETKIN', 'Etkin Promosyon');
+        $this->grantAccess($tenant, $source);
+        $product = $this->standardProduct($source, 'ET-CONFLICT-1', 'Etkin Conflict Ürün', 'Etkin / Kalem');
+
+        \App\Models\SupplierProductRaw::query()->create([
+            'supplier_id' => $source->supplier_id,
+            'supplier_source_id' => $source->id,
+            'standard_product_id' => $product->id,
+            'source_product_id' => 'ET-CONFLICT-1',
+            'supplier_product_code' => 'ET-CONFLICT-1',
+            'product_name' => 'Etkin Conflict Ürün',
+            'source_name' => 'Etkin Conflict Ürün',
+            'supplier_category_name' => 'Kalem',
+            'source_category' => 'Kalem',
+            'stock_quantity' => 32,
+            'source_stock' => 32,
+            'purchase_price' => 144.5,
+            'source_price' => 144.5,
+            'currency' => 'TL',
+            'source_currency' => 'TL',
+            'mapping_status' => 'conflict',
+            'normalized_payload' => [
+                'list_price' => 144.5,
+                'purchase_price' => 144.5,
+                'currency' => 'TL',
+            ],
+            'import_hash' => 'conflict-raw',
+            'sync_status' => 'processed',
+        ]);
+
+        app(TenantCatalogProjectionService::class)->projectForTenant($tenant, [
+            'standard_product_ids' => [$product->id],
+        ]);
+
+        $catalogProduct = TenantCatalogProduct::query()
+            ->where('tenant_account_id', $tenant->id)
+            ->where('standard_product_id', $product->id)
+            ->firstOrFail();
+
+        $this->assertSame('category_pending', $catalogProduct->catalog_status);
+        $this->assertTrue($catalogProduct->visible_in_catalog);
+        $this->assertTrue($catalogProduct->visible_in_quote);
+        $this->assertContains('Kategori Bekliyor', data_get($catalogProduct->meta, 'warning_snapshot', []));
+        $this->assertContains('Kategori önerisi review bekliyor', data_get($catalogProduct->meta, 'warning_snapshot', []));
+    }
+
     public function test_project_unmapped_products_command_is_dry_run_safe_and_requires_confirm(): void
     {
         $tenant = $this->tenant();

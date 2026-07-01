@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Company;
 use App\Models\Order;
+use App\Models\Role;
 use App\Models\Supplier;
 use App\Models\SupplierSource;
 use App\Models\TenantCatalogProduct;
@@ -11,6 +12,7 @@ use App\Models\TenantCatalogProductVariant;
 use App\Models\TenantAccount;
 use App\Models\TenantSupplierAccess;
 use App\Models\User;
+use App\Models\UserRole;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -23,21 +25,27 @@ class ProductSelectionWarningDisplayTest extends TestCase
     private const CENTRAL_HOST = 'prodelya_core.test';
 
     private User $adminUser;
+    private User $tenantUser;
+    private TenantAccount $tenant;
 
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->adminUser = User::where('email', 'admin@prodelya.local')->firstOrFail();
+        $this->tenant = TenantAccount::query()
+            ->where('panel_subdomain', 'demo')
+            ->first()
+            ?? TenantAccount::query()->orderBy('id')->firstOrFail();
+        $this->tenantUser = $this->makeTenantOwner($this->tenant, 'product-warning-owner@example.test');
     }
 
     public function test_catalog_search_returns_net_price_warning_for_akdeniz_net_priced_product(): void
     {
         $this->projectFixtureSourceToCatalog(3);
 
-        $response = $this->actingAs($this->adminUser)
-            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get('/admin/catalog/search?q=F-112-32');
+        $response = $this->actingAs($this->tenantUser)
+            ->getJson($this->tenantUrl('/admin/catalog/search?q=F-112-32'));
 
         $response->assertOk();
 
@@ -55,9 +63,8 @@ class ProductSelectionWarningDisplayTest extends TestCase
     {
         $this->projectFixtureSourceToCatalog(2);
 
-        $response = $this->actingAs($this->adminUser)
-            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get('/admin/catalog/search?q=0506-L');
+        $response = $this->actingAs($this->tenantUser)
+            ->getJson($this->tenantUrl('/admin/catalog/search?q=0506-L'));
 
         $response->assertOk();
 
@@ -66,8 +73,117 @@ class ProductSelectionWarningDisplayTest extends TestCase
         $this->assertNotNull($product);
         $this->assertStringStartsWith('ET-0506-L', $product['product_name']);
         $this->assertEquals(19.9, $product['list_price']);
-        $this->assertContains('Özel fiyat uyarısı', $product['warning_badges']);
+        $this->assertContains('Kırmızı Ürün', $product['warning_badges']);
         $this->assertTrue(collect($product['warning_messages'])->contains(fn (string $message) => str_contains($message, 'özel fiyat/iskonto uyarılı')));
+    }
+
+    public function test_warning_product_can_be_saved_without_has_print_and_keeps_safe_warning_snapshots(): void
+    {
+        $this->projectFixtureSourceToCatalog(2);
+
+        $response = $this->actingAs($this->tenantUser)
+            ->getJson($this->tenantUrl('/admin/catalog/search?q=0506-L'));
+
+        $response->assertOk();
+
+        $product = collect($response->json())->first(fn (array $row) => ($row['product_code'] ?? null) === 'ET-0506-L');
+        $this->assertNotNull($product);
+
+        $customer = Company::where('legal_name', 'ABC İnşaat A.Ş.')->firstOrFail();
+
+        $createResponse = $this->actingAs($this->adminUser)
+            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
+            ->post('/admin/promotion-quotes', [
+                'customer_company_id' => $customer->id,
+                'quote_date' => now()->format('Y-m-d'),
+                'valid_until' => now()->addWeek()->format('Y-m-d'),
+                'invoice_status' => 'fatura',
+                'currency' => 'TL',
+                'delivery_type' => 'Kargo',
+                'notes' => 'Warning create smoke',
+                'items' => [[
+                    'product_name' => $product['product_name'],
+                    'product_code' => $product['product_code'],
+                    'quantity' => '12',
+                    'unit' => 'Adet',
+                    'list_price' => (string) $product['list_price'],
+                    'discount_rate' => '0',
+                    'unit_price' => (string) $product['list_price'],
+                    'tenant_catalog_product_id' => $product['tenant_catalog_product_id'] ?? $product['id'],
+                    'tenant_catalog_product_variant_id' => $product['tenant_catalog_product_variant_id'],
+                    'standard_product_id' => data_get($product, 'product_snapshot.standard_product_id'),
+                    'standard_product_variant_id' => data_get($product, 'product_snapshot.standard_product_variant_id'),
+                    'supplier_source_id' => data_get($product, 'source_summary.0.supplier_source_id'),
+                    'catalog_source' => $product['catalog_source'] ?? 'tenant_catalog',
+                    'selected_catalog_identity' => json_encode([
+                        'catalog_source' => $product['catalog_source'] ?? 'tenant_catalog',
+                        'tenant_catalog_product_id' => $product['tenant_catalog_product_id'] ?? $product['id'],
+                        'tenant_catalog_product_variant_id' => $product['tenant_catalog_product_variant_id'],
+                        'standard_product_id' => data_get($product, 'product_snapshot.standard_product_id'),
+                        'standard_product_variant_id' => data_get($product, 'product_snapshot.standard_product_variant_id'),
+                        'product_code' => $product['product_code'],
+                        'product_name' => $product['product_name'],
+                        'is_warning_sellable' => true,
+                        'warning_tone' => 'red',
+                        'warning_summary' => 'Kırmızı Ürün',
+                    ], JSON_UNESCAPED_UNICODE),
+                    'product_snapshot' => json_encode($product['product_snapshot'], JSON_UNESCAPED_UNICODE),
+                    'price_snapshot' => json_encode($product['price_snapshot'], JSON_UNESCAPED_UNICODE),
+                    'stock_snapshot' => json_encode($product['stock_snapshot'], JSON_UNESCAPED_UNICODE),
+                ]],
+            ]);
+
+        $quote = Order::query()->latest('id')->firstOrFail();
+        $createResponse->assertRedirectToRoute('admin.promotion-quotes.show', $quote);
+
+        $item = $quote->items()->firstOrFail();
+
+        $this->assertFalse((bool) $item->has_print);
+        $this->assertTrue((bool) data_get($item->product_snapshot, 'is_warning_sellable'));
+        $this->assertSame('red', data_get($item->product_snapshot, 'warning_tone'));
+        $this->assertContains('Kırmızı Ürün', data_get($item->price_snapshot, 'warning_badges', []));
+        $this->assertArrayNotHasKey('warning_badges', $item->product_snapshot ?? []);
+        $this->assertArrayNotHasKey('warning_messages', $item->product_snapshot ?? []);
+    }
+
+    public function test_broken_warning_product_snapshot_returns_validation_error_instead_of_500(): void
+    {
+        $customer = Company::where('legal_name', 'ABC İnşaat A.Ş.')->firstOrFail();
+
+        $response = $this->actingAs($this->adminUser)
+            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
+            ->from('/admin/promotion-quotes/create')
+            ->post('/admin/promotion-quotes', [
+                'customer_company_id' => $customer->id,
+                'quote_date' => now()->format('Y-m-d'),
+                'valid_until' => now()->addWeek()->format('Y-m-d'),
+                'invoice_status' => 'fatura',
+                'currency' => 'TL',
+                'items' => [[
+                    'product_name' => 'Bozuk Warning Ürünü',
+                    'product_code' => 'WRN-VAL-01',
+                    'quantity' => '3',
+                    'unit' => 'Adet',
+                    'list_price' => '10',
+                    'discount_rate' => '0',
+                    'unit_price' => '10',
+                    'selected_catalog_identity' => json_encode([
+                        'catalog_source' => 'tenant_catalog',
+                        'tenant_catalog_product_id' => 999999,
+                        'product_code' => 'WRN-VAL-01',
+                        'product_name' => 'Bozuk Warning Ürünü',
+                        'is_warning_sellable' => true,
+                    ], JSON_UNESCAPED_UNICODE),
+                    'product_snapshot' => '{"broken":',
+                    'price_snapshot' => '{"list_price":10}',
+                ]],
+            ]);
+
+        $response->assertRedirect('/admin/promotion-quotes/create');
+        $response->assertSessionHasErrors([
+            'error' => 'Teklif kaydedilemedi. Hatalı satırları kontrol edip tekrar deneyin.',
+            'items.0.product_snapshot' => 'Seçilen ürün bilgisi eksik kaldı. Lütfen ürünü katalogdan yeniden seçin.',
+        ]);
     }
 
     public function test_catalog_search_hides_parent_group_product_and_returns_sellable_variants_for_group_code(): void
@@ -160,9 +276,8 @@ class ProductSelectionWarningDisplayTest extends TestCase
             ]);
         }
 
-        $response = $this->actingAs($this->adminUser)
-            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get('/admin/catalog/search?q=0506');
+        $response = $this->actingAs($this->tenantUser)
+            ->getJson($this->tenantUrl('/admin/catalog/search?q=0506'));
 
         $response->assertOk();
         $response->assertJsonMissing(['product_code' => 'ET-0506']);
@@ -234,9 +349,8 @@ class ProductSelectionWarningDisplayTest extends TestCase
     {
         $this->projectFixtureSourceToCatalog(3);
 
-        $response = $this->actingAs($this->adminUser)
-            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get('/admin/catalog/search?q=PB-4007');
+        $response = $this->actingAs($this->tenantUser)
+            ->getJson($this->tenantUrl('/admin/catalog/search?q=PB-4007'));
 
         $response->assertOk();
 
@@ -249,7 +363,7 @@ class ProductSelectionWarningDisplayTest extends TestCase
 
     public function test_quote_create_page_uses_single_line_layout_and_top_level_invoice_status(): void
     {
-        $response = $this->actingAs($this->adminUser)
+        $response = $this->actingAs($this->tenantUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->get('/admin/promotion-quotes/create');
 
@@ -294,7 +408,7 @@ class ProductSelectionWarningDisplayTest extends TestCase
 
     public function test_quote_create_markup_and_css_support_overlay_catalog_dropdown(): void
     {
-        $response = $this->actingAs($this->adminUser)
+        $response = $this->actingAs($this->tenantUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->get('/admin/promotion-quotes/create');
 
@@ -312,7 +426,7 @@ class ProductSelectionWarningDisplayTest extends TestCase
 
     public function test_quote_create_page_hides_legacy_right_summary_and_bottom_summary_duplicates(): void
     {
-        $response = $this->actingAs($this->adminUser)
+        $response = $this->actingAs($this->tenantUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->get('/admin/promotion-quotes/create');
 
@@ -326,7 +440,7 @@ class ProductSelectionWarningDisplayTest extends TestCase
 
     public function test_quote_create_page_contains_compact_print_block_without_legacy_fields(): void
     {
-        $response = $this->actingAs($this->adminUser)
+        $response = $this->actingAs($this->tenantUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->get('/admin/promotion-quotes/create');
 
@@ -349,7 +463,7 @@ class ProductSelectionWarningDisplayTest extends TestCase
 
     public function test_quote_create_page_contains_print_operation_model_options(): void
     {
-        $response = $this->actingAs($this->adminUser)
+        $response = $this->actingAs($this->tenantUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->get('/admin/promotion-quotes/create');
 
@@ -375,7 +489,7 @@ class ProductSelectionWarningDisplayTest extends TestCase
     {
         $customer = Company::where('legal_name', 'ABC İnşaat A.Ş.')->firstOrFail();
 
-        $response = $this->actingAs($this->adminUser)
+        $response = $this->actingAs($this->tenantUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->from('/admin/promotion-quotes/create')
             ->post('/admin/promotion-quotes', [
@@ -402,9 +516,8 @@ class ProductSelectionWarningDisplayTest extends TestCase
     {
         $this->projectFixtureSourceToCatalog(3);
 
-        $searchResponse = $this->actingAs($this->adminUser)
-            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get('/admin/catalog/search?q=F-112-32');
+        $searchResponse = $this->actingAs($this->tenantUser)
+            ->getJson($this->tenantUrl('/admin/catalog/search?q=F-112-32'));
 
         $product = collect($searchResponse->json())->first(fn (array $row) => str_contains((string) ($row['product_name'] ?? ''), 'F-112-32'));
         $this->assertNotNull($product);
@@ -491,9 +604,8 @@ class ProductSelectionWarningDisplayTest extends TestCase
             'visible_in_quote' => true,
         ])->save();
 
-        $searchResponse = $this->actingAs($this->adminUser)
-            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get('/admin/catalog/search?q=PB-4007')
+        $searchResponse = $this->actingAs($this->tenantUser)
+            ->getJson($this->tenantUrl('/admin/catalog/search?q=PB-4007'))
             ->assertOk();
 
         $product = collect($searchResponse->json())
@@ -504,7 +616,7 @@ class ProductSelectionWarningDisplayTest extends TestCase
 
         $customer = Company::where('legal_name', 'ABC İnşaat A.Ş.')->firstOrFail();
 
-        $this->actingAs($this->adminUser)
+        $this->actingAs($this->tenantUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->post('/admin/promotion-quotes', [
                 'customer_company_id' => $customer->id,
@@ -943,9 +1055,8 @@ class ProductSelectionWarningDisplayTest extends TestCase
     {
         $this->projectFixtureSourceToCatalog(2);
 
-        $searchResponse = $this->actingAs($this->adminUser)
-            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get('/admin/catalog/search?q=0506-L')
+        $searchResponse = $this->actingAs($this->tenantUser)
+            ->getJson($this->tenantUrl('/admin/catalog/search?q=0506-L'))
             ->assertOk();
 
         $product = collect($searchResponse->json())
@@ -1048,9 +1159,8 @@ class ProductSelectionWarningDisplayTest extends TestCase
     {
         $this->projectFixtureSourceToCatalog(2);
 
-        $searchResponse = $this->actingAs($this->adminUser)
-            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get('/admin/catalog/search?q=0506-L')
+        $searchResponse = $this->actingAs($this->tenantUser)
+            ->getJson($this->tenantUrl('/admin/catalog/search?q=0506-L'))
             ->assertOk();
 
         $product = collect($searchResponse->json())
@@ -1097,7 +1207,7 @@ class ProductSelectionWarningDisplayTest extends TestCase
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->get("/admin/promotion-quotes/{$quote->id}");
 
-        $this->assertContains('Özel fiyat uyarısı', data_get($item->price_snapshot, 'warning_badges', []));
+        $this->assertContains('Kırmızı Ürün', data_get($item->price_snapshot, 'warning_badges', []));
 
         $showResponse->assertOk();
         $showResponse->assertSee($product['product_name']);
@@ -1202,9 +1312,8 @@ class ProductSelectionWarningDisplayTest extends TestCase
             ],
         ]);
 
-        $response = $this->actingAs($this->adminUser)
-            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get('/admin/catalog');
+        $response = $this->actingAs($this->tenantUser)
+            ->get($this->tenantUrl('/admin/catalog'));
 
         $response->assertOk();
         $response->assertSee('catalog-product-thumb', false);
@@ -1220,9 +1329,8 @@ class ProductSelectionWarningDisplayTest extends TestCase
             'source_summary' => [],
         ])->save();
 
-        $response = $this->actingAs($this->adminUser)
-            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get('/admin/catalog/search?q=PB-4007');
+        $response = $this->actingAs($this->tenantUser)
+            ->getJson($this->tenantUrl('/admin/catalog/search?q=PB-4007'));
 
         $response->assertOk();
     }
@@ -1416,10 +1524,41 @@ class ProductSelectionWarningDisplayTest extends TestCase
             ->post("/admin/super-admin/product-data-hub/sources/{$source->id}/build-standard-products")
             ->assertRedirect('/admin/super-admin/product-data-hub/raw-products');
 
-        $this->actingAs($this->adminUser)
-            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->post('/admin/catalog/project')
+        $this->actingAs($this->tenantUser)
+            ->post($this->tenantUrl('/admin/catalog/project'))
             ->assertRedirect('/admin/catalog');
+    }
+
+    private function tenantHost(): string
+    {
+        return $this->tenant->panel_subdomain . '.' . self::CENTRAL_HOST;
+    }
+
+    private function tenantUrl(string $path): string
+    {
+        return 'http://' . $this->tenantHost() . $path;
+    }
+
+    private function makeTenantOwner(TenantAccount $tenant, string $email): User
+    {
+        $user = User::query()->firstOrCreate(
+            ['email' => $email],
+            [
+                'name' => $tenant->name . ' Warning Owner',
+                'password' => 'secret-password',
+                'is_platform_admin' => false,
+            ]
+        );
+
+        $tenantOwnerRole = Role::query()->where('key', 'tenant_owner')->firstOrFail();
+
+        UserRole::query()->firstOrCreate([
+            'tenant_account_id' => $tenant->id,
+            'user_id' => $user->id,
+            'role_id' => $tenantOwnerRole->id,
+        ]);
+
+        return $user;
     }
 
     private function prepareFixtureForSource(SupplierSource $source): void

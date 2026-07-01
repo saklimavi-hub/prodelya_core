@@ -15,20 +15,39 @@
 <div class="pd-hub-family-shell">
     <section class="pd-section-card pd-section-card-soft-purple">
         <div class="pd-section-body">
-            <div class="pd-grid pd-grid-4">
-                <div><div class="text-sm text-gray-600">Key</div><div class="font-medium">{{ $package->key }}</div></div>
-                <div><div class="text-sm text-gray-600">Durum</div><div><span class="pd-badge {{ match($package->status){'active'=>'pd-badge-green','passive'=>'pd-badge-gray','planned'=>'pd-badge-amber','archived'=>'pd-badge-red',default=>'pd-badge-gray'} }}">{{ $package->safeStatusLabel() }}</span></div></div>
-                <div><div class="text-sm text-gray-600">Aylık</div><div class="font-medium">{{ $package->formattedPrice('monthly') ?: '-' }}</div></div>
-                <div><div class="text-sm text-gray-600">Yıllık</div><div class="font-medium">{{ $package->formattedPrice('yearly') ?: '-' }}</div></div>
-                <div><div class="text-sm text-gray-600">Trial</div><div class="font-medium">{{ $package->trial_days !== null ? $package->trial_days . ' gün' : '-' }}</div></div>
-                <div><div class="text-sm text-gray-600">Tenant Sayısı</div><div class="font-medium">{{ $package->tenants->count() }}</div></div>
+            <div class="pd-kpi-strip">
+                <div class="pd-metric-card pd-metric-card-soft-blue"><div class="pd-metric-card-label">Anahtar / Kod</div><div class="pd-metric-card-value">{{ $package->key }}</div><div class="pd-metric-card-note">Paket kimliği</div></div>
+                <div class="pd-metric-card pd-metric-card-soft-green"><div class="pd-metric-card-label">Durum</div><div class="pd-metric-card-value">{{ $package->safeStatusLabel() }}</div><div class="pd-metric-card-note">Yaşam döngüsü</div></div>
+                <div class="pd-metric-card pd-metric-card-soft-purple"><div class="pd-metric-card-label">Aylık / Yıllık</div><div class="pd-metric-card-value">{{ $package->formattedPrice('monthly') ?: '-' }}</div><div class="pd-metric-card-note">{{ $package->formattedPrice('yearly') ?: 'Yıllık fiyat yok' }}</div></div>
+                <div class="pd-metric-card pd-metric-card-soft-slate"><div class="pd-metric-card-label">Kullanan Abone Firma</div><div class="pd-metric-card-value">{{ count($tenantRows) }}</div><div class="pd-metric-card-note">{{ $overrideTenantCount }} override kullanıyor</div></div>
             </div>
         </div>
     </section>
 
-    <div class="pd-grid" style="grid-template-columns: minmax(0, 1fr); gap:16px;">
+    <section class="pd-section-card pd-section-card-soft-slate">
+        <div class="pd-section-header">
+            <div>
+                <h3 class="pd-section-title">Genel Bilgiler</h3>
+                <p class="pd-section-subtitle">Paket açıklaması, notları ve canlı operasyon için genel çerçeve.</p>
+            </div>
+        </div>
+        <div class="pd-section-body">
+            <div class="pd-grid pd-grid-2">
+                <div>
+                    <div class="text-sm text-gray-600">Açıklama</div>
+                    <div class="font-medium">{{ $package->description ?: 'Veri yok' }}</div>
+                </div>
+                <div>
+                    <div class="text-sm text-gray-600">Notlar</div>
+                    <div class="font-medium">{{ $package->notes ?: 'Fiyatlandırma / ödeme entegrasyonu sonraki faz' }}</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <div class="pd-stack-md">
         <div class="pd-card">
-            <div class="pd-card-header"><div><h3 class="pd-card-title">Modüller</h3><p class="pd-card-subtitle">Enabled module listesi ve durum etiketleri.</p></div></div>
+            <div class="pd-card-header"><div><h3 class="pd-card-title">Dahil Modüller</h3><p class="pd-card-subtitle">Paket varsayılanı olarak açılan modüller ve durum etiketleri.</p></div></div>
             <div class="pd-card-body">
                 <div class="pd-table-wrap">
                     <table class="pd-table">
@@ -51,11 +70,11 @@
         </div>
 
         <div class="pd-card">
-            <div class="pd-card-header"><div><h3 class="pd-card-title">Feature’lar</h3><p class="pd-card-subtitle">Enabled feature listesi ve bağlı modül bilgisi.</p></div></div>
+            <div class="pd-card-header"><div><h3 class="pd-card-title">Dahil Özellikler</h3><p class="pd-card-subtitle">Paketin açtığı alt yetenekler ve bağlı modül bilgisi.</p></div></div>
             <div class="pd-card-body">
                 <div class="pd-table-wrap">
                     <table class="pd-table">
-                        <thead><tr><th>Feature</th><th>Modül</th><th>Durum</th></tr></thead>
+                        <thead><tr><th>Özellik</th><th>Modül</th><th>Durum</th></tr></thead>
                         <tbody>
                             @foreach($featureCatalog as $feature)
                                 @if($feature['enabled'])
@@ -86,6 +105,42 @@
                                     <td>{{ $limit['notes'] ?: '-' }}</td>
                                 </tr>
                             @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="pd-card">
+            <div class="pd-card-header"><div><h3 class="pd-card-title">Bu Paketi Kullanan Abone Firmalar</h3><p class="pd-card-subtitle">Paket kullanan Abone Firmalar ve override görünürlüğü.</p></div></div>
+            <div class="pd-card-body">
+                <div class="pd-table-wrap">
+                    <table class="pd-table">
+                        <thead><tr><th>Abone Firma</th><th>Panel</th><th>Durum</th><th>Override</th></tr></thead>
+                        <tbody>
+                            @forelse($tenantRows as $tenant)
+                                <tr>
+                                    <td>
+                                        <div class="font-medium">{{ $tenant['name'] }}</div>
+                                        <div class="text-sm text-gray-500">{{ $tenant['slug'] }}</div>
+                                    </td>
+                                    <td>{{ $tenant['panel_subdomain'] ?: 'Panel adresi eksik' }}</td>
+                                    <td>
+                                        <span class="pd-badge {{ match($tenant['status']) {'active' => 'pd-badge-green', 'trial' => 'pd-badge-blue', 'passive' => 'pd-badge-gray', 'suspended' => 'pd-badge-red', 'expired' => 'pd-badge-amber', default => 'pd-badge-gray'} }}">
+                                            {{ match($tenant['status']) {'active' => 'Aktif', 'trial' => 'Deneme', 'passive' => 'Pasif', 'suspended' => 'Askıda', 'expired' => 'Süresi Dolmuş', default => $tenant['status']} }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span class="pd-badge {{ $tenant['has_override'] ? 'pd-badge-amber' : 'pd-badge-green' }}">
+                                            {{ $tenant['has_override'] ? 'Tenant override var' : 'Paket varsayılanı' }}
+                                        </span>
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="4" class="text-sm text-gray-500">Bu paketi kullanan Abone Firma yok.</td>
+                                </tr>
+                            @endforelse
                         </tbody>
                     </table>
                 </div>

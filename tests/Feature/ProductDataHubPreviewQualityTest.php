@@ -35,7 +35,7 @@ class ProductDataHubPreviewQualityTest extends TestCase
                 ->get("/admin/super-admin/product-data-hub/sources/{$source->id}/preview?limit={$limit}&filter=all");
 
             $response->assertOk();
-            $response->assertSeeText('Product Data Hub Önizleme');
+            $response->assertSeeText('Kaynak Önizleme');
             $response->assertSeeText('Toplam okunan');
             $response->assertSeeText('Gösterilen');
             $response->assertSeeText('PB-4007');
@@ -53,7 +53,8 @@ class ProductDataHubPreviewQualityTest extends TestCase
 
         $warningResponse->assertOk();
         $warningResponse->assertSeeText('Net fiyat uyarısı');
-        $warningResponse->assertSeeText('Özel fiyat uyarısı');
+        $warningResponse->assertDontSeeText('Kırmızı Ürün');
+        $warningResponse->assertDontSeeText('Turuncu Ürün');
 
         $missingImageResponse = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])

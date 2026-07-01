@@ -320,16 +320,19 @@ class StandardProductBuilderService
 
         $variantDisplayPrice = data_get($rawVariant->normalized_payload, 'list_price', data_get($rawProduct->normalized_payload, 'list_price'));
         $variantPurchasePrice = data_get($rawVariant->normalized_payload, 'purchase_price', $rawProduct->purchase_price);
+        $displayVariantColor = data_get($rawVariant->normalized_payload, 'display_variant_color', $rawVariant->variant_color);
+        $displayVariantSize = data_get($rawVariant->normalized_payload, 'display_size', data_get($rawVariant->normalized_payload, 'variant_size', $rawVariant->variant_size));
+        $displayVariantAttributes = data_get($rawVariant->normalized_payload, 'display_variant_attributes', $rawVariant->variant_attributes);
 
         $variant->forceFill([
             'standard_product_id' => $product->id,
             'tenant_account_id' => $rawVariant->tenant_account_id ?? $rawProduct->tenant_account_id,
             'variant_code' => $rawVariant->variant_code ?: $rawVariant->variant_stock_code,
             'generated_variant_code' => $generatedVariantCode,
-            'variant_name' => $rawVariant->variant_name ?: $rawVariant->variant_color ?: $generatedVariantCode,
-            'variant_color' => $rawVariant->variant_color,
-            'variant_size' => $rawVariant->variant_size,
-            'variant_attributes' => $rawVariant->variant_attributes,
+            'variant_name' => $rawVariant->variant_name ?: $displayVariantColor ?: $generatedVariantCode,
+            'variant_color' => $displayVariantColor,
+            'variant_size' => $displayVariantSize,
+            'variant_attributes' => $displayVariantAttributes,
             'image_url' => $rawVariant->variant_image_url ?: $product->image_url,
             'image_fallback_used' => (bool) $rawVariant->image_fallback_used,
             'stock_quantity' => $rawVariant->variant_stock_quantity,

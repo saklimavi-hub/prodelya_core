@@ -12,6 +12,7 @@
             $item['product_snapshot'] = is_string($item['product_snapshot'] ?? null) ? json_decode($item['product_snapshot'], true) : ($item['product_snapshot'] ?? null);
             $item['price_snapshot'] = is_string($item['price_snapshot'] ?? null) ? json_decode($item['price_snapshot'], true) : ($item['price_snapshot'] ?? null);
             $item['stock_snapshot'] = is_string($item['stock_snapshot'] ?? null) ? json_decode($item['stock_snapshot'], true) : ($item['stock_snapshot'] ?? null);
+            $item['selected_catalog_identity'] = is_string($item['selected_catalog_identity'] ?? null) ? json_decode($item['selected_catalog_identity'], true) : ($item['selected_catalog_identity'] ?? null);
             $item['prints'] = collect($item['prints'] ?? [])->map(function ($print) {
                 return [
                     'tenant_print_setting_id' => $print['tenant_print_setting_id'] ?? null,

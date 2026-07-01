@@ -22,6 +22,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'feature.enabled' => \App\Http\Middleware\EnsureFeatureEnabled::class,
             'permission.check' => \App\Http\Middleware\EnsureRolePermission::class,
             'central.access' => \App\Http\Middleware\EnsureCentralAccess::class,
+            'central.public' => \App\Http\Middleware\EnsureCentralPublicHost::class,
             'super.admin' => \App\Http\Middleware\EnsureSuperAdmin::class,
             'tenant.membership' => \App\Http\Middleware\EnsureTenantUserBelongsToTenant::class,
             'customer.portal.auth' => \App\Http\Middleware\EnsureCustomerPortalAuthenticated::class,

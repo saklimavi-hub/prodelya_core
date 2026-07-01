@@ -4,12 +4,14 @@ namespace App\Services;
 
 use App\Models\OrderItemWorkForm;
 use App\Models\OrderItemWorkFormAttachment;
+use App\Services\ProductDataHub\ProductHubSafeImageUrlService;
 use Illuminate\Support\Collection;
 
 class PublicWorkFormTrackingDataBuilder
 {
     public function __construct(
-        private readonly TenantCompanyProfileService $tenantCompanyProfileService
+        private readonly TenantCompanyProfileService $tenantCompanyProfileService,
+        private readonly ProductHubSafeImageUrlService $safeImageUrlService,
     ) {
     }
 
@@ -109,7 +111,7 @@ class PublicWorkFormTrackingDataBuilder
                 'name' => data_get($productSnapshot, 'product_name', '-'),
                 'code' => data_get($productSnapshot, 'product_code', '-'),
                 'quantity' => $this->formatQuantity(data_get($productSnapshot, 'quantity', 0), data_get($productSnapshot, 'unit')),
-                'image_url' => $this->safePublicImageUrl(data_get($productSnapshot, 'image_url')),
+                'image_url' => $this->safePublicImageUrl($productSnapshot),
             ],
             'procurement' => [
                 'status' => data_get($procurementSnapshot, 'public_status_label', 'Ürününüz hazırlanıyor'),
@@ -311,15 +313,9 @@ class PublicWorkFormTrackingDataBuilder
         return $note;
     }
 
-    private function safePublicImageUrl(mixed $value): ?string
+    private function safePublicImageUrl(array $snapshot): ?string
     {
-        $url = trim((string) ($value ?? ''));
-
-        if ($url === '') {
-            return null;
-        }
-
-        return preg_match('/^https?:\/\//i', $url) === 1 ? $url : null;
+        return $this->safeImageUrlService->resolveFromSnapshot($snapshot, 'public_tracking');
     }
 
     private function safePublicFileName(OrderItemWorkFormAttachment $attachment): string

@@ -61,12 +61,14 @@ class ProductDataHubSourceRecoveryAndTemplateTest extends TestCase
             ->get('/admin/super-admin/product-data-hub/sources?filter=all');
 
         $response->assertOk();
-        $response->assertSee('Yeni Nesil CSV');
-        $response->assertSee('Etkin Promosyon XML');
-        $response->assertSee('Akdeniz Promosyon API');
-        $response->assertSee('İlpen XML');
-        $response->assertSee('Temp Profil');
-        $response->assertSee('URL Eksik');
+        $response->assertSee('Yeni Nesil');
+        $response->assertSee('Etkin Promosyon');
+        $response->assertSee('Akdeniz Promosyon');
+        $response->assertSee('İlpen');
+        $response->assertSee('Yeni Nesil Temp');
+        $response->assertSee('Detaya Git');
+        $response->assertSee('Geçici Profil');
+        $response->assertSee('Bağlantı Bekleyen');
     }
 
     public function test_tmp_source_is_not_seeded_or_shown_by_default(): void
@@ -107,7 +109,7 @@ class ProductDataHubSourceRecoveryAndTemplateTest extends TestCase
             ->get('/admin/super-admin/product-data-hub/sources/create');
 
         $response->assertOk();
-        $response->assertSee('Hazır Profil Seç');
+        $response->assertSee('Profil ve Parsing');
         $response->assertSee('Mevcut Profilden Kopyala');
         $response->assertSee('Boş Profil / Manuel Alan Eşleme');
 
@@ -354,9 +356,10 @@ class ProductDataHubSourceRecoveryAndTemplateTest extends TestCase
             ->get('/admin/super-admin/product-data-hub/sources');
 
         $response->assertOk();
-        $response->assertSee('Pasifleştir');
-        $response->assertSee('Sil');
-        $response->assertSee('Arşivle');
+        $response->assertSee('Detaya Git');
+        $response->assertDontSee('Pasifleştir');
+        $response->assertDontSee('Sil');
+        $response->assertDontSee('Arşivle');
     }
 
     public function test_source_list_can_show_temp_sources_only_with_explicit_filter(): void
@@ -390,8 +393,8 @@ class ProductDataHubSourceRecoveryAndTemplateTest extends TestCase
             ->get('/admin/super-admin/product-data-hub/sources?filter=temp');
 
         $tempResponse->assertOk();
-        $tempResponse->assertSee('Filtre Temp XML');
-        $tempResponse->assertSee('Temp Profil');
+        $tempResponse->assertSee('Filtre Temp');
+        $tempResponse->assertSee('Detaya Git');
     }
 
     public function test_deactivated_source_disappears_from_active_dropdowns_but_real_others_remain(): void

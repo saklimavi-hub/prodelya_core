@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Models\ProductDataHubSyncChange;
+use App\Models\ProductDataHubSyncRun;
 use App\Models\StandardCategory;
 use App\Models\StandardProduct;
 use App\Models\StandardProductVariant;
@@ -46,12 +48,36 @@ class SuperAdminProductPanelTest extends TestCase
             ->get('/admin/super-admin/product-data-hub/product-panel?search=AK-3008-11-KIRMIZI');
 
         $response->assertOk();
-        $response->assertSeeText('Product Data Hub > Ürün Paneli');
+        $response->assertSeeText('Ürün Paneli');
         $response->assertSeeText('AK-3008-11');
         $response->assertSeeText('AK-3008-11 Kırmızı 11 Fonksiyonlu Çakı');
     }
 
-    public function test_super_admin_product_panel_hides_group_code_by_default_and_can_show_it_as_technical_column(): void
+    public function test_product_panel_blank_open_uses_search_first_info_state(): void
+    {
+        $response = $this->actingAs($this->adminUser)
+            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
+            ->get('/admin/super-admin/product-data-hub/product-panel');
+
+        $response->assertOk();
+        $response->assertSeeText('Teşhis başlatmak için arama veya filtre seçin');
+        $response->assertSeeText('boş açılışta tam tarama yapmaz');
+        $response->assertSeeText('Teşhis için arama veya filtre seçin.');
+    }
+
+    public function test_product_panel_default_and_empty_params_do_not_break_search_first_idle_state(): void
+    {
+        $response = $this->actingAs($this->adminUser)
+            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
+            ->get('/admin/super-admin/product-data-hub/product-panel?search=&supplier=0&category=0&flow_mode=all&review_bucket=default&freshness_state=all');
+
+        $response->assertOk();
+        $response->assertSeeText('Teşhis başlatmak için arama veya filtre seçin');
+        $response->assertSeeText('Teşhis için arama veya filtre seçin.');
+        $response->assertDontSeeText('Filtrelere uygun ürün bulunamadı.');
+    }
+
+    public function test_super_admin_product_panel_surfaces_group_code_as_technical_sellable_truth_label(): void
     {
         $supplier = $this->makeSupplier('ETKIN-SUPER', 'Etkin Promosyon');
         $parent = $this->makeParentProduct($supplier, 'ET-0506', 'ET-0506 Plastik Kalem');
@@ -63,16 +89,29 @@ class SuperAdminProductPanelTest extends TestCase
 
         $defaultResponse->assertOk();
         $defaultResponse->assertSeeText('ET-0506-K Plastik Kalem Kırmızı');
-        $defaultResponse->assertDontSeeText('Grup Kodu');
-        $defaultResponse->assertDontSeeText('GRP-TECH-0506');
+        $defaultResponse->assertSeeText('Group code: GRP-TECH-0506');
 
         $technicalResponse = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->get('/admin/super-admin/product-data-hub/product-panel?search=ET-0506-K&technical_columns=1');
 
         $technicalResponse->assertOk();
-        $technicalResponse->assertSeeText('Grup Kodu');
-        $technicalResponse->assertSeeText('GRP-TECH-0506');
+        $technicalResponse->assertSeeText('Group code: GRP-TECH-0506');
+        $technicalResponse->assertSeeText('Row type: variant');
+    }
+
+    public function test_product_panel_detail_links_point_to_standard_products_not_common_products(): void
+    {
+        $supplier = $this->makeSupplier('DETAIL-SUPER', 'Detail Supplier');
+        $this->makeFlatProduct($supplier, 'DT-0506-L', 'Detail Link Product');
+
+        $response = $this->actingAs($this->adminUser)
+            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
+            ->get('/admin/super-admin/product-data-hub/product-panel?search=DT-0506-L');
+
+        $response->assertOk();
+        $response->assertSee('/admin/super-admin/product-data-hub/standard-products?q=DT-0506-L', false);
+        $response->assertDontSee('/admin/super-admin/product-data-hub/common-products?q=DT-0506-L', false);
     }
 
     public function test_super_admin_product_panel_filters_supplier_category_status_and_limit(): void
@@ -121,7 +160,7 @@ class SuperAdminProductPanelTest extends TestCase
 
         $waitingResponse = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get('/admin/super-admin/product-data-hub/product-panel?category_status=category_waiting');
+            ->get('/admin/super-admin/product-data-hub/product-panel?search=IL-WAIT-01&flow_mode=category_waiting');
 
         $waitingResponse->assertOk();
         $waitingResponse->assertSeeText('IL-WAIT-01');
@@ -131,7 +170,45 @@ class SuperAdminProductPanelTest extends TestCase
             ->get('/admin/super-admin/product-data-hub/product-panel?search=PAGE-SUP-&limit=50');
 
         $limitResponse->assertOk();
-        $limitResponse->assertSeeText('Toplam 55 satılabilir kayıt');
+        $limitResponse->assertSeeText('Toplam satır');
+        $limitResponse->assertSeeText('55');
+    }
+
+    public function test_super_admin_product_panel_surfaces_review_queue_and_filters_new_items_bucket(): void
+    {
+        $supplier = $this->makeSupplier('REVIEW-SUPER', 'Review Supplier');
+        $product = $this->makeFlatProduct($supplier, 'RV-1001', 'Review Kuyrugu Urunu');
+        $source = SupplierSource::query()->where('supplier_id', $supplier->id)->firstOrFail();
+
+        $run = ProductDataHubSyncRun::query()->create([
+            'supplier_source_id' => $source->id,
+            'supplier_id' => $supplier->id,
+            'run_type' => 'manual',
+            'status' => ProductDataHubSyncRun::STATUS_COMPLETED,
+            'started_at' => now()->subMinutes(5),
+            'finished_at' => now(),
+            'report_payload' => ['mode' => 'delta'],
+        ]);
+
+        ProductDataHubSyncChange::query()->create([
+            'sync_run_id' => $run->id,
+            'supplier_source_id' => $source->id,
+            'supplier_product_key' => 'RV-1001',
+            'standard_product_id' => $product->id,
+            'change_type' => 'new_product',
+            'message' => 'Yeni ürün review bekliyor.',
+            'review_status' => ProductDataHubSyncChange::REVIEW_STATUS_PENDING,
+        ]);
+
+        $response = $this->actingAs($this->adminUser)
+            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
+            ->get('/admin/super-admin/product-data-hub/product-panel?search=RV-1001&review_bucket=new_items');
+
+        $response->assertOk();
+        $response->assertSeeText('Review Kuyruğu');
+        $response->assertSeeText('Yeni Ürünler');
+        $response->assertSeeText('Aktif kuyruk');
+        $response->assertSeeText('RV-1001');
     }
 
     public function test_super_admin_product_panel_shows_category_mapping_button_and_opens_simple_drawer(): void
@@ -204,7 +281,7 @@ class SuperAdminProductPanelTest extends TestCase
             ->assertDontSeeText('JSON Export')
             ->assertDontSeeText('Manuel Review Listesi')
             ->assertDontSeeText('Bulk Apply')
-            ->assertDontSeeText('projection')
+            ->assertSeeText('projection satırları üzerinden kontrol edilir')
             ->assertDontSeeText('fallback');
     }
 
@@ -371,8 +448,12 @@ class SuperAdminProductPanelTest extends TestCase
             ->get('/admin/super-admin/product-data-hub');
 
         $response->assertOk()
-            ->assertSeeText('Ürünleri hızlı listeleyin, filtreleyin ve kategori/stok/fiyat durumunu kontrol edin.')
-            ->assertSeeText('Normalize edilmiş teknik ürün detaylarını ve standart ürün kayıtlarını inceleyin.');
+            ->assertSeeText('Senkron Sonuç Merkezi')
+            ->assertSeeText('Bugün aksiyon gereken ürün var mı?')
+            ->assertSeeText('Temiz Akış')
+            ->assertSeeText('Teknik ve Bakım Geçişleri')
+            ->assertSeeText('Ürün Paneli')
+            ->assertSeeText('Standart Ürünler');
     }
 
     private function makeSupplier(string $code, string $name): Supplier

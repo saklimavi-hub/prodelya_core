@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\OrderItemWorkForm;
+use App\Services\ProductDataHub\ProductHubSafeImageUrlService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -12,7 +13,8 @@ class WorkFormPdfService
 {
     public function __construct(
         protected WorkFormRenderDataBuilder $renderDataBuilder,
-        protected WorkFormQrCodeService $qrCodeService
+        protected WorkFormQrCodeService $qrCodeService,
+        protected ProductHubSafeImageUrlService $safeImageUrlService,
     ) {
     }
 
@@ -21,6 +23,10 @@ class WorkFormPdfService
         $data = $this->renderDataBuilder->build($workForm);
 
         $data['pdfQrDataUri'] = $this->qrCodeService->qrDataUri($workForm, 144, 1);
+        $data['safeProductImageUrlForPdf'] = $this->safeImageUrlService->resolveFromSnapshot(
+            is_array($data['productSnapshot'] ?? null) ? $data['productSnapshot'] : [],
+            'work_form_pdf'
+        );
         $data['graphicAttachments'] = $this->enrichAttachmentsForPdf($data['graphicAttachments'] ?? []);
         $data['productionPhotos'] = $this->enrichAttachmentsForPdf($data['productionPhotos'] ?? []);
         $data['deliveryAttachments'] = $this->enrichAttachmentsForPdf($data['deliveryAttachments'] ?? []);

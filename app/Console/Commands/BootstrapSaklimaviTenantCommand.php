@@ -25,6 +25,10 @@ class BootstrapSaklimaviTenantCommand extends Command
     protected $description = 'SAKLImavi tenant, owner ve varsayilan onboarding ayarlarini kontrollu sekilde hazirlar.';
 
     private const CENTRAL_HOST = 'prodelya_core.test';
+    private const TENANT_NAME = 'SAKLImavi Reklam Matbaa İletişim Hizmetleri San. Tic. Ltd. Şti.';
+    private const OWNER_EMAIL = 'admin@saklimavi.local';
+    private const OWNER_NAME = 'SAKLImavi Admin';
+    private const OWNER_TEMP_PASSWORD = 'Saklimavi@2026!';
 
     public function handle(TenantController $tenantController, TenantOnboardingStatusService $statusService, Kernel $kernel): int
     {
@@ -53,8 +57,8 @@ class BootstrapSaklimaviTenantCommand extends Command
 
         if (! $tenant) {
             $request = Request::create($this->centralUrl('/admin/super-admin/tenants'), 'POST', [
-                'name' => 'SAKLImavi',
-                'legal_name' => 'SAKLImavi Reklam Matbaa İletişim Hizmetleri San. Tic. Ltd. Şti.',
+                'name' => self::TENANT_NAME,
+                'legal_name' => self::TENANT_NAME,
                 'slug' => 'saklimavi',
                 'panel_subdomain' => 'saklimavi',
                 'custom_domain' => '',
@@ -79,7 +83,7 @@ class BootstrapSaklimaviTenantCommand extends Command
             return self::FAILURE;
         }
 
-        $owner = User::query()->where('email', 'admin@saklimavi.local')->first();
+        $owner = User::query()->where('email', self::OWNER_EMAIL)->first();
         $ownerCreated = false;
         $ownerConflict = null;
         $temporaryPassword = null;
@@ -87,14 +91,14 @@ class BootstrapSaklimaviTenantCommand extends Command
         if ($owner instanceof User && $owner->isPlatformAdmin()) {
             $ownerConflict = 'platform_admin_conflict';
         } elseif (! $owner) {
-            $temporaryPassword = Str::password(20);
+            $temporaryPassword = self::OWNER_TEMP_PASSWORD;
 
             $ownerRequest = Request::create(
                 $this->centralUrl('/admin/super-admin/tenants/' . $tenant->id . '/owner'),
                 'POST',
                 [
-                    'name' => 'SAKLImavi Admin',
-                    'email' => 'admin@saklimavi.local',
+                    'name' => self::OWNER_NAME,
+                    'email' => self::OWNER_EMAIL,
                     'phone' => '',
                     'password' => $temporaryPassword,
                     'role' => 'tenant_owner',
@@ -105,7 +109,7 @@ class BootstrapSaklimaviTenantCommand extends Command
 
             $tenantController->storeOwner($ownerRequest, $tenant);
 
-            $owner = User::query()->where('email', 'admin@saklimavi.local')->first();
+            $owner = User::query()->where('email', self::OWNER_EMAIL)->first();
             $ownerCreated = true;
         } elseif (! $this->hasTenantOwnerAssignment($tenant, $owner)) {
             $ownerConflict = 'duplicate_email_existing_user';

@@ -18,7 +18,7 @@
             <div class="pd-hero-main">
                 <div class="pd-hero-copy">
                     <h1 class="pd-hero-title">Uyarılı Ürünler</h1>
-                    <p class="pd-hero-subtitle">Fiyat eksik, görsel eksik, kategori eksik, net fiyat uyarısı, tedarikçi özel fiyat uyarısı ve XML’den çıkan ürünleri tenant tarafında izleyin.</p>
+                    <p class="pd-hero-subtitle">Fiyat eksik, görsel eksik, kategori eksik, net fiyat uyarısı, kırmızı/turuncu ürün uyarısı ve XML’den çıkan ürünleri tenant tarafında izleyin.</p>
                 </div>
                 <div class="pd-hero-actions">
                     <a href="{{ route('admin.catalog.index') }}" class="pd-btn pd-btn-light">Ana Kataloğa Dön</a>
@@ -48,7 +48,7 @@
                         <option value="missing_price" @selected($filters['warning_state'] === 'missing_price')>Fiyat eksik</option>
                         <option value="missing_category" @selected($filters['warning_state'] === 'missing_category')>Kategori eksik</option>
                         <option value="stock_warning" @selected($filters['warning_state'] === 'stock_warning')>Stok yok</option>
-                        <option value="red_product" @selected($filters['warning_state'] === 'red_product')>Kırmızı ürün</option>
+                        <option value="red_product" @selected($filters['warning_state'] === 'red_product')>Kırmızı / Turuncu Ürün</option>
                         <option value="net_price" @selected($filters['warning_state'] === 'net_price')>Sabit/net fiyat</option>
                     </select>
                 </div>

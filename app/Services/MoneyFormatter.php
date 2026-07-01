@@ -13,6 +13,7 @@ class MoneyFormatter
         
         return match ($currency) {
             'TL' => $formatted . ' TL',
+            'TRY' => $formatted . ' TL',
             'USD' => '$' . $formatted,
             'EUR' => $formatted . ' €',
             default => $formatted . ' ' . $currency,

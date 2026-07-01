@@ -33,6 +33,18 @@
                 'product_snapshot' => $item->product_snapshot,
                 'price_snapshot' => $item->price_snapshot,
                 'stock_snapshot' => $item->stock_snapshot,
+                'selected_catalog_identity' => [
+                    'catalog_source' => $item->catalog_source ?? 'tenant_catalog',
+                    'tenant_catalog_product_id' => $item->tenant_catalog_product_id,
+                    'tenant_catalog_product_variant_id' => $item->tenant_catalog_product_variant_id,
+                    'standard_product_id' => $item->standard_product_id,
+                    'standard_product_variant_id' => $item->standard_product_variant_id,
+                    'product_code' => $item->product_code,
+                    'product_name' => $item->product_name,
+                    'is_warning_sellable' => (bool) data_get($item->product_snapshot, 'is_warning_sellable', false),
+                    'warning_tone' => data_get($item->product_snapshot, 'warning_tone'),
+                    'warning_summary' => data_get($item->product_snapshot, 'warning_summary'),
+                ],
                 'prints' => $item->prints->map(fn ($print) => [
                     'tenant_print_setting_id' => $print->tenant_print_setting_id,
                     'standard_print_type_id' => $print->standard_print_type_id,

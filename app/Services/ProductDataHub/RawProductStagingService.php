@@ -7,9 +7,12 @@ use App\Models\SupplierProductVariantRaw;
 use App\Models\SupplierSource;
 use App\Models\TenantAccount;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Schema;
 
 class RawProductStagingService
 {
+    private array $tableColumns = [];
+
     public function stagePreview(SupplierSource $source, array $previewData): array
     {
         $tenantId = $this->resolveTenantId();
@@ -118,7 +121,7 @@ class RawProductStagingService
 
         return SupplierProductRaw::query()->updateOrCreate(
             ['import_hash' => $productData['import_hash']],
-            [
+            $this->filterPayloadForExistingColumns('supplier_products_raw', [
                 'tenant_account_id' => $tenantId,
                 'supplier_id' => $source->supplier_id,
                 'supplier_source_id' => $source->id,
@@ -135,12 +138,19 @@ class RawProductStagingService
                 'image_url' => $productData['image_url'] ?? null,
                 'product_url' => $productData['product_url'] ?? null,
                 'detail_url' => $productData['detail_url'] ?? null,
-                'color' => $productData['color'] ?? null,
-                'size' => $productData['size'] ?? null,
+                'color' => data_get($productData, 'normalized_payload.original_variant_color', $productData['color'] ?? null),
+                'size' => data_get($productData, 'normalized_payload.original_variant_size', $productData['size'] ?? null),
                 'description' => $productData['description'] ?? null,
                 'warning_flag' => (bool) ($productData['warning_flag'] ?? false),
                 'raw_payload' => $productData['raw_payload'] ?? null,
                 'normalized_payload' => $normalizedPayload,
+                'identity_hash' => $productData['identity_hash'] ?? null,
+                'content_hash' => $productData['content_hash'] ?? null,
+                'price_hash' => $productData['price_hash'] ?? null,
+                'stock_hash' => $productData['stock_hash'] ?? null,
+                'image_hash' => $productData['image_hash'] ?? null,
+                'category_hash' => $productData['category_hash'] ?? null,
+                'variant_structure_hash' => $productData['variant_structure_hash'] ?? null,
                 'mapping_status' => !empty($resolvedStandardCategoryId) ? 'mapped' : 'pending',
                 'warnings' => $productData['warnings'] ?? [],
                 'errors' => $productData['errors'] ?? [],
@@ -156,7 +166,7 @@ class RawProductStagingService
                 'source_attributes' => $productData['raw_payload'] ?? null,
                 'error_message' => !empty($productData['errors']) ? implode(' | ', $productData['errors']) : null,
                 'synced_at' => now(),
-            ]
+            ])
         );
     }
 
@@ -183,7 +193,7 @@ class RawProductStagingService
 
         return SupplierProductVariantRaw::query()->updateOrCreate(
             ['import_hash' => $variantData['import_hash']],
-            [
+            $this->filterPayloadForExistingColumns('supplier_product_variants_raw', [
                 'tenant_account_id' => $tenantId,
                 'supplier_id' => $source->supplier_id,
                 'supplier_source_id' => $source->id,
@@ -194,9 +204,9 @@ class RawProductStagingService
                 'variant_code' => $variantData['variant_code'] ?? null,
                 'variant_stock_code' => $variantData['variant_stock_code'] ?? null,
                 'variant_name' => $variantData['variant_name'] ?? null,
-                'variant_color' => $variantData['variant_color'] ?? null,
-                'variant_size' => $variantData['variant_size'] ?? null,
-                'variant_attributes' => $variantData['variant_attributes'] ?? null,
+                'variant_color' => data_get($variantData, 'normalized_payload.original_variant_color', $variantData['variant_color'] ?? null),
+                'variant_size' => data_get($variantData, 'normalized_payload.original_variant_size', $variantData['variant_size'] ?? null),
+                'variant_attributes' => data_get($variantData, 'normalized_payload.original_variant_attributes', $variantData['variant_attributes'] ?? null),
                 'variant_stock_quantity' => $resolvedVariantStockQuantity,
                 'variant_image_url' => $variantData['variant_image_url'] ?? null,
                 'parent_image_url' => $variantData['parent_image_url'] ?? null,
@@ -231,10 +241,16 @@ class RawProductStagingService
                     'warnings' => $variantData['warnings'] ?? [],
                     'extracted_color_source' => $variantData['extracted_color_source'] ?? null,
                 ]),
+                'identity_hash' => $variantData['identity_hash'] ?? null,
+                'content_hash' => $variantData['content_hash'] ?? null,
+                'price_hash' => $variantData['price_hash'] ?? null,
+                'stock_hash' => $variantData['stock_hash'] ?? null,
+                'image_hash' => $variantData['image_hash'] ?? null,
+                'category_hash' => $variantData['category_hash'] ?? null,
                 'warnings' => $variantData['warnings'] ?? [],
                 'errors' => $variantData['errors'] ?? [],
                 'sync_status' => 'staged',
-            ]
+            ])
         );
     }
 
@@ -267,5 +283,12 @@ class RawProductStagingService
         return auth()->user()?->tenantAccount?->id
             ?? TenantAccount::query()->where('panel_subdomain', 'demo')->value('id')
             ?? TenantAccount::query()->orderBy('id')->value('id');
+    }
+
+    private function filterPayloadForExistingColumns(string $table, array $payload): array
+    {
+        $columns = $this->tableColumns[$table] ??= Schema::getColumnListing($table);
+
+        return Arr::only($payload, $columns);
     }
 }

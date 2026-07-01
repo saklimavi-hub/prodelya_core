@@ -24,10 +24,12 @@ class NotificationSettingsController extends Controller
     public function smtp(Request $request): View
     {
         $tenant = $this->tenantResolver->getCurrentTenant($request);
+        $readiness = $this->notificationSettingsService->readinessSummary($tenant);
 
         return view('admin.settings.notifications.smtp', [
             'tenant' => $tenant,
             'smtpSettings' => $this->notificationSettingsService->maskSmtpSettingsForDisplay($tenant),
+            'smtpReadiness' => $readiness['smtp'],
         ]);
     }
 
@@ -111,11 +113,13 @@ class NotificationSettingsController extends Controller
     public function whatsapp(Request $request): View
     {
         $tenant = $this->tenantResolver->getCurrentTenant($request);
+        $readiness = $this->notificationSettingsService->readinessSummary($tenant);
 
         return view('admin.settings.notifications.whatsapp', [
             'tenant' => $tenant,
             'whatsappSettings' => $this->notificationSettingsService->maskWhatsappSettingsForDisplay($tenant),
             'messageTypeOptions' => $this->messageTypeOptions(),
+            'whatsappReadiness' => $readiness['whatsapp'],
         ]);
     }
 

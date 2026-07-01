@@ -12,22 +12,11 @@ class TenantResolver
     private const LOCAL_CUSTOMER_PORTAL_TENANT_SESSION_KEY = 'local_customer_portal_tenant_id';
 
     /**
-     * Central domains where super admin area works
-     */
-    protected array $centralDomains = [
-        'prodelya.test',
-        'app.prodelya.test',
-        'prodelya_core.test',
-        'localhost',
-        '127.0.0.1',
-    ];
-
-    /**
      * Resolve tenant from request
      */
     public function resolve(Request $request): ?TenantAccount
     {
-        $host = $request->getHost();
+        $host = $this->normalizeHost($request->getHost());
         $path = $request->path();
         
         // Check if this is a central domain
@@ -84,7 +73,7 @@ class TenantResolver
      */
     protected function isCentralDomain(string $host): bool
     {
-        return in_array($host, $this->centralDomains);
+        return in_array($this->normalizeHost($host), $this->centralDomains(), true);
     }
 
     /**
@@ -92,6 +81,7 @@ class TenantResolver
      */
     protected function extractSubdomain(string $host): ?string
     {
+        $host = $this->normalizeHost($host);
         $parts = explode('.', $host);
         
         if (count($parts) >= 3) {
@@ -103,6 +93,12 @@ class TenantResolver
 
     protected function resolveByDomain(string $host): ?TenantAccount
     {
+        $host = $this->normalizeHost($host);
+
+        if ($host === '' || in_array($host, $this->reservedHosts(), true)) {
+            return null;
+        }
+
         return TenantAccount::query()
             ->where('status', 'active')
             ->where(function ($query) use ($host) {
@@ -118,6 +114,45 @@ class TenantResolver
     public function isCentralAdmin(Request $request): bool
     {
         return $this->isCentralDomain($request->getHost());
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    protected function centralDomains(): array
+    {
+        $hosts = config('prodelya_domains.central_hosts', []);
+
+        if (! is_array($hosts) || $hosts === []) {
+            $hosts = config('prodelya_domains.local_hosts', []);
+        }
+
+        return array_values(array_unique(array_filter(array_map(
+            fn ($host): string => $this->normalizeHost((string) $host),
+            is_array($hosts) ? $hosts : []
+        ))));
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    protected function reservedHosts(): array
+    {
+        $hosts = config('prodelya_domains.reserved_hosts', []);
+
+        if (! is_array($hosts) || $hosts === []) {
+            $hosts = array_merge($this->centralDomains(), config('prodelya_domains.local_hosts', []));
+        }
+
+        return array_values(array_unique(array_filter(array_map(
+            fn ($host): string => $this->normalizeHost((string) $host),
+            is_array($hosts) ? $hosts : []
+        ))));
+    }
+
+    protected function normalizeHost(?string $host): string
+    {
+        return strtolower(trim((string) $host));
     }
 
     /**

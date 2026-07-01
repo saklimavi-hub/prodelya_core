@@ -186,9 +186,9 @@ class ProductDataHubAutoSyncProjectionTest extends TestCase
             ->get('/admin/super-admin/product-data-hub/catalog-output');
 
         $catalogResponse->assertOk();
-        $catalogResponse->assertSee('Katalog Çıkışı Özeti');
-        $catalogResponse->assertSee('Stok değişen ürün');
-        $catalogResponse->assertSee('Fiyat değişen ürün');
+        $catalogResponse->assertSee('Katalog Yayını Özeti');
+        $catalogResponse->assertSee('Değişen ürünleri kataloğa yansıt');
+        $catalogResponse->assertSee('Eksik kayıtları tamamla');
     }
 
     private function findSourceBySupplierCode(string $code): SupplierSource

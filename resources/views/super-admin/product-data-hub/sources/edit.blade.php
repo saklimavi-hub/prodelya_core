@@ -12,7 +12,7 @@
     <div class="pd-card-body">
         <div class="pd-hero-main">
             <div class="pd-hero-copy">
-                <h1 class="pd-hero-title">Global Tedarikçi Kaynağını Düzenle</h1>
+                <h1 class="pd-hero-title">Hazır Tedarikçi Kaynağını Düzenle</h1>
                 <p class="pd-hero-subtitle">{{ $source->source_name }} - {{ $source->supplier->name }}</p>
                 <div class="pd-hero-badges">
                     <span class="pd-badge pd-badge-blue">Kaynak düzenleme</span>
@@ -22,7 +22,7 @@
             </div>
             <div class="pd-hero-actions">
                 <a href="{{ route('admin.super.product-data-hub.sources.index') }}" class="pd-btn pd-btn-light">Kaynaklara Dön</a>
-                <a href="{{ route('admin.super.product-data-hub.sources.preview', $source) }}" class="pd-btn pd-btn-light">Preview Al</a>
+                <a href="{{ route('admin.super.product-data-hub.sources.preview', $source) }}" class="pd-btn pd-btn-light">Önizlemeyi Aç</a>
                 <form action="{{ route('admin.super.product-data-hub.sources.test', $source) }}" method="POST">
                     @csrf
                     <button type="submit" class="pd-btn pd-btn-primary">Bağlantı Test Et</button>
@@ -32,7 +32,7 @@
     </div>
 </section>
 
-<div class="pd-note">Bu kaynak Super Admin tarafından yönetilir. Tenant bu URL’yi değiştiremez. Tenant’a erişim Tenant Tedarikçi Erişimleri ekranından verilir.</div>
+<div class="pd-note">Bu kaynak Super Admin tarafından yönetilir. Abone Firma bu URL’yi değiştiremez. Abone Firma erişimi Abone Firma Tedarikçi Erişimleri ekranından verilir.</div>
 @if(\Illuminate\Support\Str::startsWith($source->supplier->code, 'TMP-') || \Illuminate\Support\Str::startsWith((string) ($source->config['profile_key'] ?? ''), 'TMP-'))
     <div class="pd-warn mt-3">Bu kaynak geçici/test profilidir. Gerçek tedarikçi profili olarak kullanılmamalıdır.</div>
 @endif
@@ -43,9 +43,10 @@
 
     <div class="pd-card pd-form-card mb-6">
         <div class="pd-card-header">
-            <h3 class="pd-card-title">Kaynak Tanımı</h3>
+            <h3 class="pd-card-title">Kaynak Kimliği</h3>
         </div>
         <div class="pd-card-body">
+            <div class="pd-note mb-4">Kaynağın temel kimliği, bağlı tedarikçi ve veri biçimi burada tutulur.</div>
             <div class="pd-form-grid-2">
                 <div>
                     <label class="pd-label">Tedarikçi *</label>
@@ -108,10 +109,11 @@
 
     <details class="pd-card pd-form-card mb-6">
         <summary class="pd-card-header">
-            <h3 class="pd-card-title">Kod ve Profil Ayarları</h3>
+            <h3 class="pd-card-title">Profil ve Parsing</h3>
             <span class="pd-badge pd-badge-gray">Gelişmiş</span>
         </summary>
         <div class="pd-card-body">
+            <div class="pd-note mb-4">Kod üretim şablonları ve profil detayları burada kalır. Günlük kullanımda yalnız gerektiğinde açılması önerilir.</div>
             <div class="pd-form-grid-2">
                 <div>
                     <label class="pd-label">Tedarikçi Prefix</label>
@@ -138,10 +140,11 @@
 
     <details class="pd-card pd-form-card mb-6">
         <summary class="pd-card-header">
-            <h3 class="pd-card-title">Bağlantı ve Yetkilendirme Ayarları</h3>
+            <h3 class="pd-card-title">Bağlantı ve Güvenlik</h3>
             <span class="pd-badge pd-badge-gray">Gelişmiş</span>
         </summary>
         <div class="pd-card-body">
+            <div class="pd-note mb-4">Bağlantı tipi, yetkilendirme ve erişim güvenliği ayarları burada tutulur.</div>
             <div class="pd-form-grid-2">
                 <div>
                     <label class="pd-label">Durum *</label>
@@ -169,6 +172,18 @@
                         <option value="bearer" {{ old('auth_type', $source->config['auth_type'] ?? 'none') === 'bearer' ? 'selected' : '' }}>Bearer Token</option>
                         <option value="api_key" {{ old('auth_type', $source->config['auth_type'] ?? 'none') === 'api_key' ? 'selected' : '' }}>API Key</option>
                     </select>
+                </div>
+            </div>
+
+            <div class="pd-form-grid-2 mt-4">
+                <div>
+                    <label class="pd-label">HTTP User-Agent</label>
+                    <input type="text" name="user_agent" class="pd-input" value="{{ old('user_agent', $source->config['user_agent'] ?? '') }}" placeholder="prodelya.com">
+                    <div class="pd-profile-note mt-2">Bazı tedarikçiler XML/API erişimi için User-Agent zorunlu tutar. Yeni Nesil gibi kaynaklarda bu alana web site adresinizi veya platform adresinizi yazın. Ornek: prodelya.com</div>
+                </div>
+                <div>
+                    <label class="pd-label">Bağlantı Zaman Aşımı (sn)</label>
+                    <input type="number" name="timeout_seconds" class="pd-input" value="{{ old('timeout_seconds', $source->config['timeout_seconds'] ?? 25) }}" min="1" max="120">
                 </div>
             </div>
 
@@ -206,8 +221,9 @@
             </div>
 
             <div class="mt-4">
-                <label class="pd-label">Header JSON</label>
-                <textarea name="request_headers" class="pd-textarea" rows="3" placeholder='{"Accept":"application/xml","X-Client":"Prodelya"}'>{{ old('request_headers', is_array($source->config['request_headers'] ?? null) ? json_encode($source->config['request_headers'], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) : ($source->config['request_headers'] ?? '')) }}</textarea>
+                <label class="pd-label">Ozel HTTP Header'lari</label>
+                <textarea name="request_headers" class="pd-textarea" rows="3" placeholder='{"Accept":"application/xml","X-Client":"Prodelya"}'>{{ old('request_headers', $source->getAttribute('masked_request_headers_display') ?? '') }}</textarea>
+                <div class="pd-profile-note mt-2">User-Agent alani doluysa burada tanimli User-Agent header'i yerine bu deger kullanilir. Diger header'lar korunur.</div>
             </div>
 
             <div class="mt-4">
@@ -251,10 +267,11 @@
 
     <details class="pd-card pd-form-card mb-6">
         <summary class="pd-card-header">
-            <h3 class="pd-card-title">Ürün Sayfası Galeri Zenginleştirme</h3>
+            <h3 class="pd-card-title">Gelişmiş Ayarlar</h3>
             <span class="pd-badge pd-badge-gray">Gelişmiş</span>
         </summary>
         <div class="pd-card-body">
+            <div class="pd-note mb-4">Ek galeri zenginleştirme, ürün sayfası seçicileri ve daha nadir kullanılan teknik ayarlar burada yer alır.</div>
             <label class="pd-checkbox">
                 <input type="checkbox" name="enrich_gallery_from_product_page" value="1" {{ old('enrich_gallery_from_product_page', $source->config['enrich_gallery_from_product_page'] ?? false) ? 'checked' : '' }}>
                 Ürün sayfasından ek galeri görsellerini çek
@@ -297,10 +314,11 @@
 
     <details class="pd-card pd-form-card mb-6">
         <summary class="pd-card-header">
-            <h3 class="pd-card-title">Senkron Politikası</h3>
+            <h3 class="pd-card-title">Sync Davranışı</h3>
             <span class="pd-badge pd-badge-gray">Gelişmiş</span>
         </summary>
         <div class="pd-card-body">
+            <div class="pd-note mb-4">Fiyat, stok, kategori ve katalog yayını davranışlarını bu bölümden yönetin.</div>
             <div class="pd-form-grid-2">
                 <div>
                     <label class="pd-label">Güncelleme Sıklığı</label>
@@ -344,7 +362,7 @@
                     <label class="pd-checkbox"><input type="checkbox" name="sync_auto_build" value="1" {{ old('sync_auto_build', data_get($source->config, 'sync_policy.sync_auto_build', $source->config['sync_auto_build'] ?? true)) ? 'checked' : '' }}> Sync sonrası standart ürün otomatik güncellensin</label>
                 </div>
                 <div>
-                    <label class="pd-checkbox"><input type="checkbox" name="sync_auto_project_to_tenant_catalog" value="1" {{ old('sync_auto_project_to_tenant_catalog', data_get($source->config, 'sync_policy.sync_auto_project_to_tenant_catalog', $source->config['sync_auto_project_to_tenant_catalog'] ?? true)) ? 'checked' : '' }}> Sync sonrası tenant kataloğa otomatik yansıt</label>
+                    <label class="pd-checkbox"><input type="checkbox" name="sync_auto_project_to_tenant_catalog" value="1" {{ old('sync_auto_project_to_tenant_catalog', data_get($source->config, 'sync_policy.sync_auto_project_to_tenant_catalog', $source->config['sync_auto_project_to_tenant_catalog'] ?? true)) ? 'checked' : '' }}> Sync sonrası Abone Firma kataloğuna otomatik yansıt</label>
                 </div>
             </div>
 
@@ -362,7 +380,7 @@
                     <label class="pd-checkbox"><input type="checkbox" name="sync_block_on_conflict_category" value="1" {{ old('sync_block_on_conflict_category', data_get($source->config, 'sync_policy.sync_block_on_conflict_category', $source->config['sync_block_on_conflict_category'] ?? true)) ? 'checked' : '' }}> Conflict kategori ürününü kontrol kuyruğuna al</label>
                 </div>
                 <div>
-                    <label class="pd-checkbox"><input type="checkbox" name="sync_allow_warning_products_to_catalog" value="1" {{ old('sync_allow_warning_products_to_catalog', data_get($source->config, 'sync_policy.sync_allow_warning_products_to_catalog', $source->config['sync_allow_warning_products_to_catalog'] ?? true)) ? 'checked' : '' }}> Uyarılı ürünleri tenant kataloga uyarıyla geçir</label>
+                    <label class="pd-checkbox"><input type="checkbox" name="sync_allow_warning_products_to_catalog" value="1" {{ old('sync_allow_warning_products_to_catalog', data_get($source->config, 'sync_policy.sync_allow_warning_products_to_catalog', $source->config['sync_allow_warning_products_to_catalog'] ?? true)) ? 'checked' : '' }}> Uyarılı ürünleri Abone Firma kataloğuna uyarıyla geçir</label>
                 </div>
             </div>
 

@@ -142,7 +142,7 @@ class CompanyCurrentAccountUnifiedUxTest extends TestCase
             ->assertRedirect($this->tenantUrl('/admin/companies/create'));
     }
 
-    public function test_company_show_renders_safe_current_account_summary_and_finance_link_is_permission_gated(): void
+    public function test_company_show_renders_safe_current_account_summary_and_finance_link_for_finance_authorized_users(): void
     {
         [$account, $company] = $this->createLinkedCompanyAccount('Summary Cari');
 
@@ -154,7 +154,7 @@ class CompanyCurrentAccountUnifiedUxTest extends TestCase
             ->assertSee($account->safeDisplayName())
             ->assertDontSee('Bakiye')
             ->assertDontSee('Ödeme Detayı')
-            ->assertDontSee($this->tenantUrl('/admin/current-accounts/' . $account->id . '/transactions'), false);
+            ->assertSee($this->tenantUrl('/admin/current-accounts/' . $account->id . '/transactions'), false);
 
         $financeResponse = $this->actingAs($this->financeOwner, 'web')
             ->get($this->tenantUrl('/admin/companies/' . $company->id));

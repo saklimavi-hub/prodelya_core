@@ -166,7 +166,7 @@
                                     <div style="display:flex;flex-wrap:wrap;gap:6px;">
                                         @php
                                             $badges = collect($product->warning_items)
-                                                ->filter(fn ($warning) => in_array($warning, ['Kategori Bekliyor', 'Stok yok', 'Fiyat eksik', 'Net fiyat uyarısı', 'Tedarikçi özel fiyat uyarısı'], true))
+                                                ->filter(fn ($warning) => in_array($warning, ['Kategori Bekliyor', 'Stok yok', 'Fiyat eksik', 'Net fiyat uyarısı', 'Kırmızı Ürün', 'Turuncu Ürün'], true))
                                                 ->values();
                                         @endphp
                                         @if($badges->isEmpty())

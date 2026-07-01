@@ -85,19 +85,27 @@ class TenantSettingsLandingTest extends TestCase
             ->get(route('admin.settings'));
 
         $response->assertOk();
-        $response->assertSee('Ayarlar');
-        $response->assertSee('Paket ve Kullanım');
-        $response->assertSee('Modül Görünümü');
-        $response->assertSee('Aktif');
-        $response->assertSee('Kullanicilar');
-        $response->assertSee('Siparisler');
-        $response->assertSee('Depolama');
+        $response->assertSee('Kurulum Merkezi');
+        $response->assertSee('Firma Profili');
+        $response->assertSee('Panel ve Portal');
+        $response->assertSee('Bildirimler');
+        $response->assertSee('Paket ve Limitler');
+        $response->assertSee('Kullanıcılar ve Roller');
+        $response->assertSee('Katalog ve Product Hub');
+        $response->assertSee('Dosya ve Depolama');
+        $response->assertSee('Talep Merkezi');
+        $response->assertSee('Panel Yetkilisi');
+        $response->assertSee('Kurulum Özeti');
+        $response->assertSee('Çalışma klasörü kök adı');
+        $response->assertSee('Yerel sunucu');
+        $response->assertSee('Amazon S3');
         $response->assertSee('Limit aşıldı');
         $response->assertSee('Limit dolmak üzere');
-        $response->assertSee('Baskı Ayarları');
-        $response->assertSee('Firma ve Genel Bilgiler');
-        $response->assertSee('Müşteri Portalı');
-        $response->assertSee(route('admin.settings.print-settings.index'), false);
+        $response->assertSee('Sonraki Faz');
+        $response->assertSee('Abone Firma');
+        $response->assertSee('Portal ve Paylaşım');
+        $response->assertSee('data-settings-tab-trigger="company-profile"', false);
+        $response->assertSee('data-settings-tab-panel="company-profile"', false);
         $response->assertDontSee(route('admin.product-data-hub.index'), false);
         $response->assertDontSee('smtp_password', false);
         $response->assertDontSee('API key', false);
@@ -106,6 +114,10 @@ class TenantSettingsLandingTest extends TestCase
         $response->assertDontSee('bakiye', false);
         $response->assertDontSee('cari hareket', false);
         $response->assertDontSee('product_data_hub', false);
+        $response->assertDontSee('Super Admin Yönetir');
+        $response->assertDontSee('Owner');
+        $response->assertDontSee('Public Tracking');
+        $response->assertDontSee('Portal ve Public Linkler');
     }
 
     public function test_settings_landing_shows_trial_and_expired_status_messages(): void

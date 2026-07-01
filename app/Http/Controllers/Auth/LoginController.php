@@ -4,8 +4,11 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\TenantAccount;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 
 class LoginController extends Controller
 {
@@ -15,7 +18,7 @@ class LoginController extends Controller
     public function showLoginForm()
     {
         if (Auth::check()) {
-            return redirect()->intended($this->redirectPath(request()));
+            return redirect($this->redirectPath(request()));
         }
         
         return view('auth.login');
@@ -37,13 +40,10 @@ class LoginController extends Controller
             $user = Auth::user();
 
             if ($user) {
-                $user->forceFill([
-                    'last_login_at' => now(),
-                    'last_login_ip' => $request->ip(),
-                ])->save();
+                $this->persistLastLoginMetadata($user, $request);
             }
             
-            return redirect()->intended($this->redirectPath($request));
+            return redirect($this->redirectPath($request));
         }
 
         return back()->withErrors([
@@ -56,7 +56,11 @@ class LoginController extends Controller
      */
     public function logout(Request $request)
     {
-        Auth::logout();
+        if ($this->shouldUseLocalSqliteGuardLogoutFallback()) {
+            Auth::guard('web')->logoutCurrentDevice();
+        } else {
+            Auth::logout();
+        }
         
         $request->session()->invalidate();
         $request->session()->regenerateToken();
@@ -76,7 +80,7 @@ class LoginController extends Controller
         }
 
         if ($user->isPlatformAdmin()) {
-            return route('admin.super.dashboard');
+            return $this->centralDashboardUrl($request);
         }
 
         $tenant = $user->preferredTenant();
@@ -93,7 +97,7 @@ class LoginController extends Controller
     protected function tenantDashboardUrl(Request $request, TenantAccount $tenant): ?string
     {
         $host = strtolower(trim((string) $request->getHost()));
-        $scheme = $request->getScheme();
+        $scheme = $this->preferredScheme($request);
 
         $candidateHosts = array_filter([
             trim((string) $tenant->custom_domain),
@@ -108,18 +112,155 @@ class LoginController extends Controller
 
         $subdomain = trim((string) $tenant->panel_subdomain);
 
-        if ($subdomain === '' || $host === '' || in_array($host, ['localhost', '127.0.0.1'], true)) {
+        if ($subdomain === '') {
             return null;
         }
 
-        if (str_starts_with($host, $subdomain . '.')) {
+        if ($host !== '' && str_starts_with($host, $subdomain . '.')) {
             return '/admin/dashboard';
         }
 
-        if (!str_contains($host, '.')) {
+        $panelDomain = $this->panelDomain($host);
+
+        if ($panelDomain === '' || !str_contains($panelDomain, '.')) {
             return null;
         }
 
-        return $scheme . '://' . $subdomain . '.' . $host . '/admin/dashboard';
+        return $scheme . '://' . $subdomain . '.' . $panelDomain . '/admin/dashboard';
+    }
+
+    protected function panelDomain(string $requestHost = ''): string
+    {
+        $configured = strtolower(trim((string) config('prodelya_domains.panel_domain')));
+
+        if ($configured !== '') {
+            return $configured;
+        }
+
+        $host = strtolower(trim($requestHost));
+
+        if ($host !== '' && !in_array($host, ['localhost', '127.0.0.1'], true)) {
+            return $host;
+        }
+
+        $fallback = strtolower(trim((string) parse_url((string) config('app.url'), PHP_URL_HOST)));
+
+        return $fallback;
+    }
+
+    protected function preferredScheme(Request $request): string
+    {
+        if (config('prodelya_domains.force_https')) {
+            return 'https';
+        }
+
+        return $request->getScheme();
+    }
+
+    protected function centralDashboardUrl(Request $request): string
+    {
+        $scheme = $this->preferredScheme($request);
+        $host = $this->centralHost($request);
+
+        if ($host === '') {
+            return route('admin.super.dashboard');
+        }
+
+        return $scheme . '://' . $host . '/admin/super-admin/dashboard';
+    }
+
+    protected function centralHost(Request $request): string
+    {
+        $hosts = config('prodelya_domains.central_hosts', []);
+        $requestHost = strtolower(trim((string) $request->getHost()));
+
+        if (is_array($hosts)) {
+            foreach ($hosts as $host) {
+                $normalized = strtolower(trim((string) $host));
+
+                if ($normalized !== '' && $normalized === $requestHost) {
+                    return $normalized;
+                }
+            }
+
+            foreach ($hosts as $host) {
+                $normalized = strtolower(trim((string) $host));
+
+                if ($normalized !== '' && !$this->isLocalLikeHost($normalized)) {
+                    return $normalized;
+                }
+            }
+
+            foreach ($hosts as $host) {
+                $normalized = strtolower(trim((string) $host));
+
+                if ($normalized !== '') {
+                    return $normalized;
+                }
+            }
+        }
+
+        if ($requestHost !== '') {
+            return $requestHost;
+        }
+
+        return strtolower(trim((string) parse_url((string) config('app.url'), PHP_URL_HOST)));
+    }
+
+    protected function isLocalLikeHost(string $host): bool
+    {
+        $host = strtolower(trim($host));
+
+        return $host === ''
+            || in_array($host, ['localhost', '127.0.0.1'], true)
+            || Str::endsWith($host, ['.test', '.local']);
+    }
+
+    protected function persistLastLoginMetadata(mixed $user, Request $request): void
+    {
+        if (!$user) {
+            return;
+        }
+
+        if ($this->shouldSkipLastLoginWriteForLocalSqlite()) {
+            return;
+        }
+
+        try {
+            $user->forceFill([
+                'last_login_at' => now(),
+                'last_login_ip' => $request->ip(),
+            ])->save();
+        } catch (QueryException $exception) {
+            if ($this->shouldIgnoreLocalSqliteLockException($exception)) {
+                Log::warning('Local SQLite login metadata write skipped due to database lock.', [
+                    'user_id' => $user->id ?? null,
+                ]);
+
+                return;
+            }
+
+            throw $exception;
+        }
+    }
+
+    protected function shouldSkipLastLoginWriteForLocalSqlite(): bool
+    {
+        return in_array(strtolower((string) config('app.env')), ['local', 'development'], true)
+            && strtolower((string) config('database.default')) === 'sqlite';
+    }
+
+    protected function shouldUseLocalSqliteGuardLogoutFallback(): bool
+    {
+        return $this->shouldSkipLastLoginWriteForLocalSqlite();
+    }
+
+    protected function shouldIgnoreLocalSqliteLockException(QueryException $exception): bool
+    {
+        if (! $this->shouldSkipLastLoginWriteForLocalSqlite()) {
+            return false;
+        }
+
+        return str_contains(strtolower($exception->getMessage()), 'database is locked');
     }
 }

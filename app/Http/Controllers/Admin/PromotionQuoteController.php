@@ -16,6 +16,8 @@ use App\Models\SupplierSource;
 use App\Models\TenantCatalogProduct;
 use App\Models\TenantCatalogProductVariant;
 use App\Services\ModuleFeatureCatalogService;
+use App\Services\ProductDataHub\ProductHubSellableTruthService;
+use App\Services\ProductDataHub\SupplierWarningLabelService;
 use App\Services\PromotionQuotePdfService;
 use App\Services\Notifications\TenantNotificationSettingsService;
 use App\Services\Notifications\TenantWhatsappLinkService;
@@ -45,6 +47,8 @@ class PromotionQuoteController extends Controller
         protected TenantWhatsappLinkService $tenantWhatsappLinkService,
         protected TenantNotificationSettingsService $tenantNotificationSettingsService,
         protected TenantAccessService $tenantAccessService,
+        protected SupplierWarningLabelService $supplierWarningLabelService,
+        protected ProductHubSellableTruthService $sellableTruthService,
     ) {}
 
     /**
@@ -479,6 +483,45 @@ class PromotionQuoteController extends Controller
         return 'Teklif kaydedilirken beklenmeyen bir sistem hatasi olustu.';
     }
 
+    private function normalizeQuoteItemInput(array $itemData, string $invoiceStatus): array
+    {
+        $normalized = $itemData;
+        $normalized['invoice_status'] = $this->resolveInvoiceStatus($itemData['invoice_status'] ?? $invoiceStatus);
+        $normalized['quantity'] = $this->normalizeDecimal($itemData['quantity'] ?? 0);
+        $normalized['has_print'] = filter_var($itemData['has_print'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $normalized['vat_rate'] = $this->normalizeDecimal($itemData['vat_rate'] ?? 0);
+        $normalized['unit'] = $itemData['unit'] ?? 'Adet';
+        $normalized['product_name'] = trim((string) ($itemData['product_name'] ?? ''));
+        $normalized['product_code'] = filled($itemData['product_code'] ?? null) ? trim((string) $itemData['product_code']) : null;
+        $normalized['prints'] = is_array($itemData['prints'] ?? null) ? array_values($itemData['prints']) : [];
+
+        return $normalized;
+    }
+
+    private function selectedCatalogIdentity(array $itemData): array
+    {
+        return $this->decodeJsonField($itemData['selected_catalog_identity'] ?? null) ?? [];
+    }
+
+    private function validationMessageKey(?int $itemIndex, string $field = 'items'): string
+    {
+        if ($itemIndex === null) {
+            return $field;
+        }
+
+        return $field === 'items'
+            ? sprintf('items.%d', $itemIndex)
+            : sprintf('items.%d.%s', $itemIndex, $field);
+    }
+
+    private function throwItemValidation(?int $itemIndex, string $field, string $message): never
+    {
+        throw ValidationException::withMessages([
+            'error' => 'Teklif kaydedilemedi. Hatalı satırları kontrol edip tekrar deneyin.',
+            $this->validationMessageKey($itemIndex, $field) => $message,
+        ]);
+    }
+
     private function resolveUnitPricePayload(array $itemData): array
     {
         $listPrice = $this->normalizeDecimal($itemData['list_price'] ?? 0);
@@ -832,6 +875,7 @@ class PromotionQuoteController extends Controller
             'items.*.price_snapshot' => 'nullable',
             'items.*.stock_snapshot' => 'nullable',
             'items.*.catalog_source' => 'nullable|string|max:100',
+            'items.*.selected_catalog_identity' => 'nullable',
             'items.*.prints' => 'nullable|array',
             'items.*.prints.*.tenant_print_setting_id' => 'nullable|integer',
             'items.*.prints.*.standard_print_type_id' => 'nullable|integer|exists:standard_print_types,id',
@@ -881,15 +925,15 @@ class PromotionQuoteController extends Controller
             $vatTotal = 0;
             $grossTotal = 0;
 
-            foreach ($validated['items'] as $itemData) {
-                $itemData['quantity'] = $this->normalizeDecimal($itemData['quantity']);
+            foreach ($validated['items'] as $itemIndex => $itemData) {
+                $itemData = $this->normalizeQuoteItemInput($itemData, $invoiceStatus);
                 $unitPricePayload = $this->resolveUnitPricePayload($itemData);
                 $itemData['list_price'] = $unitPricePayload['list_price'];
                 $itemData['discount_rate'] = $unitPricePayload['discount_rate'];
                 $itemData['unit_price'] = $unitPricePayload['unit_price'];
                 $unitPrice = $unitPricePayload['unit_price'];
 
-                $catalogPayload = $this->resolveCatalogItemPayload($tenant->id, $itemData);
+                $catalogPayload = $this->resolveCatalogItemPayload($tenant->id, $itemData, $itemIndex);
                 $vatMode = $this->resolveQuoteVatMode($invoiceStatus);
                 $vatRate = $vatMode === 'taxable'
                     ? (float) ($itemData['vat_rate'] ?? data_get($catalogPayload['price_snapshot'], 'vat_rate', 20) ?: 20)
@@ -1038,6 +1082,9 @@ class PromotionQuoteController extends Controller
                 ->route('admin.promotion-quotes.show', $quote)
                 ->with('success', 'Promosyon teklifi başarıyla oluşturuldu.');
 
+        } catch (ValidationException $e) {
+            DB::rollback();
+            throw $e;
         } catch (\Exception $e) {
             DB::rollback();
             
@@ -1431,6 +1478,7 @@ class PromotionQuoteController extends Controller
             'items.*.price_snapshot' => 'nullable',
             'items.*.stock_snapshot' => 'nullable',
             'items.*.catalog_source' => 'nullable|string|max:100',
+            'items.*.selected_catalog_identity' => 'nullable',
             'items.*.prints' => 'nullable|array',
             'items.*.prints.*.tenant_print_setting_id' => 'nullable|integer',
             'items.*.prints.*.standard_print_type_id' => 'nullable|integer|exists:standard_print_types,id',
@@ -1474,15 +1522,15 @@ class PromotionQuoteController extends Controller
             $vatTotal = 0;
             $grossTotal = 0;
 
-            foreach ($validated['items'] as $itemData) {
-                $itemData['quantity'] = $this->normalizeDecimal($itemData['quantity']);
+            foreach ($validated['items'] as $itemIndex => $itemData) {
+                $itemData = $this->normalizeQuoteItemInput($itemData, $invoiceStatus);
                 $unitPricePayload = $this->resolveUnitPricePayload($itemData);
                 $itemData['list_price'] = $unitPricePayload['list_price'];
                 $itemData['discount_rate'] = $unitPricePayload['discount_rate'];
                 $itemData['unit_price'] = $unitPricePayload['unit_price'];
                 $unitPrice = $unitPricePayload['unit_price'];
 
-                $catalogPayload = $this->resolveCatalogItemPayload($tenant->id, $itemData);
+                $catalogPayload = $this->resolveCatalogItemPayload($tenant->id, $itemData, $itemIndex);
                 $vatMode = $this->resolveQuoteVatMode($invoiceStatus);
                 $vatRate = $vatMode === 'taxable'
                     ? (float) ($itemData['vat_rate'] ?? data_get($catalogPayload['price_snapshot'], 'vat_rate', 20) ?: 20)
@@ -1632,6 +1680,9 @@ class PromotionQuoteController extends Controller
                 ->route('admin.promotion-quotes.show', $quote)
                 ->with('success', 'Promosyon teklifi başarıyla güncellendi.');
 
+        } catch (ValidationException $e) {
+            DB::rollback();
+            throw $e;
         } catch (\Exception $e) {
             DB::rollback();
             
@@ -1673,27 +1724,49 @@ class PromotionQuoteController extends Controller
         }
     }
 
-    private function resolveCatalogItemPayload(int $tenantId, array $itemData): array
+    private function resolveCatalogItemPayload(int $tenantId, array $itemData, ?int $itemIndex = null): array
     {
         $catalogProduct = null;
         $catalogVariant = null;
+        $selectedCatalogIdentity = $this->selectedCatalogIdentity($itemData);
         $productSnapshot = $this->decodeJsonField($itemData['product_snapshot'] ?? null);
         $priceSnapshot = $this->decodeJsonField($itemData['price_snapshot'] ?? null) ?? [];
         $stockSnapshot = $this->decodeJsonField($itemData['stock_snapshot'] ?? null);
+        $hasCatalogIdentity = filled($itemData['tenant_catalog_product_id'] ?? null)
+            || filled($itemData['tenant_catalog_product_variant_id'] ?? null)
+            || filled($itemData['standard_product_id'] ?? null)
+            || filled(data_get($selectedCatalogIdentity, 'tenant_catalog_product_id'))
+            || filled(data_get($selectedCatalogIdentity, 'tenant_catalog_product_variant_id'));
+
+        if (($itemData['product_snapshot'] ?? null) !== null && $productSnapshot === null) {
+            $this->throwItemValidation($itemIndex, 'product_snapshot', 'Seçilen ürün bilgisi eksik kaldı. Lütfen ürünü katalogdan yeniden seçin.');
+        }
+
+        if (($itemData['price_snapshot'] ?? null) !== null && $priceSnapshot === null) {
+            $this->throwItemValidation($itemIndex, 'price_snapshot', 'Ürün fiyat özeti okunamadı. Satırı yeniden seçip tekrar deneyin.');
+        }
+
+        if (($itemData['stock_snapshot'] ?? null) !== null && $stockSnapshot === null) {
+            $this->throwItemValidation($itemIndex, 'stock_snapshot', 'Uyarılı ürün seçildi ancak teklif satırı eksik veri taşıyor. Lütfen satırı yeniden seçin veya manuel ürün olarak kaydedin.');
+        }
+
         $priceSnapshot['vat_mode'] = $this->resolveQuoteVatMode($itemData['invoice_status'] ?? data_get($priceSnapshot, 'invoice_status'));
         $priceSnapshot['invoice_status'] = $this->resolveInvoiceStatus($itemData['invoice_status'] ?? data_get($priceSnapshot, 'invoice_status'));
 
-        if (!empty($itemData['tenant_catalog_product_id'])) {
+        $catalogProductId = $itemData['tenant_catalog_product_id'] ?? data_get($selectedCatalogIdentity, 'tenant_catalog_product_id') ?? data_get($productSnapshot, 'tenant_catalog_product_id');
+        if (!empty($catalogProductId)) {
             $catalogProduct = TenantCatalogProduct::query()
                 ->where('tenant_account_id', $tenantId)
-                ->find($itemData['tenant_catalog_product_id']);
+                ->find($catalogProductId);
 
             if (!$catalogProduct) {
                 abort(403, 'Seçilen katalog ürünü bu tenant için geçerli değil.');
             }
         }
 
-        $catalogVariantId = $itemData['tenant_catalog_product_variant_id'] ?? data_get($productSnapshot, 'tenant_catalog_product_variant_id');
+        $catalogVariantId = $itemData['tenant_catalog_product_variant_id']
+            ?? data_get($selectedCatalogIdentity, 'tenant_catalog_product_variant_id')
+            ?? data_get($productSnapshot, 'tenant_catalog_product_variant_id');
 
         if (!empty($catalogVariantId)) {
             $catalogVariant = TenantCatalogProductVariant::query()
@@ -1705,10 +1778,14 @@ class PromotionQuoteController extends Controller
             }
 
             if ($catalogProduct && $catalogVariant->tenant_catalog_product_id !== $catalogProduct->id) {
-                abort(403, 'Seçilen katalog varyasyonu ürün ile eşleşmiyor.');
+                $this->throwItemValidation($itemIndex, 'tenant_catalog_product_variant_id', 'Seçilen varyasyon ürün ile eşleşmiyor. Lütfen satırı yeniden seçin.');
             }
 
             $catalogProduct ??= $catalogVariant->catalogProduct;
+        }
+
+        if ($hasCatalogIdentity && !$catalogProduct && !$catalogVariant) {
+            $this->throwItemValidation($itemIndex, 'product_snapshot', 'Seçilen ürün bilgisi eksik kaldı. Lütfen ürünü katalogdan yeniden seçin.');
         }
 
         if (!$catalogProduct) {
@@ -1733,6 +1810,7 @@ class PromotionQuoteController extends Controller
         $primarySource = $sourceSummary->first() ?? [];
         $supplierSourceId = $catalogVariant?->source_summary['supplier_source_id'] ?? data_get($primarySource, 'supplier_source_id');
         $supplierId = $catalogVariant?->source_summary['supplier_id'] ?? data_get($primarySource, 'supplier_id');
+        $sellableTruth = $this->sellableTruthService->resolve($catalogProduct, $catalogVariant);
 
         if ($supplierSourceId && !SupplierSource::query()->whereKey($supplierSourceId)->exists()) {
             $supplierSourceId = null;
@@ -1757,21 +1835,17 @@ class PromotionQuoteController extends Controller
             'local_stock_priority' => (bool) ($catalogProduct->local_stock_priority ?? true),
             'local_stock_quantity' => (float) ($catalogVariant?->local_stock_quantity ?? $catalogProduct->local_stock_quantity ?? 0),
             'supplier_stock_quantity' => (float) ($catalogVariant?->supplier_stock_quantity ?? $catalogProduct->supplier_stock_quantity ?? 0),
-            'visible_stock_quantity' => $this->resolveEffectiveStock(
-                (float) ($catalogVariant?->local_stock_quantity ?? $catalogProduct->local_stock_quantity ?? 0),
-                (float) ($catalogVariant?->supplier_stock_quantity ?? $catalogProduct->supplier_stock_quantity ?? 0),
-                (float) ($catalogVariant?->stock_quantity ?? $catalogProduct->total_stock_quantity ?? 0),
-                (bool) ($catalogProduct->local_stock_priority ?? true)
-            ),
-            'warning_badges' => $this->resolveWarningBadges($catalogProduct, $catalogVariant),
-            'warning_messages' => $this->resolveWarningMessages($catalogProduct, $catalogVariant),
+            'visible_stock_quantity' => (float) ($sellableTruth['effective_stock'] ?? 0),
+            'is_warning_sellable' => count($this->resolveWarningBadges($catalogProduct, $catalogVariant)) > 0,
+            'warning_tone' => in_array('Kırmızı Ürün', $this->resolveWarningBadges($catalogProduct, $catalogVariant), true) ? 'red' : 'amber',
+            'warning_summary' => implode(' • ', array_slice($this->resolveWarningBadges($catalogProduct, $catalogVariant), 0, 3)),
             'source_summary' => $catalogVariant?->source_summary ?: $catalogProduct->source_summary,
         ];
 
         $priceSnapshot ??= [
-            'display_price' => (float) ($catalogVariant?->display_price ?? $catalogProduct->display_price ?? 0),
+            'display_price' => (float) ($sellableTruth['effective_price'] ?? 0),
             'list_price' => (float) (data_get($catalogVariant?->meta, 'price_snapshot.list_price') ?? data_get($catalogProduct->meta, 'price_snapshot.list_price') ?? $catalogVariant?->display_price ?? $catalogProduct->display_price ?? 0),
-            'currency' => $catalogVariant?->currency ?? $catalogProduct->currency ?? 'TL',
+            'currency' => $sellableTruth['effective_currency'] ?? $catalogVariant?->currency ?? $catalogProduct->currency ?? 'TL',
             'price_multiplier' => (float) ($catalogProduct->price_multiplier ?? 1),
             'vat_rate' => (float) (data_get($catalogVariant?->source_summary, 'vat_rate') ?? data_get($catalogProduct->source_summary, '0.vat_rate') ?? 20),
             'vat_mode' => $this->resolveQuoteVatMode($itemData['invoice_status'] ?? 'fis'),
@@ -1789,22 +1863,20 @@ class PromotionQuoteController extends Controller
             'total_stock_quantity' => (float) ($catalogProduct->total_stock_quantity ?? 0),
             'local_stock_quantity' => (float) ($catalogVariant?->local_stock_quantity ?? $catalogProduct->local_stock_quantity ?? 0),
             'supplier_stock_quantity' => (float) ($catalogVariant?->supplier_stock_quantity ?? $catalogProduct->supplier_stock_quantity ?? 0),
-            'visible_stock_quantity' => $this->resolveEffectiveStock(
-                (float) ($catalogVariant?->local_stock_quantity ?? $catalogProduct->local_stock_quantity ?? 0),
-                (float) ($catalogVariant?->supplier_stock_quantity ?? $catalogProduct->supplier_stock_quantity ?? 0),
-                (float) ($catalogVariant?->stock_quantity ?? $catalogProduct->total_stock_quantity ?? 0),
-                (bool) ($catalogProduct->local_stock_priority ?? true)
-            ),
+            'visible_stock_quantity' => (float) ($sellableTruth['effective_stock'] ?? 0),
             'safe_stock_quantity' => (int) ($catalogVariant?->safe_stock_quantity ?? $catalogProduct->safe_stock_quantity ?? 0),
             'local_stock_priority' => (bool) ($catalogProduct->local_stock_priority ?? true),
-            'stock_status' => $this->resolveEffectiveStock(
-                (float) ($catalogVariant?->local_stock_quantity ?? $catalogProduct->local_stock_quantity ?? 0),
-                (float) ($catalogVariant?->supplier_stock_quantity ?? $catalogProduct->supplier_stock_quantity ?? 0),
-                (float) ($catalogVariant?->stock_quantity ?? $catalogProduct->total_stock_quantity ?? 0),
-                (bool) ($catalogProduct->local_stock_priority ?? true)
-            ) > 0 ? 'available' : 'out_of_stock',
+            'stock_status' => (float) ($sellableTruth['effective_stock'] ?? 0) > 0 ? 'available' : 'out_of_stock',
             'warning_flag' => (bool) ($catalogProduct->standardProduct?->warning_flag ?? false),
         ];
+
+        if ($hasCatalogIdentity && blank($productSnapshot['product_name'] ?? null)) {
+            $this->throwItemValidation($itemIndex, 'product_snapshot', 'Seçilen ürün bilgisi eksik kaldı. Lütfen ürünü katalogdan yeniden seçin.');
+        }
+
+        if ($hasCatalogIdentity && !array_key_exists('list_price', $priceSnapshot) && !array_key_exists('display_price', $priceSnapshot)) {
+            $this->throwItemValidation($itemIndex, 'price_snapshot', 'Ürün fiyat özeti okunamadı. Satırı yeniden seçip tekrar deneyin.');
+        }
 
         return [
             'product_source' => 'tenant_catalog',
@@ -1860,6 +1932,8 @@ class PromotionQuoteController extends Controller
         $messages = [];
         $variantMeta = $catalogVariant?->meta ?? [];
         $productMeta = $catalogProduct->meta ?? [];
+        $supplierName = data_get($catalogVariant?->source_summary, 'supplier_name')
+            ?: data_get($catalogProduct->source_summary, '0.supplier_name');
         $effectiveStock = $this->resolveEffectiveStock(
             (float) ($catalogVariant?->local_stock_quantity ?? $catalogProduct->local_stock_quantity ?? 0),
             (float) ($catalogVariant?->supplier_stock_quantity ?? $catalogProduct->supplier_stock_quantity ?? 0),
@@ -1867,17 +1941,14 @@ class PromotionQuoteController extends Controller
             (bool) ($catalogProduct->local_stock_priority ?? true)
         );
 
-        if ((bool) (data_get($variantMeta, 'net_price_warning') ?? data_get($productMeta, 'net_price_warning', false))
-            || ((data_get($variantMeta, 'pricing_policy_type') ?? data_get($productMeta, 'pricing_policy_type')) === 'net_price')) {
-            $badges[] = 'Net fiyat uyarısı';
-            $messages[] = 'Bu ürün net fiyatlı olabilir. Teklif/sipariş sırasında standart iskonto uygulanmamalı; gerekirse birim satış fiyatı artırılarak çalışılmalıdır.';
-        }
-
-        if ((bool) (data_get($variantMeta, 'supplier_warning_flag') ?? data_get($productMeta, 'supplier_warning_flag', false))
-            || filled(data_get($variantMeta, 'supplier_warning_type') ?? data_get($productMeta, 'supplier_warning_type'))) {
-            $badges[] = 'Özel fiyat uyarısı';
-            $messages[] = 'Bu ürün tedarikçi tarafından özel fiyat/iskonto uyarılı işaretlenmiş. Standart indirim uygulanmadan önce kontrol edilmelidir.';
-        }
+        $snapshot = [
+            'net_price_warning' => (bool) (data_get($variantMeta, 'net_price_warning') ?? data_get($productMeta, 'net_price_warning', false)),
+            'pricing_policy_type' => data_get($variantMeta, 'pricing_policy_type') ?? data_get($productMeta, 'pricing_policy_type'),
+            'supplier_warning_flag' => (bool) (data_get($variantMeta, 'supplier_warning_flag') ?? data_get($productMeta, 'supplier_warning_flag', false)),
+            'supplier_warning_type' => data_get($variantMeta, 'supplier_warning_type') ?? data_get($productMeta, 'supplier_warning_type'),
+        ];
+        $badges = array_merge($badges, $this->supplierWarningLabelService->supplierSpecificBadges($supplierName, $snapshot));
+        $messages = array_merge($messages, $this->supplierWarningLabelService->supplierSpecificMessages($supplierName, $snapshot));
 
         $warningList = array_values(array_filter(array_merge(
             (array) data_get($variantMeta, 'warnings', []),

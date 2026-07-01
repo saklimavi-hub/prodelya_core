@@ -2,7 +2,7 @@
 
 @section('title', 'Standart Kategori Ağacı')
 @section('page_title', 'Standart Kategori Ağacı')
-@section('page_subtitle', 'Global temiz kategori ağacını, parent/child yapıyı, görünürlük ve aktiflik durumlarını yönetin.')
+@section('page_subtitle', 'Prodelya ortak kategori ağacını yönetin. Tedarikçi kategorileri bu yapıya eşlenir; günlük satış görünümü için Abone Firma katalog ekranı kullanılır.')
 
 @section('page_actions')
 <div class="pd-actions-wrap">
@@ -32,7 +32,7 @@
     <a href="{{ route('admin.super.product-data-hub.category-feature-templates.index') }}" class="pd-template-chip">Özellik Şablonları</a>
 </nav>
 
-<div id="genel-bakis" class="pd-grid" style="grid-template-columns: repeat(6, minmax(0, 1fr)); margin-bottom: 24px;">
+<div id="genel-bakis" class="pd-kpi-strip mb-6">
     <div class="pd-profile-metric">
         <div class="pd-stat-icon pd-profile-metric-icon pd-profile-metric-icon-blue">{{ $stats['total'] }}</div>
         <div>
@@ -87,11 +87,13 @@
 <section id="kategori-agaci" class="pd-card pd-section-card mb-6">
     <div class="pd-card-header">
         <h3 class="pd-card-title">Kategori Ağacı</h3>
-        <p class="pd-card-subtitle">Global hedef kategori ağacını filtreleyin, toplu işlem uygulayın ve aynı parent altındaki sıraları güvenli şekilde güncelleyin.</p>
+        <p class="pd-card-subtitle">Prodelya ortak kategori ağacını filtreleyin, güvenli toplu bakım işlemlerini yönetin ve aynı parent altındaki sıraları kontrollü biçimde güncelleyin.</p>
     </div>
     <div class="pd-card-body">
-        <div class="pd-grid pd-grid-3 mb-5">
-            <form method="GET" class="pd-grid pd-grid-3" style="grid-column: 1 / -1;">
+        <div class="pd-note mb-4">Bu ekran tedarikçi kategorilerini doğrudan değiştirmez. Tedarikçi kategorilerini bağlamak için Kategori Eşleme ekranını, özellik detayları için Özellik Şablonları ekranını kullanın.</div>
+        <div class="mb-5">
+            <form method="GET" class="pd-stack-md">
+                <div class="pd-filter-row pd-filter-row-3">
                 <div>
                     <label class="pd-label">Ürün Ailesi</label>
                     <select name="product_family" class="pd-select">
@@ -120,7 +122,8 @@
                     <label class="pd-label">Arama</label>
                     <input type="text" name="search" value="{{ $filters['search'] ?? '' }}" class="pd-input" placeholder="Kod veya kategori ara">
                 </div>
-                <div class="flex gap-2 flex-wrap" style="grid-column: 1 / -1;">
+                </div>
+                <div class="pd-form-actions">
                     <button type="submit" class="pd-btn pd-btn-primary">Filtrele</button>
                     <a href="{{ route('admin.super.standard-categories.index') }}" class="pd-btn pd-btn-light">Temizle</a>
                 </div>
@@ -136,20 +139,20 @@
             </div>
         @endif
 
-        <form id="pdStandardCategoryBulkForm" method="POST" action="{{ $bulkActionRoute }}" class="pd-card" style="margin-bottom: 14px;">
+        <form id="pdStandardCategoryBulkForm" method="POST" action="{{ $bulkActionRoute }}" class="pd-card mb-4">
             @csrf
             <div class="pd-card-body">
                 <div class="flex items-center justify-between gap-3 flex-wrap">
                     <div><strong>Seçilen:</strong> <span id="pdSelectedCategoryCount">0</span> kategori</div>
                     <div class="flex gap-2 flex-wrap items-center">
-                        <select name="bulk_action" class="pd-select" style="width: 220px;">
+                        <select name="bulk_action" class="pd-select">
                             <option value="deactivate">Pasife Al</option>
                             <option value="activate">Aktif Et</option>
                             <option value="hide_catalog">Katalogdan Gizle</option>
                             <option value="show_catalog">Katalogda Göster</option>
                             <option value="safe_delete">Güvenli Sil</option>
                         </select>
-                        <button type="submit" class="pd-btn pd-btn-primary">Uygula</button>
+                        <button type="submit" class="pd-btn pd-btn-warning">Onay Gerektiren İşlemi Uygula</button>
                         <button type="button" class="pd-btn pd-btn-light" onclick="window.pdClearCategorySelection && window.pdClearCategorySelection()">Seçimi Temizle</button>
                     </div>
                 </div>
@@ -160,11 +163,11 @@
             @csrf
         </form>
 
-        <div class="flex gap-2 flex-wrap mb-3">
-            <button type="submit" form="pdStandardCategoryOrderForm" class="pd-btn pd-btn-primary">Sıralamayı Kaydet</button>
+        <div class="pd-form-actions mb-3">
+            <button type="submit" form="pdStandardCategoryOrderForm" class="pd-btn pd-btn-primary">Sıra Düzenini Kaydet</button>
             <form method="POST" action="{{ $cleanupUnusedRoute }}">
                 @csrf
-                <button type="submit" class="pd-btn pd-btn-light" onclick="return confirm('Bağlantısız pasif kategorileri temizlemek istediğinize emin misiniz?')">Bağlantısız Pasifleri Temizle</button>
+                <button type="submit" class="pd-btn pd-btn-light" onclick="return confirm('Bağlantısız pasif kategorileri temizlemek istediğinize emin misiniz?')">Gelişmiş İşlem: Bağlantısız Pasifleri Temizle</button>
             </form>
         </div>
 
@@ -245,7 +248,7 @@
                                 @endif
                             </td>
                             <td>
-                                <div class="flex gap-2 flex-wrap">
+                                <div class="pd-row-actions">
                                     @if($category->isArchivedCategory())
                                         <a href="{{ route('admin.super.standard-categories.edit', $category) }}" class="pd-btn pd-btn-sm pd-btn-light">İncele</a>
                                         <span class="pd-badge pd-badge-amber">Arşiv</span>
@@ -334,7 +337,7 @@
 <section id="toplu-ice-aktarim" class="pd-card pd-section-card mb-6">
     <div class="pd-card-header">
         <h3 class="pd-card-title">Toplu İçe Aktarım</h3>
-        <p class="pd-card-subtitle">Kopyala-yapıştır akışı şimdilik önerilen hızlı import yöntemidir. Gerçek Excel parser sonraki aşamada eklenecek.</p>
+        <p class="pd-card-subtitle">Kopyala-yapıştır akışı şu an önerilen güvenli toplu yükleme yöntemidir. Gerçek Excel parser ayrıca uygulanacaktır.</p>
     </div>
     <div class="pd-card-body">
         <div class="pd-note mb-4"><code>code;name;parent_code;product_family;sort_order</code></div>
@@ -349,7 +352,7 @@
 <section id="eslesmemis-kontrol" class="pd-card pd-section-card mb-6">
     <div class="pd-card-header">
         <h3 class="pd-card-title">Eşlenmemiş Kontrol</h3>
-        <p class="pd-card-subtitle">Kategori eşleme öncesinde eksik veya opsiyonel alanları hızlıca kontrol edin.</p>
+        <p class="pd-card-subtitle">Kategori eşleme öncesinde eksik veya opsiyonel alanları hızlıca kontrol edin. Bu uyarılar tek başına teklif görünürlüğünü kapatmaz.</p>
     </div>
     <div class="pd-card-body">
         <div class="pd-grid pd-grid-3">
@@ -407,7 +410,7 @@
 
         <div class="pd-summary-action-list">
             <span class="pd-summary-action"><span>Global kategori ağacını Super Admin yönetir.</span><span class="pd-badge pd-badge-blue">Rol</span></span>
-            <span class="pd-summary-action"><span>Tenant bu ağacı değiştiremez.</span><span class="pd-badge pd-badge-amber">Kilitli</span></span>
+            <span class="pd-summary-action"><span>Abone Firma bu ağacı değiştiremez.</span><span class="pd-badge pd-badge-amber">Kilitli</span></span>
             <span class="pd-summary-action"><span>Tedarikçi eşleme işi ayrı Kategori Eşleme Kuyruğu ekranındadır.</span><span class="pd-badge pd-badge-green">Ayrı</span></span>
             <span class="pd-summary-action"><span>4 seviye ve üstü kategori yerine özellik/filtre kullanılmalıdır.</span><span class="pd-badge pd-badge-purple">Kural</span></span>
             <span class="pd-summary-action"><span>Gerçek Excel parser sonraki aşamada geliştirilecek.</span><span class="pd-badge pd-badge-gray">Plan</span></span>
@@ -425,7 +428,7 @@
             </div>
         </div>
 
-        <div class="pd-side-note">Bu ağaç ve özellik kuralları Gelişmiş Ürün ve Katalog projeksiyonundan önce netleştirilmelidir.</div>
+        <div class="pd-side-note">Bu ağaç ve özellik kuralları ürün eşleme ve katalog yansıtma öncesinde netleştirilmelidir. Parent/grup yapılar teknik olarak burada görülebilir; günlük ürün kontrolü için Ürün Paneli daha uygundur.</div>
     </div>
 </div>
 @endsection

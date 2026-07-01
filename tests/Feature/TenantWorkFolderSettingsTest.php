@@ -37,7 +37,7 @@ class TenantWorkFolderSettingsTest extends TestCase
             ->get(route('admin.settings'));
 
         $response->assertOk();
-        $response->assertSee('Çalışma Klasörü Kök Adı');
+        $response->assertSee('Çalışma klasörü kök adı');
         $response->assertSee('ISLER / ABC-INSAAT-AS / SP-2026-0008 / 01-AK-1020-KIRMIZI');
         $response->assertDontSee('C:\\', false);
         $response->assertDontSee('/var/', false);

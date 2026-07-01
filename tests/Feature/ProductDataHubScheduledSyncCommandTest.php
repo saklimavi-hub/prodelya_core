@@ -204,12 +204,11 @@ class ProductDataHubScheduledSyncCommandTest extends TestCase
             ->get('/admin/super-admin/product-data-hub/sources');
 
         $response->assertOk();
-        $response->assertSeeText('Sync frekansı:');
-        $response->assertSeeText('Günlük');
-        $response->assertSeeText('Sonraki planlanan sync:');
-        $response->assertSeeText('Auto build: Açık');
-        $response->assertSeeText('Tenant kataloğa otomatik yansıtma: Açık');
-        $response->assertSeeText('Otomatik zamanlama için sunucuda Laravel scheduler/cron aktif olmalıdır.');
+        $response->assertSeeText('Tedarikçi Akışları');
+        $response->assertSeeText('Detaya Git');
+        $response->assertSeeText('Son Sync');
+        $response->assertSeeText('Tenant Katalog Etkisi');
+        $response->assertSeeText('Senkron Raporlarını Aç');
     }
 
     public function test_dry_run_ui_message_and_sync_report_badge_are_visible(): void
@@ -259,8 +258,15 @@ class ProductDataHubScheduledSyncCommandTest extends TestCase
             ->get('/admin/super-admin/product-data-hub/sources?filter=all');
 
         $response->assertOk();
-        $response->assertSeeText('Build bekliyor');
-        $response->assertSeeText('staging kaydı var, standard product 0. Build bekliyor.');
+        $response->assertSeeText('Detaya Git');
+
+        $detailResponse = $this->actingAs($this->adminUser)
+            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
+            ->get(route('admin.super.product-data-hub.sources.suppliers.show', ['supplier' => $source->supplier_id, 'filter' => 'all']));
+
+        $detailResponse->assertOk();
+        $detailResponse->assertSeeText('1 hazırlık kaydı');
+        $detailResponse->assertSeeText('Ürün Havuzu');
     }
 
     public function test_source_list_shows_projection_waiting_warning_when_standard_product_exists_without_projection(): void
@@ -318,8 +324,14 @@ class ProductDataHubScheduledSyncCommandTest extends TestCase
             ->get('/admin/super-admin/product-data-hub/sources?filter=all');
 
         $response->assertOk();
-        $response->assertSeeText('Projection bekliyor');
-        $response->assertSeeText('standard product var, tenant projection 0. Projection bekliyor.');
+        $response->assertSeeText('Detaya Git');
+
+        $detailResponse = $this->actingAs($this->adminUser)
+            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
+            ->get(route('admin.super.product-data-hub.sources.suppliers.show', ['supplier' => $source->supplier_id, 'filter' => 'all']));
+
+        $detailResponse->assertOk();
+        $detailResponse->assertSeeText('Bu kaynakta ürünler hazır, ancak Abone Firma kataloğuna henüz yansıtılmamış kayıtlar var.');
     }
 
     private function findSourceBySupplierCode(string $code): SupplierSource

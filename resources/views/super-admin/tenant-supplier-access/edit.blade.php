@@ -2,7 +2,7 @@
 
 @section('title', $tenant->name . ' Erişim Ayarları')
 @section('page_title', $tenant->name . ' Erişim Ayarları')
-@section('page_subtitle', 'Tenant modülleri, feed limitleri ve tedarikçi bazlı Product Data Hub erişim izinleri.')
+@section('page_subtitle', 'Abone Firma modülleri, feed limitleri ve tedarikçi bazlı Product Data Hub erişim izinleri.')
 
 @section('page_actions')
 <div class="flex gap-3">
@@ -18,12 +18,12 @@
     <div class="pd-grid" style="grid-template-columns: minmax(0, 1fr); margin-bottom: 14px;">
         <div class="pd-card">
             <div class="pd-card-header">
-                <h3 class="pd-card-title">Tenant Bilgisi</h3>
-                <p class="pd-card-subtitle">Temel tenant özeti ve aktif modüller.</p>
+                <h3 class="pd-card-title">Abone Firma Bilgisi</h3>
+                <p class="pd-card-subtitle">Temel Abone Firma özeti ve aktif modüller.</p>
             </div>
             <div class="pd-card-body">
                 <div class="pd-grid pd-grid-3">
-                    <div><div class="text-sm text-gray-600">Tenant</div><div class="font-medium">{{ $tenant->name }}</div></div>
+                    <div><div class="text-sm text-gray-600">Abone Firma</div><div class="font-medium">{{ $tenant->name }}</div></div>
                     <div><div class="text-sm text-gray-600">Slug</div><div class="font-medium">{{ $tenant->slug }}</div></div>
                     <div><div class="text-sm text-gray-600">Paket</div><div class="font-medium">{{ $tenant->package_key ?: '-' }}</div></div>
                 </div>
@@ -33,7 +33,7 @@
         <div class="pd-card">
             <div class="pd-card-header">
                 <h3 class="pd-card-title">Modül Ayarları</h3>
-                <p class="pd-card-subtitle">Tenant bazlı Product Data Hub özelliklerini açıp kapatın.</p>
+                <p class="pd-card-subtitle">Abone Firma bazlı Product Data Hub özelliklerini açıp kapatın.</p>
             </div>
             <div class="pd-card-body">
                 <div class="pd-grid pd-grid-2">
@@ -111,7 +111,7 @@
             </div>
         </div>
 
-        <div class="pd-note">Bu ekran gerçek XML parsing değildir, tenant bazlı global kaynak erişim altyapısıdır.</div>
+        <div class="pd-note">Bu ekran gerçek XML parsing değildir, Abone Firma bazlı global kaynak erişim altyapısıdır.</div>
     </div>
 </div>
 @endsection

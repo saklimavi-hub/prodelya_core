@@ -26,7 +26,16 @@ class TenantCatalogProjectionService
 
     public function projectForTenant(TenantAccount $tenant, array $options = []): array
     {
-        $products = $this->projectionCandidates($options);
+        $products = $this->projectionCandidates($options, $tenant);
+        $standardProductIds = $products->pluck('id')->filter()->unique()->values();
+        $standardVariantIds = $products
+            ->flatMap(fn (StandardProduct $product) => $product->variants->pluck('id'))
+            ->filter()
+            ->unique()
+            ->values();
+        $existingCatalogProducts = $this->existingCatalogProducts($tenant, $standardProductIds);
+        $existingCatalogVariants = $this->existingCatalogVariants($tenant, $standardVariantIds);
+        $missingOnly = (bool) ($options['missing_only'] ?? false);
 
         $stats = [
             'products' => 0,
@@ -59,20 +68,33 @@ class TenantCatalogProjectionService
                 continue;
             }
 
-            $catalogProduct = $this->projectProduct($tenant, $product, $decision);
-            $stats['products']++;
-            if ($catalogProduct->wasRecentlyCreated) {
-                $stats['created_products']++;
+            $existingCatalogProduct = $existingCatalogProducts->get($product->id);
+            if ($missingOnly && $existingCatalogProduct) {
+                $catalogProduct = $existingCatalogProduct;
             } else {
-                $stats['updated_products']++;
+                $catalogProduct = $this->projectProduct($tenant, $product, $decision);
+                $existingCatalogProducts->put($product->id, $catalogProduct);
+                $stats['products']++;
+                if ($catalogProduct->wasRecentlyCreated) {
+                    $stats['created_products']++;
+                } else {
+                    $stats['updated_products']++;
+                }
             }
 
             foreach ($product->variants as $variant) {
+                if ($missingOnly && $existingCatalogVariants->has($variant->id)) {
+                    continue;
+                }
+
                 $this->projectVariant($tenant, $catalogProduct, $variant);
+                $existingCatalogVariants->put($variant->id, true);
                 $stats['variants']++;
             }
 
-            $stats['warnings'] += count($catalogProduct->meta['warnings'] ?? []);
+            if (!$missingOnly || !$existingCatalogProduct) {
+                $stats['warnings'] += count($catalogProduct->meta['warnings'] ?? []);
+            }
             if (!empty($decision['warnings'])) {
                 $stats['projected_with_warnings']++;
             }
@@ -83,33 +105,18 @@ class TenantCatalogProjectionService
 
     public function analyzeForTenant(TenantAccount $tenant, array $options = []): array
     {
-        $products = $this->projectionCandidates($options);
+        $products = $this->projectionCandidates($options, $tenant);
         $standardProductIds = $products->pluck('id')->filter()->unique()->values();
         $standardVariantIds = $products
             ->flatMap(fn (StandardProduct $product) => $product->variants->pluck('id'))
             ->filter()
             ->unique()
             ->values();
+        $missingOnly = (bool) ($options['missing_only'] ?? false);
 
-        $existingCatalogProducts = TenantCatalogProduct::query()
-            ->where('tenant_account_id', $tenant->id)
-            ->when(
-                $standardProductIds->isNotEmpty(),
-                fn ($query) => $query->whereIn('standard_product_id', $standardProductIds->all()),
-                fn ($query) => $query->whereRaw('1 = 0')
-            )
-            ->get(['id', 'standard_product_id'])
-            ->keyBy('standard_product_id');
+        $existingCatalogProducts = $this->existingCatalogProducts($tenant, $standardProductIds);
 
-        $existingCatalogVariants = TenantCatalogProductVariant::query()
-            ->where('tenant_account_id', $tenant->id)
-            ->when(
-                $standardVariantIds->isNotEmpty(),
-                fn ($query) => $query->whereIn('standard_product_variant_id', $standardVariantIds->all()),
-                fn ($query) => $query->whereRaw('1 = 0')
-            )
-            ->get(['id', 'standard_product_variant_id'])
-            ->keyBy('standard_product_variant_id');
+        $existingCatalogVariants = $this->existingCatalogVariants($tenant, $standardVariantIds);
 
         $stats = [
             'candidate_products' => $products->count(),
@@ -160,18 +167,21 @@ class TenantCatalogProjectionService
 
             $stats['projectable_products']++;
             if ($existingCatalogProducts->has($product->id)) {
-                $stats['would_update_products']++;
+                if (!$missingOnly) {
+                    $stats['would_update_products']++;
+                }
             } else {
                 $stats['would_create_products']++;
             }
 
-            $variantCount = $product->variants->count();
-            $stats['projectable_variants'] += $variantCount;
-
             foreach ($product->variants as $variant) {
                 if ($existingCatalogVariants->has($variant->id)) {
-                    $stats['would_update_variants']++;
+                    if (!$missingOnly) {
+                        $stats['projectable_variants']++;
+                        $stats['would_update_variants']++;
+                    }
                 } else {
+                    $stats['projectable_variants']++;
                     $stats['would_create_variants']++;
                 }
             }
@@ -468,15 +478,6 @@ class TenantCatalogProjectionService
         }
 
         $hasCategoryConflict = $rawProducts->contains(fn ($rawProduct) => in_array($rawProduct->mapping_status, ['needs_review', 'conflict'], true));
-        if ($hasCategoryConflict && ($policy['sync_block_on_conflict_category'] ?? true)) {
-            return [
-                'allowed' => true,
-                'should_project' => false,
-                'status' => 'category_conflict',
-                'counter' => 'blocked_conflict_category',
-                'message' => 'Kategori önerisi çakışmalı olduğu için tenant kataloğa çıkış bekletildi.',
-            ];
-        }
 
         $hasWarnings = (bool) $product->warning_flag
             || (bool) data_get($product->meta, 'price_snapshot.net_price_warning', false)
@@ -491,6 +492,11 @@ class TenantCatalogProjectionService
         if ($missingCategory) {
             $warnings[] = 'Kategori bekliyor';
             $warnings[] = 'Kategori eksik';
+        }
+
+        if ($hasCategoryConflict) {
+            $warnings[] = 'Kategori Bekliyor';
+            $warnings[] = 'Kategori önerisi review bekliyor';
         }
 
         if ($hasWarnings) {
@@ -510,15 +516,18 @@ class TenantCatalogProjectionService
         return [
             'allowed' => true,
             'should_project' => true,
-            'status' => $missingCategory ? 'category_pending' : 'ready',
+            'status' => ($missingCategory || $hasCategoryConflict) ? 'category_pending' : 'ready',
             'warnings' => $warnings,
-            'category_missing' => $missingCategory,
-            'category_status' => $missingCategory ? 'unmapped' : 'mapped',
+            'category_missing' => $missingCategory || $hasCategoryConflict,
+            'category_conflict' => $hasCategoryConflict,
+            'category_status' => $missingCategory ? 'unmapped' : ($hasCategoryConflict ? 'review' : 'mapped'),
             'visible_in_catalog' => true,
             'is_active' => true,
             'message' => $missingCategory
                 ? 'Kategori eşlemesi bekliyor; ürün fallback kategori ve uyarı ile tenant kataloğa yansıtıldı.'
-                : 'Ürün tenant katalog projeksiyonuna otomatik yansıtıldı.',
+                : ($hasCategoryConflict
+                    ? 'Kategori review bekliyor; fiyat/stok güncelliği korunarak ürün tenant kataloğa yansıtıldı.'
+                    : 'Ürün tenant katalog projeksiyonuna otomatik yansıtıldı.'),
         ];
     }
 
@@ -642,15 +651,73 @@ class TenantCatalogProjectionService
         ];
     }
 
-    private function projectionCandidates(array $options = []): Collection
+    private function projectionCandidates(array $options = [], ?TenantAccount $tenant = null): Collection
     {
-        return StandardProduct::query()
+        $products = StandardProduct::query()
             ->with(['variants.images', 'images', 'category', 'rawProducts.source'])
             ->active()
             ->visibleInCatalog()
             ->when(!empty($options['supplier_ids'] ?? []), fn ($query) => $query->whereIn('supplier_id', (array) $options['supplier_ids']))
             ->when(!empty($options['standard_product_ids'] ?? []), fn ($query) => $query->whereIn('id', (array) $options['standard_product_ids']))
             ->get();
+
+        if (!(bool) ($options['missing_only'] ?? false) || !$tenant) {
+            return $products;
+        }
+
+        $existingProductIds = TenantCatalogProduct::query()
+            ->where('tenant_account_id', $tenant->id)
+            ->whereIn('standard_product_id', $products->pluck('id')->all())
+            ->pluck('standard_product_id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        $existingVariantIds = TenantCatalogProductVariant::query()
+            ->where('tenant_account_id', $tenant->id)
+            ->whereIn('standard_product_variant_id', $products->flatMap(fn (StandardProduct $product) => $product->variants->pluck('id'))->all())
+            ->pluck('standard_product_variant_id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        return $products
+            ->filter(function (StandardProduct $product) use ($existingProductIds, $existingVariantIds) {
+                if (!$existingProductIds->contains((int) $product->id)) {
+                    return true;
+                }
+
+                return $product->variants->contains(
+                    fn (StandardProductVariant $variant) => !$existingVariantIds->contains((int) $variant->id)
+                );
+            })
+            ->values();
+    }
+
+    private function existingCatalogProducts(TenantAccount $tenant, Collection $standardProductIds): Collection
+    {
+        return TenantCatalogProduct::query()
+            ->where('tenant_account_id', $tenant->id)
+            ->when(
+                $standardProductIds->isNotEmpty(),
+                fn ($query) => $query->whereIn('standard_product_id', $standardProductIds->all()),
+                fn ($query) => $query->whereRaw('1 = 0')
+            )
+            ->get()
+            ->keyBy('standard_product_id');
+    }
+
+    private function existingCatalogVariants(TenantAccount $tenant, Collection $standardVariantIds): Collection
+    {
+        return TenantCatalogProductVariant::query()
+            ->where('tenant_account_id', $tenant->id)
+            ->when(
+                $standardVariantIds->isNotEmpty(),
+                fn ($query) => $query->whereIn('standard_product_variant_id', $standardVariantIds->all()),
+                fn ($query) => $query->whereRaw('1 = 0')
+            )
+            ->get(['id', 'standard_product_variant_id'])
+            ->keyBy('standard_product_variant_id');
     }
 
     private function syncCatalogHoldState(TenantAccount $tenant, StandardProduct $product, array $decision): void

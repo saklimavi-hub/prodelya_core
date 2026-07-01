@@ -2,7 +2,7 @@
 
 @section('title', 'Katalog Ürünleri')
 @section('page_title', 'Katalog Ürünleri')
-@section('page_subtitle', 'Tenant’a açılmış tedarikçi ürünlerini, local ürünleri, stok durumunu ve katalog görünürlüğünü yönetin.')
+@section('page_subtitle', 'Abone Firma kataloğuna açılmış ürünleri yönetin. Bu ekran satış/katalog yansıtma katmanını gösterir; Product Hub teknik ekranı değildir.')
 
 @section('content')
 <div class="pd-hub-family-shell">
@@ -18,7 +18,15 @@
             <div class="pd-hero-main">
                 <div class="pd-hero-copy">
                     <h1 class="pd-hero-title">Katalog Ürünleri</h1>
-                    <p class="pd-hero-subtitle">Tenant’a açılmış tedarikçi ürünlerini, local ürünleri, stok durumunu ve katalog görünürlüğünü yönetin.</p>
+                    <p class="pd-hero-subtitle">Abone Firma kataloğuna açılmış tedarikçi ve local ürünleri yönetin. Satılabilir varyantlar teklif aramada kullanılır; grup ürünler varyanttan seçilir.</p>
+                    <div class="pd-note pd-note-soft-blue pd-context-note">
+                        <strong>Abone Firma:</strong> {{ $catalogContext['tenant_name'] ?? 'Bilinmiyor' }}
+                        @if(!empty($catalogContext['is_platform_admin_context']))
+                            <div class="pd-card-subtitle pd-subnote-top">Platform yöneticisi olarak Abone Firma panelindesiniz. Bu ekran yalnız seçili Abone Firma kataloğunu gösterir.</div>
+                        @elseif(!empty($catalogContext['is_fallback_tenant']))
+                            <div class="pd-card-subtitle pd-subnote-top">Bu ekran şu an seçili Abone Firma context’iyle açıldı. Beklediğiniz tedarikçi görünmüyorsa doğru Abone Firma panel hostunu kontrol edin.</div>
+                        @endif
+                    </div>
                     <div class="pd-hero-badges">
                         <span class="pd-badge pd-badge-blue">{{ $stats['total'] }} toplam katalog ürünü</span>
                         <span class="pd-badge pd-badge-green">{{ $stats['supplier'] }} tedarikçi ürünü</span>
@@ -35,14 +43,14 @@
     </section>
 
     <section class="pd-metric-grid">
-        <div class="pd-metric-card pd-metric-card-soft-blue"><div class="pd-metric-card-label">Toplam katalog ürünü</div><div class="pd-metric-card-value">{{ $stats['total'] }}</div><div class="pd-metric-card-note">Tenant kataloğundaki tüm ürünler</div></div>
-        <div class="pd-metric-card pd-metric-card-soft-green"><div class="pd-metric-card-label">Tedarikçi ürünü</div><div class="pd-metric-card-value">{{ $stats['supplier'] }}</div><div class="pd-metric-card-note">Tenant’a açılmış tedarikçi ürünleri</div></div>
-        <div class="pd-metric-card pd-metric-card-soft-purple"><div class="pd-metric-card-label">Local ürün</div><div class="pd-metric-card-value">{{ $stats['local'] }}</div><div class="pd-metric-card-note">Tenant’a özel manuel ürünler</div></div>
+        <div class="pd-metric-card pd-metric-card-soft-blue"><div class="pd-metric-card-label">Toplam katalog ürünü</div><div class="pd-metric-card-value">{{ $stats['total'] }}</div><div class="pd-metric-card-note">Abone Firma kataloğundaki tüm ürünler</div></div>
+        <div class="pd-metric-card pd-metric-card-soft-green"><div class="pd-metric-card-label">Tedarikçi ürünü</div><div class="pd-metric-card-value">{{ $stats['supplier'] }}</div><div class="pd-metric-card-note">Abone Firmaya açılmış tedarikçi ürünleri</div></div>
+        <div class="pd-metric-card pd-metric-card-soft-purple"><div class="pd-metric-card-label">Local ürün</div><div class="pd-metric-card-value">{{ $stats['local'] }}</div><div class="pd-metric-card-note">Abone Firmaya özel manuel ürünler</div></div>
         <div class="pd-metric-card pd-metric-card-soft-slate"><div class="pd-metric-card-label">Stokta olan</div><div class="pd-metric-card-value">{{ $stats['in_stock'] }}</div><div class="pd-metric-card-note">Satışta kullanılabilir stoklu ürün</div></div>
         <div class="pd-metric-card pd-metric-card-soft-amber"><div class="pd-metric-card-label">Fiyatı eksik</div><div class="pd-metric-card-value">{{ $stats['missing_price'] }}</div><div class="pd-metric-card-note">Manuel fiyat kontrolü gerekebilir</div></div>
         <div class="pd-metric-card pd-metric-card-soft-red"><div class="pd-metric-card-label">Uyarılı ürün</div><div class="pd-metric-card-value">{{ $stats['warning'] }}</div><div class="pd-metric-card-note">Fiyat, görsel, kategori veya stok kontrolü</div></div>
         <div class="pd-metric-card pd-metric-card-soft-green"><div class="pd-metric-card-label">Katalogda görünen</div><div class="pd-metric-card-value">{{ $stats['visible'] }}</div><div class="pd-metric-card-note">Müşteri katalog görünümü açık</div></div>
-        <div class="pd-metric-card pd-metric-card-soft-slate"><div class="pd-metric-card-label">Katalogda gizli</div><div class="pd-metric-card-value">{{ $stats['hidden'] }}</div><div class="pd-metric-card-note">Tenant tarafından gizlenen ürünler</div></div>
+        <div class="pd-metric-card pd-metric-card-soft-slate"><div class="pd-metric-card-label">Katalogda gizli</div><div class="pd-metric-card-value">{{ $stats['hidden'] }}</div><div class="pd-metric-card-note">Abone Firma tarafından gizlenen ürünler</div></div>
     </section>
 
     <section class="pd-section-card pd-section-card-soft-blue">
@@ -53,7 +61,7 @@
             </div>
         </div>
         <div class="pd-section-body">
-            <div class="pd-chip-group" style="margin-bottom: 14px;">
+            <div class="pd-chip-group pd-gap-bottom-sm">
                 <a href="{{ route('admin.catalog.index') }}" class="pd-chip {{ $filters['source_type'] === '' ? 'is-active' : '' }}">Tüm ürünler</a>
                 <a href="{{ route('admin.catalog.index', array_merge(request()->query(), ['source_type' => 'supplier'])) }}" class="pd-chip {{ $filters['source_type'] === 'supplier' ? 'is-active' : '' }}">Tedarikçi ürünleri</a>
                 <a href="{{ route('admin.catalog.index', array_merge(request()->query(), ['source_type' => 'local'])) }}" class="pd-chip {{ $filters['source_type'] === 'local' ? 'is-active' : '' }}">Local ürünler</a>
@@ -148,8 +156,8 @@
         <div class="pd-section-body">
             @if($products->isEmpty())
                 <div class="pd-empty-card">
-                    <h3 class="text-lg font-medium" style="margin-bottom:8px;">Katalog ürünü bulunamadı.</h3>
-                    <p class="pd-muted" style="margin-bottom:14px;">Henüz tenant’a açık tedarikçi ürünü yoksa Super Admin erişimlerini kontrol edin veya local ürün ekleyin.</p>
+                    <h3 class="text-lg font-medium pd-title-gap-xs">Katalog ürünü bulunamadı.</h3>
+                    <p class="pd-muted pd-gap-bottom-sm">Henüz Abone Firmaya açık tedarikçi ürünü yoksa Super Admin erişimlerini kontrol edin veya local ürün ekleyin.</p>
                     <div class="pd-hero-actions">
                         <a href="{{ route('admin.catalog.local-products') }}" class="pd-btn pd-btn-light">Local Ürün Ekle</a>
                     </div>
@@ -191,16 +199,14 @@
                                                 <div class="text-xs text-gray-500">{{ $product->display_code }}</div>
                                                 <div class="text-xs text-gray-500">{{ $product->supplier_label }}</div>
                                                 @if($product->has_local_stock_priority)
-                                                    <div class="pd-badge pd-badge-purple" style="margin-top:4px;">Local stok öncelikli</div>
+                                                    <div class="pd-badge pd-badge-purple pd-badge-stack-gap">Local stok öncelikli</div>
                                                 @endif
                                             </div>
                                         </div>
                                     </td>
                                     <td>
                                         <span class="pd-badge pd-badge-{{ $product->catalog_source === 'local_product' ? 'purple' : 'blue' }}">{{ $product->catalog_source_label }}</span>
-                                        @if(!$product->visible_in_quote)
-                                            <div class="pd-badge pd-badge-gray" style="margin-top:6px;">Teklifte kapalı</div>
-                                        @endif
+                                        <div class="pd-badge pd-badge-light pd-badge-stack-gap-sm">{{ $product->catalog_row_role_label }}</div>
                                     </td>
                                     <td>{{ $product->category_display_name }}</td>
                                     <td>{{ number_format((float) ($product->local_stock_quantity ?? 0), 0, ',', '.') }}</td>
@@ -210,14 +216,17 @@
                                     <td>{{ $vatRate !== null ? '%' . number_format((float) $vatRate, 0, ',', '.') : '-' }}</td>
                                     <td>
                                         @forelse($product->warning_items as $warning)
-                                            <div class="pd-badge pd-badge-amber" style="margin-bottom:4px;">{{ $warning }}</div>
+                                            <div class="pd-badge pd-badge-amber pd-badge-list-gap">{{ $warning }}</div>
                                         @empty
                                             <span class="pd-badge pd-badge-green">Sorun yok</span>
                                         @endforelse
                                     </td>
                                     <td>
                                         <div class="pd-badge pd-badge-{{ $product->visible_in_catalog ? 'green' : 'gray' }}">{{ $product->visible_in_catalog ? 'Katalogda görünüyor' : 'Katalogda gizli' }}</div>
-                                        <div class="pd-badge pd-badge-{{ $product->visible_in_quote ? 'blue' : 'gray' }}" style="margin-top:6px;">{{ $product->visible_in_quote ? 'Teklifte kullanılabilir' : 'Teklifte kapalı' }}</div>
+                                        <div class="pd-badge pd-badge-{{ $product->quote_visibility_badge_class }} pd-badge-stack-gap-sm">{{ $product->quote_visibility_label }}</div>
+                                        @if($product->quote_visibility_hint)
+                                            <div class="pd-card-subtitle pd-subnote-top">{{ $product->quote_visibility_hint }}</div>
+                                        @endif
                                     </td>
                                     <td>{{ optional($product->last_synced_at ?: $product->updated_at)->format('d.m.Y H:i') ?: '-' }}</td>
                                     <td>
@@ -241,7 +250,7 @@
                                                     @if($product->getAttribute('catalog_row_variant_id'))
                                                         <input type="hidden" name="tenant_catalog_product_variant_id" value="{{ $product->getAttribute('catalog_row_variant_id') }}">
                                                     @endif
-                                                    <div class="pd-muted" style="grid-column:1 / -1;">{{ $product->display_name }} · {{ $product->display_code }}</div>
+                                                    <div class="pd-muted pd-form-full">{{ $product->display_name }} · {{ $product->display_code }}</div>
                                                     <select name="entry_type" class="pd-select">
                                                         <option value="existing_stock">Eldeki stok</option>
                                                         <option value="supplier_purchase">Tedarikçiden satın alma</option>
@@ -254,14 +263,16 @@
                                                     <label class="pd-muted"><input type="checkbox" name="manual_purchase_unit_price" value="1" data-manual-price> Manuel fiyat</label>
                                                     <button type="button" class="pd-btn pd-btn-sm pd-btn-light" data-auto-price>Otomatik hesapla</button>
                                                     <input name="document_no" class="pd-input" placeholder="Belge no">
-                                                    <div class="pd-muted" style="grid-column:1 / -1;">Eldeki stok girişinde tedarikçiye borç oluşturulmaz.</div>
+                                                    <div class="pd-muted pd-form-full">Eldeki stok girişinde tedarikçiye borç oluşturulmaz.</div>
                                                     <button type="submit" class="pd-btn pd-btn-sm pd-btn-primary">Kaydet</button>
                                                 </form>
                                             </details>
-                                            <form action="{{ route('admin.catalog.toggle-quote-visibility', $product) }}" method="POST">
-                                                @csrf
-                                                <button type="submit" class="pd-btn pd-btn-sm pd-btn-light">Teklifte Kullan</button>
-                                            </form>
+                                            @if($product->quote_toggle_available)
+                                                <form action="{{ route('admin.catalog.toggle-quote-visibility', $product) }}" method="POST">
+                                                    @csrf
+                                                    <button type="submit" class="pd-btn pd-btn-sm pd-btn-light">{{ $product->quote_toggle_action_label }}</button>
+                                                </form>
+                                            @endif
                                             @if(!empty($product->warning_items))
                                                 <a href="{{ route('admin.catalog.warnings') }}" class="pd-btn pd-btn-sm pd-btn-warning">Uyarıları Gör</a>
                                             @endif
@@ -292,7 +303,7 @@
             <div class="pd-status-row"><span>Katalogda görünen</span><strong>{{ $summary['visible'] }}</strong></div>
             <div class="pd-status-row"><span>Son sync</span><strong>{{ $summary['last_sync'] }}</strong></div>
         </div>
-        <div class="pd-side-note">Tenant global XML kaynaklarını değiştiremez. Burada sadece tenant’a açılmış ürünleri, local stokları ve katalog görünürlüğünü yönetirsiniz.</div>
+        <div class="pd-side-note">Abone Firma burada yalnız kendisine açılmış katalog ürünlerini ve local stoklarını yönetir. Product Hub teknik akışları ayrı ekranlardadır.</div>
     </div>
 </div>
 @endsection

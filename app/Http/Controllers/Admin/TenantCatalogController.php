@@ -13,23 +13,29 @@ use App\Models\TenantCatalogProductVariant;
 use App\Models\TenantLocalStock;
 use App\Models\TenantSupplierPurchaseEntry;
 use App\Models\TenantSupplierAccess;
+use App\Services\ProductDataHub\SupplierWarningLabelService;
 use App\Services\ProductDataHub\TenantCatalogProjectionService;
+use App\Services\TenantResolver;
 use App\Services\TenantCatalog\TenantCatalogListRowQueryService;
 use Illuminate\Http\Response;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use Throwable;
 
 class TenantCatalogController extends Controller
 {
     public function __construct(
         private readonly TenantCatalogProjectionService $projectionService,
-        private readonly TenantCatalogListRowQueryService $listRowQueryService
+        private readonly TenantCatalogListRowQueryService $listRowQueryService,
+        private readonly SupplierWarningLabelService $supplierWarningLabelService,
+        private readonly TenantResolver $tenantResolver,
     ) {
     }
 
@@ -39,8 +45,9 @@ class TenantCatalogController extends Controller
         abort_if(!$tenant, 404);
 
         [$products, $stats, $filters, $categories, $suppliers, $summary] = $this->buildCatalogPageData($tenant, $request);
+        $catalogContext = $this->catalogContextPayload($request, $tenant);
 
-        return view('admin.catalog.index', compact('products', 'stats', 'filters', 'categories', 'suppliers', 'summary'));
+        return view('admin.catalog.index', compact('products', 'stats', 'filters', 'categories', 'suppliers', 'summary', 'catalogContext'));
     }
 
     public function productPanel(Request $request): View
@@ -280,16 +287,31 @@ class TenantCatalogController extends Controller
         return view('admin.catalog.warnings', compact('warningRows', 'stats', 'summary', 'filters', 'suppliers'));
     }
 
-    public function project(): RedirectResponse
+    public function project(Request $request): RedirectResponse
     {
-        $tenant = $this->currentTenant();
-        abort_if(!$tenant, 404);
+        $resolvedTenant = $this->resolvedTenantContext();
 
-        $result = $this->projectionService->projectForTenant($tenant);
+        if (!$resolvedTenant || $this->usesAmbiguousPlatformAdminContext($request)) {
+            return back()->with('error', 'Abone Firma context’i seçilmeden katalog projeksiyonu çalıştırılamaz.');
+        }
 
-        return redirect()
-            ->route('admin.catalog.index')
-            ->with('success', "Katalog projeksiyonu güncellendi. Ürün: {$result['products']}, Varyasyon: {$result['variants']}.");
+        try {
+            $result = $this->projectionService->projectForTenant($resolvedTenant);
+
+            return redirect()
+                ->route('admin.catalog.index')
+                ->with('success', "Katalog projeksiyonu güncellendi. Ürün: {$result['products']}, Varyasyon: {$result['variants']}.");
+        } catch (Throwable $exception) {
+            Log::error('Tenant catalog projection failed.', [
+                'tenant_account_id' => $resolvedTenant->id,
+                'tenant_name' => $resolvedTenant->name,
+                'host' => $request->getHost(),
+                'user_id' => auth()->id(),
+                'message' => $exception->getMessage(),
+            ]);
+
+            return back()->with('error', 'Abone Firma context’iyle katalog projeksiyonu tamamlanamadı. Detaylar sistem kayıtlarına yazıldı.');
+        }
     }
 
     public function show(TenantCatalogProduct $product): View
@@ -731,7 +753,9 @@ class TenantCatalogController extends Controller
                 return false;
             }
 
-            if ($filters['warning_state'] === 'red_product' && !$this->productHasWarningType($product, 'Tedarikçi özel fiyat uyarısı')) {
+            if ($filters['warning_state'] === 'red_product'
+                && !$this->productHasWarningType($product, 'Kırmızı Ürün')
+                && !$this->productHasWarningType($product, 'Turuncu Ürün')) {
                 return false;
             }
 
@@ -998,6 +1022,13 @@ class TenantCatalogController extends Controller
             (array) data_get($product->meta, 'warning_snapshot', []),
             (array) data_get($product->meta, 'warnings', [])
         ));
+        $supplierName = collect($product->source_summary ?? [])->pluck('supplier_name')->filter()->first();
+        $supplierSpecificBadges = $this->supplierWarningLabelService->supplierSpecificBadges($supplierName, [
+            'net_price_warning' => (bool) data_get($product->meta, 'net_price_warning', data_get($product->meta, 'price_snapshot.net_price_warning', false)),
+            'pricing_policy_type' => data_get($product->meta, 'pricing_policy_type', data_get($product->meta, 'price_snapshot.pricing_policy_type')),
+            'supplier_warning_flag' => (bool) data_get($product->meta, 'supplier_warning_flag', data_get($product->meta, 'price_snapshot.supplier_warning_flag', false)),
+            'supplier_warning_type' => data_get($product->meta, 'supplier_warning_type', data_get($product->meta, 'price_snapshot.supplier_warning_type')),
+        ]);
 
         if (blank($product->display_price) && blank(data_get($product->meta, 'price_snapshot.list_price'))) {
             $warnings->push('Fiyat eksik');
@@ -1015,13 +1046,7 @@ class TenantCatalogController extends Controller
             $warnings->push('Stok yok');
         }
 
-        if ((bool) data_get($product->meta, 'net_price_warning', data_get($product->meta, 'price_snapshot.net_price_warning', false))) {
-            $warnings->push('Net fiyat uyarısı');
-        }
-
-        if ((bool) data_get($product->meta, 'supplier_warning_flag', data_get($product->meta, 'price_snapshot.supplier_warning_flag', false))) {
-            $warnings->push('Tedarikçi özel fiyat uyarısı');
-        }
+        $warnings = $warnings->merge($supplierSpecificBadges);
 
         $projectionStatus = data_get($product->meta, 'projection_status', $product->catalog_status);
         if (in_array($projectionStatus, ['missing_from_feed', 'inactive_candidate'], true)) {
@@ -1051,7 +1076,8 @@ class TenantCatalogController extends Controller
             'Görsel eksik' => 'Ürün katalogda görselsiz kalabilir.',
             'Kategori eksik' => 'Standart kategori eşlemesi tamamlanmamış olabilir.',
             'Net fiyat uyarısı' => 'Bu ürün net fiyatlı olabilir; standart iskonto uygulanmadan önce kontrol edilmelidir.',
-            'Tedarikçi özel fiyat uyarısı' => 'Tedarikçi bu ürünü özel fiyat/uyarı ile işaretlemiş.',
+            'Kırmızı Ürün' => 'Bu ürün Etkin kaynağında kırmızı ürün olarak işaretlenmiş.',
+            'Turuncu Ürün' => 'Bu ürün Yeni Nesil kaynağında turuncu ürün olarak işaretlenmiş.',
             'Stok yok' => 'Satışta kullanılacak stok görünmüyor.',
             'XML’den çıkan / pasif adayı' => 'Ürün son tedarikçi beslemesinde görünmediği için kontrol kuyruğunda tutuluyor.',
             'Kategori conflict' => 'Kategori önerisi çakışmalı olduğu için kontrol bekliyor.',
@@ -1413,10 +1439,37 @@ class TenantCatalogController extends Controller
 
     private function currentTenant(): ?TenantAccount
     {
-        return request()->attributes->get('current_tenant')
+        return $this->resolvedTenantContext()
             ?? auth()->user()?->tenantAccount
             ?? TenantAccount::query()->where('panel_subdomain', 'demo')->first()
             ?? TenantAccount::query()->orderBy('id')->first();
+    }
+
+    private function resolvedTenantContext(): ?TenantAccount
+    {
+        return request()->attributes->get('current_tenant');
+    }
+
+    private function catalogContextPayload(Request $request, TenantAccount $tenant): array
+    {
+        $resolvedTenant = $this->resolvedTenantContext();
+        $isFallbackTenant = !$resolvedTenant || (int) $resolvedTenant->id !== (int) $tenant->id;
+        $isPlatformAdminContext = $this->usesAmbiguousPlatformAdminContext($request);
+
+        return [
+            'tenant_name' => $tenant->name,
+            'tenant_slug' => $tenant->slug,
+            'tenant_panel_subdomain' => $tenant->panel_subdomain,
+            'host' => $request->getHost(),
+            'is_fallback_tenant' => $isFallbackTenant,
+            'is_platform_admin_context' => $isPlatformAdminContext,
+        ];
+    }
+
+    private function usesAmbiguousPlatformAdminContext(Request $request): bool
+    {
+        return $this->tenantResolver->isCentralAdmin($request)
+            && (bool) auth()->user()?->isPlatformAdmin();
     }
 
     private function ensureTenantProduct(?TenantAccount $tenant, TenantCatalogProduct $product): void

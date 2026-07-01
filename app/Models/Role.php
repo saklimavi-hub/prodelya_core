@@ -107,6 +107,12 @@ class Role extends Model
     {
         $permissions = $this->permissions ?? [];
 
+        if (is_string($permissions)) {
+            $normalized = trim($permissions);
+
+            return $normalized === '' ? [] : [$normalized];
+        }
+
         if (!is_array($permissions)) {
             return [];
         }

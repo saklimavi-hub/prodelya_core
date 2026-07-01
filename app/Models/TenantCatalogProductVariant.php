@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\ProductDataHub\ProductAttributeValueNormalizer;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -87,5 +88,23 @@ class TenantCatalogProductVariant extends Model
                 data_get($this->meta, 'parent_product_code'),
             ]
         );
+    }
+
+    public function getVariantColorAttribute($value): ?string
+    {
+        if (!is_string($value) || trim($value) === '') {
+            return $value;
+        }
+
+        return app(ProductAttributeValueNormalizer::class)->normalizeDisplayValue($value, 'variant_color');
+    }
+
+    public function getVariantSizeAttribute($value): ?string
+    {
+        if (!is_string($value) || trim($value) === '') {
+            return $value;
+        }
+
+        return app(ProductAttributeValueNormalizer::class)->normalizeDisplayValue($value, 'variant_size');
     }
 }

@@ -37,6 +37,12 @@ class SupplierProductVariantRaw extends Model
         'warnings',
         'errors',
         'import_hash',
+        'identity_hash',
+        'content_hash',
+        'price_hash',
+        'stock_hash',
+        'image_hash',
+        'category_hash',
         'sync_status',
     ];
 

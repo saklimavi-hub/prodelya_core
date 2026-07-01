@@ -84,9 +84,9 @@ class ProductDataHubController extends Controller
             'safe_repair_candidates' => $healthSummary['safe_repair_groups'],
             'pending_mappings' => SupplierCategoryMapping::query()->whereNull('standard_category_id')->count(),
             'sync_errors' => FeedSyncError::query()->count(),
-            'sync_success' => ProductDataHubSyncRun::query()->where('status', 'success')->count(),
-            'sync_failed' => ProductDataHubSyncRun::query()->where('status', 'failed')->count(),
-            'sync_partial' => ProductDataHubSyncRun::query()->where('status', 'partial')->count(),
+            'sync_success' => ProductDataHubSyncRun::query()->whereIn('status', ['success', ProductDataHubSyncRun::STATUS_COMPLETED])->count(),
+            'sync_failed' => ProductDataHubSyncRun::query()->whereIn('status', ['failed', ProductDataHubSyncRun::STATUS_STUCK, ProductDataHubSyncRun::STATUS_RECOVERED])->count(),
+            'sync_partial' => ProductDataHubSyncRun::query()->whereIn('status', ['partial', ProductDataHubSyncRun::STATUS_COMPLETED_WITH_WARNINGS])->count(),
             'last_sync' => ProductDataHubSyncRun::query()->latest('finished_at')->value('finished_at')
                 ?? SupplierSource::query()->latest('last_sync_at')->value('last_sync_at'),
         ];

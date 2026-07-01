@@ -61,9 +61,9 @@ class AdminMenuVisibilityTest extends TestCase
             ->get(route('admin.current-accounts.index'));
 
         $response->assertOk();
-        $response->assertSee('Gösterge Paneli');
+        $response->assertSee('Yönetim Paneli');
         $response->assertSee('Promosyon Teklifleri');
-        $response->assertSee('Firmalar / Cari Kartlar');
+        $response->assertSee('Müşteriler / Cari Kartlar');
         $response->assertDontSee('Baski Teklifleri');
         $response->assertDontSee('Product Data Hub');
         $response->assertDontSee('Müşteri Portalı');
@@ -106,6 +106,7 @@ class AdminMenuVisibilityTest extends TestCase
         $response->assertOk();
         $response->assertDontSee('Product Data Hub');
         $response->assertSee('Müşteri Portalı');
+        $response->assertSee('Kurulum Merkezi');
     }
 
     public function test_super_admin_layout_shows_only_super_admin_menu_items(): void
@@ -116,11 +117,14 @@ class AdminMenuVisibilityTest extends TestCase
 
         $response->assertOk();
         $response->assertSee('Super Admin Paneli');
-        $response->assertSee('Tenantlar');
+        $response->assertSee('Başvurular');
+        $response->assertSee('Abone Firmalar');
+        $response->assertSee('Ödeme Altyapısı');
         $response->assertSee('Product Data Hub');
         $response->assertSee('Standart Kategori Ağacı');
+        $response->assertDontSee('Paket Talepleri');
         $response->assertDontSee('Promosyon Teklifleri');
-        $response->assertDontSee('Firmalar / Cari Kartlar');
+        $response->assertDontSee('Müşteriler / Cari Kartlar');
         $response->assertDontSee('Moduller');
         $response->assertDontSee('Super Ayarlar');
         $response->assertSee('data-sidebar-group="product-data-hub"', false);

@@ -38,7 +38,7 @@ class CategoryReviewBatchDecisionTest extends TestCase
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->get('/admin/super-admin/product-data-hub/category-review-batches/001')
             ->assertOk()
-            ->assertSeeText('Kategori Review Paketi 001')
+            ->assertSeeText('Kategori Karar Paketi 001')
             ->assertSeeText('Set Kutuları')
             ->assertSeeText((string) $mapping->product_count)
             ->assertSeeText('Sol — Tedarikçi Bilgisi')

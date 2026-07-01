@@ -84,19 +84,23 @@ class SettingsAndNotificationUxPolishTest extends TestCase
             ->get(route('admin.settings'));
 
         $settings->assertOk();
-        $settings->assertSee('Firma ve Genel Bilgiler');
-        $settings->assertSee('Operasyon Ayarları');
-        $settings->assertSee('Müşteri Portalı');
+        $settings->assertSee('Firma Profili');
+        $settings->assertSee('Panel ve Portal');
         $settings->assertSee('Bildirimler');
         $settings->assertSee('Paket ve Limitler');
-        $settings->assertSee('Kullanıcılar ve Yetkiler');
-        $settings->assertSee('Bildirim Merkezi');
-        $settings->assertSee('Portal ve Uyarılar');
+        $settings->assertSee('Kullanıcılar ve Roller');
+        $settings->assertSee('Katalog ve Product Hub');
+        $settings->assertSee('Dosya ve Depolama');
+        $settings->assertSee('Talep Merkezi');
+        $settings->assertSee('Portal ve Paylaşım Linkleri');
         $settings->assertSee('Limit dolmak üzere');
         $settings->assertDontSee('notification_center', false);
         $settings->assertDontSee('smtp_password', false);
         $settings->assertDontSee('secret-key', false);
         $settings->assertDontSee('secret-token', false);
+        $settings->assertDontSee('Super Admin Yönetir');
+        $settings->assertDontSee('Portal ve Public Linkler');
+        $settings->assertDontSee('Public Tracking');
 
         $dashboard = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])

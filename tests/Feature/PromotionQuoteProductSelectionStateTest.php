@@ -64,6 +64,9 @@ class PromotionQuoteProductSelectionStateTest extends TestCase
         $response->assertSee("target._stable_key = target._stable_key || itemElement.dataset.stableKey || defaultItem()._stable_key;", false);
         $response->assertSee("target.prints = (target.prints || []).map((printRow, index) => normalizePrint({", false);
         $response->assertSee("print_quantity: printRow._manual_quantity ? printRow.print_quantity : (target.quantity || printRow.print_quantity || ''),", false);
+        $response->assertSee('catalogEntryStore.set(entryKey, cloneJsonSafe(entry) ?? entry);', false);
+        $response->assertSee('data-entry-key="${escapeHtml(entryKey)}"', false);
+        $response->assertSee("badgeHtml(badge.text, badge.tone || 'amber')", false);
     }
 
     public function test_only_remove_action_filters_product_rows_out(): void

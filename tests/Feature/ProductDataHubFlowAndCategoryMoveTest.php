@@ -31,9 +31,9 @@ class ProductDataHubFlowAndCategoryMoveTest extends TestCase
 
         $this->getOnCentralHost('/admin/super-admin/product-data-hub')
             ->assertOk()
-            ->assertSee('Product Data Hub Akışı')
-            ->assertSee('Tenant Çıkışları')
-            ->assertSee('Ortak Ürün Havuzu')
+            ->assertSee('Durum Merkezi')
+            ->assertSee('Abone Firma Katalog Çıkışları')
+            ->assertSee('Standart Ürünler')
             ->assertSee('Tedarikçi Kaynakları')
             ->assertSee('Product Data Hub')
             ->assertSee('Kategori Eşleme');
@@ -45,9 +45,9 @@ class ProductDataHubFlowAndCategoryMoveTest extends TestCase
 
         $this->getOnCentralHost('/admin/super-admin/product-data-hub/catalog-output')
             ->assertOk()
-            ->assertSee('Katalog Çıkışı')
-            ->assertSee('Tenant katalog projeksiyonunu güncelle')
-            ->assertSee('Gelişmiş Ürün ve Katalog');
+            ->assertSee('Abone Katalog Yayını')
+            ->assertSee('Abone Katalog Güncelle')
+            ->assertSee('Katalog Ürünleri');
     }
 
     public function test_category_parent_can_be_changed_and_move_is_logged(): void

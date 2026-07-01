@@ -59,13 +59,14 @@ class SettingsNotificationTemplateCssPolishTest extends TestCase
 
         $settings->assertOk();
         $settings->assertSeeInOrder([
-            'Firma ve Genel Bilgiler',
-            'Operasyon Ayarları',
-            'Müşteri Portalı',
+            'Firma Profili',
+            'Panel ve Portal',
             'Bildirimler',
             'Paket ve Limitler',
-            'Kullanıcılar ve Yetkiler',
-            'Paket ve Kullanım',
+            'Kullanıcılar ve Roller',
+            'Katalog ve Product Hub',
+            'Dosya ve Depolama',
+            'Talep Merkezi',
         ]);
         $this->assertSame(1, substr_count($settings->getContent(), 'class="pd-sidebar-item active'));
 

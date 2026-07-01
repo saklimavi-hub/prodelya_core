@@ -4,12 +4,14 @@ namespace App\Http\Controllers\SuperAdmin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Package;
+use App\Models\TenantAccount;
+use App\Models\TenantModule;
+use App\Models\TenantSetting;
 use App\Services\ModuleFeatureCatalogService;
 use App\Services\PackageCatalogService;
-use App\Services\TenantAccessService;
-use App\Services\TenantUsageService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -37,10 +39,20 @@ class PackageController extends Controller
     public function index(): View
     {
         $packages = Package::query()
-            ->withCount(['modules', 'features', 'limits'])
+            ->with(['limits', 'tenants'])
+            ->withCount(['modules', 'features', 'limits', 'tenants'])
             ->orderBy('sort_order')
             ->orderBy('name')
             ->get();
+
+        $packages->each(function (Package $package): void {
+            $package->setAttribute('users_limit_label', $this->limitLabel($package, 'users'));
+            $package->setAttribute('products_limit_label', $this->limitLabel($package, 'products'));
+            $package->setAttribute('supplier_feeds_limit_label', $this->limitLabel($package, 'supplier_feeds'));
+            $package->setAttribute('orders_limit_label', $this->limitLabel($package, 'orders'));
+            $package->setAttribute('active_tenants_count', $package->tenants->where('status', 'active')->count());
+            $package->setAttribute('trial_tenants_count', $package->tenants->where('status', 'trial')->count());
+        });
 
         return view('super-admin.packages.index', [
             'packages' => $packages,
@@ -77,12 +89,18 @@ class PackageController extends Controller
     public function show(Package $package): View
     {
         $package->load(['modules', 'features', 'limits', 'tenants']);
+        $moduleCatalog = $this->moduleCatalogRows($package);
+        $featureCatalog = $this->featureCatalogRows($package);
+        $limitRows = $this->limitRows($package);
+        $tenantRows = $this->tenantRows($package);
 
         return view('super-admin.packages.show', [
             'package' => $package,
-            'moduleCatalog' => $this->moduleCatalogRows($package),
-            'featureCatalog' => $this->featureCatalogRows($package),
-            'limitRows' => $this->limitRows($package),
+            'moduleCatalog' => $moduleCatalog,
+            'featureCatalog' => $featureCatalog,
+            'limitRows' => $limitRows,
+            'tenantRows' => $tenantRows,
+            'overrideTenantCount' => collect($tenantRows)->where('has_override', true)->count(),
         ]);
     }
 
@@ -314,5 +332,46 @@ class PackageController extends Controller
         }
 
         return null;
+    }
+
+    private function limitLabel(Package $package, string $limitKey): string
+    {
+        $limit = $this->packageCatalogService->getLimit($package, $limitKey);
+
+        if ($limit === null) {
+            return 'Takip edilmiyor';
+        }
+
+        if ($limit['is_unlimited'] ?? false) {
+            return 'Limitsiz';
+        }
+
+        return isset($limit['limit_value']) ? (string) $limit['limit_value'] : 'Takip edilmiyor';
+    }
+
+    private function tenantRows(Package $package): array
+    {
+        return $package->tenants
+            ->sortBy('name')
+            ->values()
+            ->map(function (TenantAccount $tenant): array {
+                $hasOverride = TenantModule::query()
+                    ->where('tenant_account_id', $tenant->id)
+                    ->exists()
+                    || TenantSetting::query()
+                        ->where('tenant_account_id', $tenant->id)
+                        ->where('key', 'like', 'limit_%')
+                        ->exists();
+
+                return [
+                    'id' => $tenant->id,
+                    'name' => $tenant->name,
+                    'slug' => $tenant->slug,
+                    'panel_subdomain' => $tenant->panel_subdomain,
+                    'status' => $tenant->status,
+                    'has_override' => $hasOverride,
+                ];
+            })
+            ->all();
     }
 }

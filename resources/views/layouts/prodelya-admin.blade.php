@@ -7,6 +7,17 @@
     <link rel="stylesheet" href="{{ asset('css/prodelya-admin.css') }}?v={{ filemtime(public_path('css/prodelya-admin.css')) }}">
 </head>
 <body>
+    @php
+        $layoutContextLabel = 'Platform Yönetimi';
+
+        if ($currentTenantForLayout) {
+            $layoutContextLabel = $isSuperAdminContext
+                ? 'Super Admin / ' . $currentTenantForLayout->name
+                : 'Abone Firma Paneli: ' . $currentTenantForLayout->name;
+        } elseif ($isSuperAdminContext) {
+            $layoutContextLabel = 'Super Admin';
+        }
+    @endphp
     <input type="checkbox" id="mobileMenuToggle" class="hidden">
     <label for="mobileMenuToggle" class="fixed inset-0 bg-black bg-opacity-50 z-40 hidden"></label>
 
@@ -21,7 +32,7 @@
                     </label>
                     <div>
                         <h1 class="text-lg font-bold">Prodelya</h1>
-                        <p class="text-xs text-gray-500">{{ $currentTenantForLayout?->name ?? ($isSuperAdminContext ? 'Super Admin' : 'Admin Kullanici') }}</p>
+                        <p class="text-xs text-gray-500">{{ $layoutContextLabel }}</p>
                     </div>
                 </div>
                 <div class="flex items-center space-x-2">
@@ -118,7 +129,7 @@
                                 <div class="ml-3 flex-1">
                                     <p class="text-sm font-medium text-gray-900">{{ Auth::user()->name ?? 'Admin Kullanıcı' }}</p>
                                     <p class="text-xs text-gray-500">{{ Auth::user()->email ?? 'admin@prodelya.local' }}</p>
-                                    <p class="text-xs text-gray-400">{{ $currentTenantForLayout?->name ?? ($isSuperAdminContext ? 'Super Admin' : 'Demo Tenant') }}</p>
+                                    <p class="text-xs text-gray-400">{{ $layoutContextLabel }}</p>
                                 </div>
                             </div>
                             <div class="mt-3">
@@ -201,7 +212,7 @@
                                     <div class="pd-summary-info">
                                         <div class="pd-summary-row">
                                             <span>Adı:</span>
-                                            <span class="font-medium">{{ $currentTenantForLayout?->name ?? ($isSuperAdminContext ? 'Super Admin' : 'Demo') }}</span>
+                                            <span class="font-medium">{{ $layoutContextLabel }}</span>
                                         </div>
                                         <div class="pd-summary-row">
                                             <span>Domain:</span>

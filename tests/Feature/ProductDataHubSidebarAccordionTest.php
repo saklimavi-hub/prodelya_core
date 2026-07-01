@@ -57,7 +57,7 @@ class ProductDataHubSidebarAccordionTest extends TestCase
             ->assertSee('<details class="pd-sidebar-group is-open"', false)
             ->assertSee('data-sidebar-group="product-data-hub"', false)
             ->assertSee(' open >', false)
-            ->assertSeeText('Tenant Erişimleri');
+            ->assertSeeText('Abone Firma Tedarikçi Erişimleri');
     }
 
     public function test_sidebar_submenu_links_use_short_labels_and_correct_urls(): void
@@ -69,7 +69,7 @@ class ProductDataHubSidebarAccordionTest extends TestCase
         $response->assertOk();
         $response->assertSee(route('admin.super.product-data-hub.sources.index'), false);
         $response->assertDontSee('/product-data-hub/sources/create', false);
-        $response->assertSee(route('admin.super.product-data-hub.common-products'), false);
+        $response->assertDontSee(route('admin.super.product-data-hub.common-products'), false);
         $response->assertSee(route('admin.super.product-data-hub.pipeline'), false);
         $response->assertSee(route('admin.super.product-data-hub.sources.sync-reports'), false);
         $response->assertSee(route('admin.super.product-data-hub.category-mappings.index'), false);
@@ -79,19 +79,28 @@ class ProductDataHubSidebarAccordionTest extends TestCase
         $response->assertSee(route('admin.super.tenant-supplier-access.index'), false);
         $response->assertSee(route('admin.super.product-data-hub.standard-products.index'), false);
         $response->assertSee(route('admin.super.product-data-hub.catalog-output'), false);
-        $response->assertSeeText('GÜNLÜK');
-        $response->assertSeeText('KATEGORİ');
-        $response->assertSeeText('ARAÇLAR / BAKIM');
-        $response->assertSeeText('Ortak Ürün Havuzu');
+        $response->assertSeeText('Durum Merkezi');
+        $response->assertSeeText('Tedarikçi Akışları');
+        $response->assertSeeText('Ürün Havuzu');
+        $response->assertSeeText('Kategori ve Özellikler');
+        $response->assertSeeText('Abone Katalog Yayını');
+        $response->assertSeeText('Senkron / Raporlar');
+        $response->assertSeeText('Ayarlar ve Bakım');
+        $response->assertSeeText('Genel Bakış');
+        $response->assertSeeText('Tedarikçi Kaynakları');
+        $response->assertSeeText('Ürün Paneli');
+        $response->assertSeeText('Standart Ürünler');
         $response->assertSeeText('Standart Kategori Ağacı');
         $response->assertSeeText('Kategori Eşleme');
         $response->assertSeeText('Kategori Temizlik');
         $response->assertSeeText('Özellik Şablonları');
+        $response->assertSeeText('Abone Firma Katalog Çıkışları');
+        $response->assertSeeText('Abone Firma Tedarikçi Erişimleri');
+        $response->assertSeeText('Senkron ve Raporlar');
         $response->assertSeeText('Akış Kontrol');
         $response->assertSeeText('Profil Karşılaştırma');
-        $response->assertSeeText('Standart Ürünler');
         $response->assertDontSee('Product Data Hub · Tedarikçi Kaynakları');
-        $response->assertDontSee('Product Data Hub · Tenant Çıkışları');
+        $response->assertDontSee('Product Data Hub · Abone Firma Katalog Çıkışları');
         $response->assertDontSee('Araçlar · Akış Kontrol');
         $response->assertDontSee('Araçlar · Profil Karşılaştırma');
         $response->assertDontSee('Standart Ürün Görünümü');

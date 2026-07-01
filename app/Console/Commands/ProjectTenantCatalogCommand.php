@@ -19,6 +19,8 @@ class ProjectTenantCatalogCommand extends Command
         {--tenant-id= : Hedef abone firma numeric id}
         {--supplier= : Supplier code veya isim filtresi}
         {--supplier-id=* : Supplier id filtresi}
+        {--standard-product-id=* : Yalnız verilen standard_product_id kayitlarini hedefler}
+        {--missing-only : Sadece tenant katalogda eksik kayitlari hedefler}
         {--dry-run : Veri yazmadan projection planini raporlar}';
 
     protected $description = 'Mevcut standard tedarikçi ürünlerinden hedef abone firma için tenant katalog projection/backfill üretir.';
@@ -46,17 +48,25 @@ class ProjectTenantCatalogCommand extends Command
             ->filter()
             ->unique()
             ->values();
-
-        $beforeCounts = $this->catalogCounts($tenant, $selectedSupplierIds);
-        $analysis = $projectionService->analyzeForTenant($tenant, [
+        $selectedStandardProductIds = $this->selectedStandardProductIds();
+        $projectionOptions = [
             'supplier_ids' => $selectedSupplierIds->all(),
-        ]);
+            'standard_product_ids' => $selectedStandardProductIds->all(),
+            'missing_only' => $this->option('missing-only'),
+        ];
+
+        $beforeCounts = $this->catalogCounts($tenant, $selectedSupplierIds, $selectedStandardProductIds);
+        $analysis = $projectionService->analyzeForTenant($tenant, $projectionOptions);
 
         $this->line('Abone Firma Hesabı: ' . $tenant->name);
         $this->line('Slug: ' . $tenant->slug);
         $this->line('Tüm hazır tedarikçi erişimleri: ' . $allAccessRows->count());
         $this->line('Projection için uygun erişimler: ' . $eligibleAccessRows->count());
         $this->line('Seçilen hazır tedarikçi kaynakları: ' . $selectedAccessRows->count());
+        if ($selectedStandardProductIds->isNotEmpty()) {
+            $this->line('Seçilen standard ürün ID sayısı: ' . $selectedStandardProductIds->count());
+        }
+        $this->line('Mod: ' . ($this->option('missing-only') ? 'missing-only repair' : 'full projection'));
         $this->line('Aday standard ürün: ' . $analysis['candidate_products']);
         $this->line('Aday standard varyant: ' . $analysis['candidate_variants']);
         $this->line('Project edilebilir ürün: ' . $analysis['projectable_products']);
@@ -86,10 +96,8 @@ class ProjectTenantCatalogCommand extends Command
             return self::SUCCESS;
         }
 
-        $result = $projectionService->projectForTenant($tenant, [
-            'supplier_ids' => $selectedSupplierIds->all(),
-        ]);
-        $afterCounts = $this->catalogCounts($tenant, $selectedSupplierIds);
+        $result = $projectionService->projectForTenant($tenant, $projectionOptions);
+        $afterCounts = $this->catalogCounts($tenant, $selectedSupplierIds, $selectedStandardProductIds);
 
         $this->info('Projection tamamlandı.');
         $this->line('Oluşturulan/güncellenen katalog ürünü: ' . ($result['products'] ?? 0));
@@ -193,7 +201,16 @@ class ProjectTenantCatalogCommand extends Command
         return $selected;
     }
 
-    private function catalogCounts(TenantAccount $tenant, Collection $supplierIds): array
+    private function selectedStandardProductIds(): Collection
+    {
+        return collect((array) $this->option('standard-product-id'))
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values();
+    }
+
+    private function catalogCounts(TenantAccount $tenant, Collection $supplierIds, Collection $standardProductIds): array
     {
         $productQuery = TenantCatalogProduct::query()
             ->where('tenant_account_id', $tenant->id);
@@ -205,6 +222,10 @@ class ProjectTenantCatalogCommand extends Command
                         ->orWhereHas('standardProduct', fn ($builder) => $builder->where('supplier_id', (int) $supplierId));
                 }
             });
+        }
+
+        if ($standardProductIds->isNotEmpty()) {
+            $productQuery->whereIn('standard_product_id', $standardProductIds->all());
         }
 
         $productIds = (clone $productQuery)->pluck('id');

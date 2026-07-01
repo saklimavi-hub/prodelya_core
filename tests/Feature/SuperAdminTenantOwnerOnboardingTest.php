@@ -40,7 +40,7 @@ class SuperAdminTenantOwnerOnboardingTest extends TestCase
         $this->actingAs($this->platformAdmin, 'web')
             ->get(route('admin.super.tenants.owner.create', $tenant))
             ->assertOk()
-            ->assertSee('Tenant Owner Oluştur')
+            ->assertSee('Owner Kullanıcısı Oluştur')
             ->assertSee(route('admin.super.tenants.owner.store', $tenant), false);
     }
 

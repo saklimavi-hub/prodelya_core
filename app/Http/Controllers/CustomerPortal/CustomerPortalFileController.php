@@ -166,7 +166,7 @@ class CustomerPortalFileController extends Controller
         foreach ($diskCandidates as $disk) {
             $storage = Storage::disk($disk);
 
-            $matchedPath = collect($storage->allFiles($directory))
+            $matchedPath = $this->safeAllFiles($storage, $directory)
                 ->first(function (string $candidatePath) use ($fileName, $originalBaseName): bool {
                     $candidateFileName = basename($candidatePath);
 
@@ -185,7 +185,7 @@ class CustomerPortalFileController extends Controller
                 return [$disk, $matchedPath];
             }
 
-            $fallbackPath = collect($storage->allFiles('work-forms'))
+            $fallbackPath = $this->safeAllFiles($storage, 'work-forms')
                 ->first(function (string $candidatePath) use ($fileName, $originalBaseName): bool {
                     $candidateFileName = basename($candidatePath);
 
@@ -206,5 +206,14 @@ class CustomerPortalFileController extends Controller
         }
 
         return [null, null];
+    }
+
+    private function safeAllFiles($storage, string $directory)
+    {
+        try {
+            return collect($storage->allFiles($directory));
+        } catch (\Throwable) {
+            return collect();
+        }
     }
 }

@@ -328,7 +328,7 @@
     $renderTimestamp = $renderedAt->format('d.m.Y H:i');
     $updatedTimestamp = optional($workForm->updated_at)->format('d.m.Y H:i') ?: '-';
     $createdTimestamp = optional($workForm->created_at)->format('d.m.Y H:i') ?: '-';
-    $productImage = data_get($productSnapshot, 'image_url');
+    $productImage = $safeProductImageUrlForPdf ?? null;
     $graphicStatus = data_get($graphicSnapshot, 'status', 'bekliyor');
     $approvalStatus = data_get($graphicSnapshot, 'approval_status', 'bekliyor');
     $productionStatus = data_get($productionSnapshot, 'status', 'bekliyor');

@@ -155,6 +155,20 @@ class AdminMenuService
             }
         }
 
+        if (!empty($item['permission_any'])) {
+            if (!$tenant) {
+                return false;
+            }
+
+            $permissions = is_array($item['permission_any'])
+                ? array_values(array_filter($item['permission_any'], 'is_string'))
+                : [(string) $item['permission_any']];
+
+            if ($permissions === [] || !$user->hasAnyPermissionInTenant($permissions, $tenant->id)) {
+                return false;
+            }
+        }
+
         if (!empty($item['module_key'])) {
             if (!$tenant || !$this->tenantAccessService->canAccessModule($tenant, $item['module_key'])) {
                 return false;

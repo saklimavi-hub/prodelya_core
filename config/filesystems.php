@@ -47,6 +47,55 @@ return [
             'report' => false,
         ],
 
+        'pdh_private' => [
+            'driver' => env('PDH_PRIVATE_DISK_DRIVER', 'local'),
+            'root' => env('PDH_PRIVATE_DISK_DRIVER', 'local') === 'local'
+                ? storage_path('app/pdh/private')
+                : storage_path('app/pdh/private'),
+            'throw' => false,
+            'report' => false,
+        ],
+
+        'pdh_public' => [
+            'driver' => env('PDH_PUBLIC_DISK_DRIVER', 'local'),
+            'root' => env('PDH_PUBLIC_DISK_DRIVER', 'local') === 'local'
+                ? storage_path('app/public/pdh')
+                : storage_path('app/public/pdh'),
+            'url' => rtrim(env('PDH_PUBLIC_DISK_URL', env('APP_URL', 'http://localhost')), '/') . '/storage/pdh',
+            'visibility' => 'public',
+            'throw' => false,
+            'report' => false,
+        ],
+
+        'pdh_temp' => [
+            'driver' => env('PDH_TEMP_DISK_DRIVER', 'local'),
+            'root' => env('PDH_TEMP_DISK_DRIVER', 'local') === 'local'
+                ? storage_path('app/pdh/temp')
+                : storage_path('app/pdh/temp'),
+            'throw' => false,
+            'report' => false,
+        ],
+
+        'product_images' => [
+            'driver' => env('PDH_PRODUCT_IMAGES_DISK_DRIVER', 'local'),
+            'root' => env('PDH_PRODUCT_IMAGES_DISK_DRIVER', 'local') === 'local'
+                ? storage_path('app/public/product-images')
+                : storage_path('app/public/product-images'),
+            'url' => rtrim(env('PDH_PRODUCT_IMAGES_DISK_URL', env('APP_URL', 'http://localhost')), '/') . '/storage/product-images',
+            'visibility' => 'public',
+            'throw' => false,
+            'report' => false,
+        ],
+
+        'exports' => [
+            'driver' => env('PDH_EXPORTS_DISK_DRIVER', 'local'),
+            'root' => env('PDH_EXPORTS_DISK_DRIVER', 'local') === 'local'
+                ? storage_path('app/exports')
+                : storage_path('app/exports'),
+            'throw' => false,
+            'report' => false,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),

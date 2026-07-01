@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Supplier;
 use App\Models\TenantSupplierAccess;
 use App\Models\TenantCatalogProduct;
+use App\Services\ProductDataHub\ProductHubSellableTruthService;
+use App\Services\ProductDataHub\SupplierWarningLabelService;
 use App\Services\TenantResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,7 +15,9 @@ use Illuminate\Http\Request;
 class CatalogSearchController extends Controller
 {
     public function __construct(
-        private readonly TenantResolver $tenantResolver
+        private readonly TenantResolver $tenantResolver,
+        private readonly SupplierWarningLabelService $supplierWarningLabelService,
+        private readonly ProductHubSellableTruthService $sellableTruthService,
     ) {
     }
 
@@ -31,7 +35,7 @@ class CatalogSearchController extends Controller
         $onlyQuoteVisible = $request->boolean('only_quote_visible', true);
 
         $query = TenantCatalogProduct::query()
-            ->with(['category', 'variants'])
+            ->with(['category', 'standardProduct', 'variants.standardVariant'])
             ->where('tenant_account_id', $tenant->id)
             ->where('is_active', true)
             ->when($onlyVisible, fn ($builder) => $builder->where('visible_in_catalog', true))
@@ -119,7 +123,17 @@ class CatalogSearchController extends Controller
         $matchesParent = $queryText === '' || $this->matchesParentSearch($product, $queryText);
 
         return $variants
-            ->filter(fn ($variant) => $matchesParent || $this->matchesVariantSearch($product, $variant, $queryText))
+            ->filter(function ($variant) use ($matchesParent, $product, $queryText, $onlyQuoteVisible) {
+                if (!($matchesParent || $this->matchesVariantSearch($product, $variant, $queryText))) {
+                    return false;
+                }
+
+                if ($onlyQuoteVisible && !$this->variantIsQuoteVisible($product, $variant)) {
+                    return false;
+                }
+
+                return true;
+            })
             ->map(fn ($variant) => $this->serializeSellableVariant($product, $variant))
             ->sortBy(fn (array $entry) => $this->resolveSearchRank($entry, $queryText))
             ->values()
@@ -128,18 +142,14 @@ class CatalogSearchController extends Controller
 
     private function serializeSellableProduct(TenantCatalogProduct $product): array
     {
+        $truth = $this->sellableTruthService->resolve($product);
         $warningFlag = (bool) ($product->standardProduct?->warning_flag ?? data_get($product->meta, 'warning_flag', false));
         $productSourceSummary = collect($product->source_summary ?? []);
         $productPriceSnapshot = (array) data_get($product->meta, 'price_snapshot', []);
         $productSupplierId = data_get($productSourceSummary->first(), 'supplier_id');
         $productSupplierName = $this->isLocalProduct($product) ? 'Local Ürün' : $this->resolveSupplierName($productSupplierId);
-        $effectiveProductStock = $this->resolveEffectiveStock(
-            (float) ($product->local_stock_quantity ?? 0),
-            (float) ($product->supplier_stock_quantity ?? 0),
-            (float) ($product->total_stock_quantity ?? 0),
-            (bool) ($product->local_stock_priority ?? true)
-        );
-        $productWarnings = $this->buildWarningPayload([
+        $effectiveProductStock = (float) ($truth['effective_stock'] ?? 0);
+        $productWarnings = $this->buildWarningPayload($productSupplierName, [
             'net_price_warning' => (bool) data_get($product->meta, 'net_price_warning', false),
             'price_policy_warning' => (bool) data_get($product->meta, 'price_policy_warning', false),
             'pricing_policy_type' => data_get($product->meta, 'pricing_policy_type'),
@@ -156,6 +166,8 @@ class CatalogSearchController extends Controller
                 data_get($product->meta, 'warnings', [])
             ))),
         ]);
+        $warningSummary = implode(' • ', array_slice($productWarnings['badges'], 0, 3));
+        $warningTone = in_array('Kırmızı Ürün', $productWarnings['badges'], true) ? 'red' : 'amber';
 
         return [
             'id' => $product->id,
@@ -167,9 +179,9 @@ class CatalogSearchController extends Controller
             'product_name' => $product->display_name,
             'image_url' => $product->image_url,
             'supplier_name' => $productSupplierName,
-            'display_price' => (float) ($product->display_price ?? 0),
+            'display_price' => (float) ($truth['effective_price'] ?? 0),
             'list_price' => (float) (data_get($productPriceSnapshot, 'list_price') ?? $product->display_price ?? 0),
-            'currency' => $product->currency ?? 'TL',
+            'currency' => $truth['effective_currency'] ?? $product->currency ?? 'TL',
             'vat_rate' => (float) (data_get($productSourceSummary->first(), 'vat_rate') ?? 0),
             'total_stock_quantity' => (float) ($product->total_stock_quantity ?? 0),
             'local_stock_quantity' => (float) ($product->local_stock_quantity ?? 0),
@@ -178,7 +190,7 @@ class CatalogSearchController extends Controller
             'visible_stock_quantity' => $effectiveProductStock,
             'local_stock_priority' => (bool) ($product->local_stock_priority ?? true) && (float) ($product->local_stock_quantity ?? 0) > 0,
             'catalog_source' => $this->isLocalProduct($product) ? 'local_product' : 'supplier_projection',
-            'visible_in_quote' => (bool) ($product->visible_in_quote ?? true),
+            'visible_in_quote' => ($truth['quote_visibility_status'] ?? 'visible') === 'visible',
             'warning_flag' => $warningFlag,
             'net_price_warning' => (bool) data_get($product->meta, 'net_price_warning', false),
             'price_policy_warning' => (bool) data_get($product->meta, 'price_policy_warning', false),
@@ -187,6 +199,9 @@ class CatalogSearchController extends Controller
             'supplier_warning_type' => data_get($product->meta, 'supplier_warning_type'),
             'warning_badges' => $productWarnings['badges'],
             'warning_messages' => $productWarnings['messages'],
+            'is_warning_sellable' => !empty($productWarnings['badges']),
+            'warning_summary' => $warningSummary,
+            'warning_tone' => $warningSummary !== '' ? $warningTone : null,
             'category_name' => $product->category_display_name,
             'source_summary' => $product->source_summary,
             'product_snapshot' => [
@@ -199,34 +214,47 @@ class CatalogSearchController extends Controller
                 'category_name' => $product->category_display_name,
                 'source_summary' => $product->source_summary,
                 'supplier_name' => $productSupplierName,
-                'warning_badges' => $productWarnings['badges'],
-                'warning_messages' => $productWarnings['messages'],
                 'is_parent' => false,
                 'is_variant' => false,
                 'is_sellable' => true,
                 'quote_search_visible' => true,
+                'is_warning_sellable' => !empty($productWarnings['badges']),
+                'warning_summary' => $warningSummary,
+                'warning_tone' => $warningSummary !== '' ? $warningTone : null,
             ],
             'price_snapshot' => array_merge($productPriceSnapshot, [
                 'list_price' => (float) (data_get($productPriceSnapshot, 'list_price') ?? $product->display_price ?? 0),
+                'warning_badges' => $productWarnings['badges'],
+                'warning_messages' => $productWarnings['messages'],
+                'net_price_warning' => (bool) data_get($product->meta, 'net_price_warning', false),
+                'price_policy_warning' => (bool) data_get($product->meta, 'price_policy_warning', false),
+                'pricing_policy_type' => data_get($product->meta, 'pricing_policy_type'),
+                'supplier_warning_flag' => (bool) data_get($product->meta, 'supplier_warning_flag', false),
+                'supplier_warning_type' => data_get($product->meta, 'supplier_warning_type'),
             ]),
+            'stock_snapshot' => [
+                'total_stock_quantity' => (float) ($product->total_stock_quantity ?? 0),
+                'local_stock_quantity' => (float) ($product->local_stock_quantity ?? 0),
+                'supplier_stock_quantity' => (float) ($product->supplier_stock_quantity ?? 0),
+                'visible_stock_quantity' => $effectiveProductStock,
+                'safe_stock_quantity' => (int) ($product->safe_stock_quantity ?? 0),
+                'local_stock_priority' => (bool) ($product->local_stock_priority ?? true) && (float) ($product->local_stock_quantity ?? 0) > 0,
+                'warning_flag' => $warningFlag,
+            ],
         ];
     }
 
     private function serializeSellableVariant(TenantCatalogProduct $product, $variant): array
     {
+        $truth = $this->sellableTruthService->resolve($product, $variant);
         $supplierName = $this->isLocalProduct($product)
             ? 'Local Ürün'
             : $this->resolveSupplierName(data_get($product->source_summary, '0.supplier_id'));
         $localStock = (float) (($variant->local_stock_quantity ?? 0) > 0 ? $variant->local_stock_quantity : ($product->local_stock_quantity ?? 0));
         $supplierStock = (float) (($variant->supplier_stock_quantity ?? 0) > 0 ? $variant->supplier_stock_quantity : ($product->supplier_stock_quantity ?? 0));
         $fallbackStock = (float) (($variant->stock_quantity ?? 0) > 0 ? $variant->stock_quantity : ($product->total_stock_quantity ?? 0));
-        $visibleStock = $this->resolveEffectiveStock(
-            $localStock,
-            $supplierStock,
-            $fallbackStock,
-            (bool) ($product->local_stock_priority ?? true)
-        );
-        $warnings = $this->buildWarningPayload([
+        $visibleStock = (float) ($truth['effective_stock'] ?? 0);
+        $warnings = $this->buildWarningPayload($supplierName, [
             'net_price_warning' => (bool) data_get($variant->meta, 'net_price_warning', false),
             'price_policy_warning' => (bool) data_get($variant->meta, 'price_policy_warning', false),
             'pricing_policy_type' => data_get($variant->meta, 'pricing_policy_type'),
@@ -241,6 +269,9 @@ class CatalogSearchController extends Controller
             'warnings' => data_get($variant->meta, 'warnings', []),
         ]);
         $priceSnapshot = (array) data_get($variant->meta, 'price_snapshot', []);
+        $visibleInQuote = ($truth['quote_visibility_status'] ?? 'visible') === 'visible';
+        $warningSummary = implode(' • ', array_slice($warnings['badges'], 0, 3));
+        $warningTone = in_array('Kırmızı Ürün', $warnings['badges'], true) ? 'red' : 'amber';
 
         return [
             'id' => $product->id,
@@ -252,9 +283,9 @@ class CatalogSearchController extends Controller
             'product_name' => $variant->display_name,
             'image_url' => $variant->image_url ?: $product->image_url,
             'supplier_name' => $supplierName,
-            'display_price' => (float) ($variant->display_price ?? $product->display_price ?? 0),
+            'display_price' => (float) ($truth['effective_price'] ?? 0),
             'list_price' => (float) (data_get($priceSnapshot, 'list_price') ?? $variant->display_price ?? $product->display_price ?? 0),
-            'currency' => $variant->currency ?? $product->currency ?? 'TL',
+            'currency' => $truth['effective_currency'] ?? $variant->currency ?? $product->currency ?? 'TL',
             'vat_rate' => (float) (data_get($variant->source_summary, 'vat_rate') ?? data_get($product->source_summary, '0.vat_rate') ?? 0),
             'total_stock_quantity' => $fallbackStock,
             'local_stock_quantity' => $localStock,
@@ -263,7 +294,7 @@ class CatalogSearchController extends Controller
             'visible_stock_quantity' => $visibleStock,
             'local_stock_priority' => (bool) ($product->local_stock_priority ?? true) && $localStock > 0,
             'catalog_source' => $this->isLocalProduct($product) ? 'local_product' : 'supplier_projection',
-            'visible_in_quote' => true,
+            'visible_in_quote' => $visibleInQuote,
             'warning_flag' => !empty($warnings['badges']),
             'net_price_warning' => (bool) data_get($variant->meta, 'net_price_warning', false),
             'price_policy_warning' => (bool) data_get($variant->meta, 'price_policy_warning', false),
@@ -272,6 +303,9 @@ class CatalogSearchController extends Controller
             'supplier_warning_type' => data_get($variant->meta, 'supplier_warning_type'),
             'warning_badges' => $warnings['badges'],
             'warning_messages' => $warnings['messages'],
+            'is_warning_sellable' => !empty($warnings['badges']),
+            'warning_summary' => $warningSummary,
+            'warning_tone' => $warningSummary !== '' ? $warningTone : null,
             'category_name' => $product->category_display_name,
             'source_summary' => $variant->source_summary ?: $product->source_summary,
             'product_snapshot' => [
@@ -284,16 +318,33 @@ class CatalogSearchController extends Controller
                 'category_name' => $product->category_display_name,
                 'source_summary' => $variant->source_summary ?: $product->source_summary,
                 'supplier_name' => $supplierName,
-                'warning_badges' => $warnings['badges'],
-                'warning_messages' => $warnings['messages'],
                 'is_parent' => false,
                 'is_variant' => true,
                 'is_sellable' => true,
-                'quote_search_visible' => true,
+                'quote_search_visible' => $visibleInQuote,
+                'is_warning_sellable' => !empty($warnings['badges']),
+                'warning_summary' => $warningSummary,
+                'warning_tone' => $warningSummary !== '' ? $warningTone : null,
             ],
             'price_snapshot' => array_merge($priceSnapshot, [
                 'list_price' => (float) (data_get($priceSnapshot, 'list_price') ?? $variant->display_price ?? $product->display_price ?? 0),
+                'warning_badges' => $warnings['badges'],
+                'warning_messages' => $warnings['messages'],
+                'net_price_warning' => (bool) data_get($variant->meta, 'net_price_warning', false),
+                'price_policy_warning' => (bool) data_get($variant->meta, 'price_policy_warning', false),
+                'pricing_policy_type' => data_get($variant->meta, 'pricing_policy_type'),
+                'supplier_warning_flag' => (bool) data_get($variant->meta, 'supplier_warning_flag', false),
+                'supplier_warning_type' => data_get($variant->meta, 'supplier_warning_type'),
             ]),
+            'stock_snapshot' => [
+                'total_stock_quantity' => $fallbackStock,
+                'local_stock_quantity' => $localStock,
+                'supplier_stock_quantity' => $supplierStock,
+                'visible_stock_quantity' => $visibleStock,
+                'safe_stock_quantity' => (int) ($variant->safe_stock_quantity ?? 0),
+                'local_stock_priority' => (bool) ($product->local_stock_priority ?? true) && $localStock > 0,
+                'warning_flag' => !empty($warnings['badges']),
+            ],
         ];
     }
 
@@ -403,20 +454,19 @@ class CatalogSearchController extends Controller
         return Supplier::query()->whereKey($supplierId)->value('name');
     }
 
-    private function buildWarningPayload(array $payload): array
+    private function buildWarningPayload(?string $supplierName, array $payload): array
     {
         $badges = [];
         $messages = [];
 
-        if (($payload['net_price_warning'] ?? false) || (($payload['pricing_policy_type'] ?? null) === 'net_price')) {
-            $badges[] = 'Net fiyat uyarısı';
-            $messages[] = 'Bu ürün net fiyatlı olabilir. Teklif/sipariş sırasında standart iskonto uygulanmamalı; gerekirse birim satış fiyatı artırılarak çalışılmalıdır.';
-        }
-
-        if (($payload['supplier_warning_flag'] ?? false) || filled($payload['supplier_warning_type'] ?? null)) {
-            $badges[] = 'Özel fiyat uyarısı';
-            $messages[] = 'Bu ürün tedarikçi tarafından özel fiyat/iskonto uyarılı işaretlenmiş. Standart indirim uygulanmadan önce kontrol edilmelidir.';
-        }
+        $snapshot = [
+            'net_price_warning' => (bool) ($payload['net_price_warning'] ?? false),
+            'pricing_policy_type' => $payload['pricing_policy_type'] ?? null,
+            'supplier_warning_flag' => (bool) ($payload['supplier_warning_flag'] ?? false),
+            'supplier_warning_type' => $payload['supplier_warning_type'] ?? null,
+        ];
+        $badges = array_merge($badges, $this->supplierWarningLabelService->supplierSpecificBadges($supplierName, $snapshot));
+        $messages = array_merge($messages, $this->supplierWarningLabelService->supplierSpecificMessages($supplierName, $snapshot));
 
         if ($payload['price_policy_warning'] ?? false) {
             $badges[] = 'Fiyat kontrolü gerekli';
@@ -474,5 +524,14 @@ class CatalogSearchController extends Controller
     {
         return $product->catalog_source === 'local_product'
             || data_get($product->meta, 'catalog_source') === 'local_product';
+    }
+
+    private function variantIsQuoteVisible(TenantCatalogProduct $product, $variant): bool
+    {
+        if (data_get($variant->meta, 'quote_search_visible') !== null) {
+            return (bool) data_get($variant->meta, 'quote_search_visible');
+        }
+
+        return (bool) $product->visible_in_quote;
     }
 }

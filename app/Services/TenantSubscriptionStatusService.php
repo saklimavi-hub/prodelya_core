@@ -3,15 +3,30 @@
 namespace App\Services;
 
 use App\Models\TenantAccount;
+use App\Models\TenantSetting;
 use Illuminate\Support\Carbon;
 use Carbon\CarbonInterface;
 
 class TenantSubscriptionStatusService
 {
+    private const LIFECYCLE_STATE_SETTING = 'subscription_lifecycle_state';
+    private const TRIAL_START_SETTING = 'subscription_trial_starts_at';
+    private const TRIAL_END_SETTING = 'subscription_trial_ends_at';
+    private const PACKAGE_START_SETTING = 'subscription_package_starts_at';
+    private const PACKAGE_END_SETTING = 'subscription_package_ends_at';
+    private const STATUS_NOTE_SETTING = 'subscription_status_note';
+    private const SUSPENDED_REASON_SETTING = 'subscription_suspended_reason';
+    private const STATUS_UPDATED_AT_SETTING = 'subscription_status_updated_at';
+
     public function getStatus(TenantAccount $tenant): array
     {
         $status = $this->resolveStatus($tenant);
         $daysRemaining = $this->daysRemaining($tenant, $status);
+        $trialEndsAt = $this->resolveTrialEndDate($tenant);
+        $packageEndsAt = $this->resolvePackageEndDate($tenant);
+        $statusNote = $this->stringSetting($tenant, self::STATUS_NOTE_SETTING);
+        $suspendedReason = $this->stringSetting($tenant, self::SUSPENDED_REASON_SETTING);
+        $statusUpdatedAt = $this->resolveDateFromSetting($tenant, self::STATUS_UPDATED_AT_SETTING);
 
         return [
             'status' => $status,
@@ -22,6 +37,15 @@ class TenantSubscriptionStatusService
             'is_expired' => $status === 'expired',
             'days_remaining' => $daysRemaining,
             'message' => $this->message($status, $daysRemaining),
+            'raw_status' => $this->resolveLifecycleState($tenant),
+            'trial_starts_at' => $this->resolveTrialStartDate($tenant),
+            'trial_ends_at' => $trialEndsAt,
+            'package_starts_at' => $this->resolvePackageStartDate($tenant),
+            'package_ends_at' => $packageEndsAt,
+            'status_note' => $statusNote,
+            'suspended_reason' => $suspendedReason,
+            'status_updated_at' => $statusUpdatedAt,
+            'warning_label' => $this->warningLabel($status, $daysRemaining),
         ];
     }
 
@@ -74,9 +98,13 @@ class TenantSubscriptionStatusService
 
     private function resolveStatus(TenantAccount $tenant): string
     {
-        $rawStatus = strtolower(trim((string) ($tenant->status ?? 'active')));
+        $rawStatus = $this->resolveLifecycleState($tenant);
 
-        if ($this->isExpiredByDate($tenant)) {
+        if ($rawStatus === 'trial' && $this->resolveTrialEndDate($tenant)?->isPast()) {
+            return 'expired';
+        }
+
+        if (in_array($rawStatus, ['active', 'expired'], true) && $this->resolvePackageEndDate($tenant)?->isPast()) {
             return 'expired';
         }
 
@@ -90,39 +118,53 @@ class TenantSubscriptionStatusService
         };
     }
 
-    private function isExpiredByDate(TenantAccount $tenant): bool
+    private function resolveLifecycleState(TenantAccount $tenant): string
     {
-        $endDate = $this->resolveEndDate($tenant);
+        $settingState = strtolower(trim($this->stringSetting($tenant, self::LIFECYCLE_STATE_SETTING) ?? ''));
 
-        return $endDate?->isPast() ?? false;
-    }
-
-    private function resolveEndDate(TenantAccount $tenant): ?CarbonInterface
-    {
-        foreach (['trial_ends_at', 'end_date', 'expires_at'] as $attribute) {
-            $value = $tenant->getAttribute($attribute);
-
-            if (blank($value)) {
-                continue;
-            }
-
-            try {
-                return Carbon::parse($value);
-            } catch (\Throwable) {
-                return null;
-            }
+        if ($settingState !== '') {
+            return match ($settingState) {
+                'active' => 'active',
+                'trial' => 'trial',
+                'expired' => 'expired',
+                'suspended' => 'suspended',
+                'passive', 'inactive' => 'passive',
+                default => strtolower(trim((string) ($tenant->status ?? 'active'))),
+            };
         }
 
-        return null;
+        return strtolower(trim((string) ($tenant->status ?? 'active')));
+    }
+
+    private function resolveTrialStartDate(TenantAccount $tenant): ?CarbonInterface
+    {
+        return $this->resolveDateValue($tenant, ['trial_starts_at'], [self::TRIAL_START_SETTING]);
+    }
+
+    private function resolveTrialEndDate(TenantAccount $tenant): ?CarbonInterface
+    {
+        return $this->resolveDateValue($tenant, ['trial_ends_at'], [self::TRIAL_END_SETTING, 'trial_ends_at']);
+    }
+
+    private function resolvePackageStartDate(TenantAccount $tenant): ?CarbonInterface
+    {
+        return $this->resolveDateValue($tenant, ['start_date', 'starts_at'], [self::PACKAGE_START_SETTING]);
+    }
+
+    private function resolvePackageEndDate(TenantAccount $tenant): ?CarbonInterface
+    {
+        return $this->resolveDateValue($tenant, ['end_date', 'expires_at'], [self::PACKAGE_END_SETTING, 'subscription_ends_at']);
     }
 
     private function daysRemaining(TenantAccount $tenant, string $status): ?int
     {
-        if (!in_array($status, ['trial', 'expired'], true)) {
+        if (!in_array($status, ['trial', 'expired', 'active'], true)) {
             return null;
         }
 
-        $endDate = $this->resolveEndDate($tenant);
+        $endDate = $status === 'trial'
+            ? $this->resolveTrialEndDate($tenant)
+            : $this->resolvePackageEndDate($tenant);
 
         if (!$endDate) {
             return null;
@@ -146,7 +188,9 @@ class TenantSubscriptionStatusService
     private function message(string $status, ?int $daysRemaining): string
     {
         return match ($status) {
-            'active' => 'Tenant aktif ve tam erişime uygun.',
+            'active' => $daysRemaining !== null
+                ? "Tenant aktif. Paket kalan gün: {$daysRemaining}."
+                : 'Tenant aktif ve tam erişime uygun.',
             'trial' => $daysRemaining !== null
                 ? "Deneme suresi devam ediyor. Kalan gun: {$daysRemaining}."
                 : 'Deneme suresi devam ediyor.',
@@ -155,5 +199,89 @@ class TenantSubscriptionStatusService
             'passive' => 'Tenant pasif durumda.',
             default => 'Tenant durumu belirlenemedi.',
         };
+    }
+
+    private function warningLabel(string $status, ?int $daysRemaining): ?string
+    {
+        if ($status === 'expired') {
+            return 'Süresi dolmuş';
+        }
+
+        if ($daysRemaining === null) {
+            return null;
+        }
+
+        if ($daysRemaining === 0) {
+            return 'Bugün bitiyor';
+        }
+
+        if ($daysRemaining > 0 && $daysRemaining <= 7) {
+            return '7 gün içinde bitecek';
+        }
+
+        return null;
+    }
+
+    private function resolveDateValue(TenantAccount $tenant, array $attributes, array $settingKeys): ?CarbonInterface
+    {
+        foreach ($attributes as $attribute) {
+            $value = $tenant->getAttribute($attribute);
+
+            if (blank($value)) {
+                continue;
+            }
+
+            try {
+                return Carbon::parse($value);
+            } catch (\Throwable) {
+                return null;
+            }
+        }
+
+        foreach ($settingKeys as $settingKey) {
+            $value = $this->stringSetting($tenant, $settingKey);
+
+            if (blank($value)) {
+                continue;
+            }
+
+            try {
+                return Carbon::parse($value);
+            } catch (\Throwable) {
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    private function resolveDateFromSetting(TenantAccount $tenant, string $settingKey): ?CarbonInterface
+    {
+        $value = $this->stringSetting($tenant, $settingKey);
+
+        if (blank($value)) {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($value);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    private function stringSetting(TenantAccount $tenant, string $key): ?string
+    {
+        if (!$tenant->exists) {
+            return null;
+        }
+
+        $value = TenantSetting::getValue($tenant->id, $key);
+
+        if (blank($value)) {
+            return null;
+        }
+
+        return trim((string) $value);
     }
 }

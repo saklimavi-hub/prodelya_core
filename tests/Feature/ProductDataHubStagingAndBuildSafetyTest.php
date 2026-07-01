@@ -40,7 +40,7 @@ class ProductDataHubStagingAndBuildSafetyTest extends TestCase
 
         $response->assertOk();
         $response->assertSee('Staging’e Aktar');
-        $response->assertSee('Standard Ürüne Dönüştür');
+        $response->assertSee('Standart Ürün Havuzuna Al');
         $response->assertSee("/admin/super-admin/product-data-hub/sources/{$source->id}/stage-preview", false);
         $response->assertSee("/admin/super-admin/product-data-hub/sources/{$source->id}/build-standard-products", false);
     }

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tenant Pasif - Prodelya</title>
+    <title>Abone Firma Erişimi Kısıtlı - Prodelya</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body {
@@ -28,10 +28,10 @@
                 </svg>
             </div>
             <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
-                Tenant Pasif
+                {{ $subscription['label'] ?? 'Abone Firma Erişimi Kısıtlı' }}
             </h2>
             <p class="mt-2 text-center text-sm text-gray-600">
-                Firma hesabı pasif, askıda veya erişime kapalı durumda.
+                {{ $message ?? ($subscription['message'] ?? 'Firma hesabı pasif, askıda veya erişime kapalı durumda.') }}
             </p>
         </div>
 
@@ -42,7 +42,7 @@
                     <div class="flex items-center justify-between">
                         <span class="text-sm text-gray-500">Hesap Durumu:</span>
                         <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
-                            Pasif
+                            {{ $subscription['label'] ?? 'Pasif' }}
                         </span>
                     </div>
                     
@@ -63,7 +63,7 @@
                         </div>
                         <div class="ml-3">
                             <p class="text-sm text-amber-800">
-                                <strong>Önemli Not:</strong> Bu tenant hesabı şu anda erişime kapalıdır. Lütfen sistem yöneticinize veya hesap sahibine başvurun.
+                                <strong>Önemli Not:</strong> {{ $subscription['message'] ?? 'Bu tenant hesabı şu anda erişime kapalıdır. Lütfen sistem yöneticinize veya hesap sahibine başvurun.' }}
                             </p>
                         </div>
                     </div>

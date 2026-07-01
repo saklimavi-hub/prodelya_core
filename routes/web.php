@@ -1,7 +1,9 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\TenantRootController;
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Marketing\PublicSiteController;
 use App\Http\Controllers\CustomerPortal\CustomerPortalAuthController;
 use App\Http\Controllers\CustomerPortal\CustomerPortalDashboardController;
 use App\Http\Controllers\CustomerPortal\CustomerPortalQuoteController;
@@ -14,10 +16,14 @@ use App\Http\Controllers\PublicWorkFormTrackingController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\CatalogSearchController;
 use App\Http\Controllers\Admin\SettingsController;
+use App\Http\Controllers\Admin\TenantPackageOverviewController;
+use App\Http\Controllers\Admin\TenantUpgradeRequestController;
+use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\NotificationSettingsController;
 use App\Http\Controllers\Admin\NotificationCenterController;
 use App\Http\Controllers\Admin\NotificationLogController;
 use App\Http\Controllers\Admin\NotificationTemplateController;
+use App\Http\Controllers\Admin\TenantPackageRequestController;
 use App\Http\Controllers\Admin\TenantPrintSettingController;
 use App\Http\Controllers\Admin\CompanyController;
 use App\Http\Controllers\Admin\CompanyAddressController;
@@ -47,6 +53,7 @@ use App\Http\Controllers\Admin\SupplierFieldMappingController;
 use App\Http\Controllers\Admin\SupplierSourceController;
 use App\Http\Controllers\SuperAdmin\SuperAdminDashboardController;
 use App\Http\Controllers\SuperAdmin\TenantController;
+use App\Http\Controllers\SuperAdmin\TenantSignupRequestController;
 use App\Http\Controllers\SuperAdmin\ModuleController;
 use App\Http\Controllers\SuperAdmin\PackageController;
 use App\Http\Controllers\SuperAdmin\SuperAdminProductDataHubController;
@@ -59,7 +66,15 @@ use App\Http\Controllers\SuperAdmin\SuperAdminSupplierSourceController;
 use App\Http\Controllers\SuperAdmin\CategoryReviewBatchController;
 use App\Http\Controllers\SuperAdmin\CategoryCleanupController;
 use App\Http\Controllers\SuperAdmin\StandardCategoryController;
+use App\Http\Controllers\SuperAdmin\TenantBillingController;
+use App\Http\Controllers\SuperAdmin\TenantPackageUpgradeRequestController;
+use App\Http\Controllers\SuperAdmin\TenantUpgradeRequestController as SuperAdminTenantUpgradeRequestController;
+use App\Http\Controllers\SuperAdmin\TenantServiceController;
 use App\Http\Controllers\SuperAdmin\TenantSupplierAccessController;
+use App\Http\Controllers\SuperAdmin\PaymentProviderController;
+use App\Http\Controllers\SuperAdmin\PaymentCheckoutSessionController;
+use App\Http\Controllers\Payments\PaymentWebhookController;
+use App\Http\Controllers\Payments\PaymentCheckoutCallbackController;
 
 /*
 |--------------------------------------------------------------------------
@@ -68,8 +83,16 @@ use App\Http\Controllers\SuperAdmin\TenantSupplierAccessController;
 */
 
 // Public / Landing
-Route::get('/', function () {
-    return view('welcome');
+Route::get('/', TenantRootController::class)->middleware('resolve.tenant')->name('marketing.home');
+Route::middleware('central.public')->group(function () {
+    Route::get('/register-interest', [PublicSiteController::class, 'registerInterest'])->name('marketing.register-interest');
+    Route::post('/register-interest', [PublicSiteController::class, 'storeRegisterInterest'])
+        ->middleware('throttle:5,1')
+        ->name('marketing.register-interest.store');
+    Route::get('/demo-talep', [PublicSiteController::class, 'demoRequest'])->name('marketing.demo-request');
+    Route::post('/demo-talep', [PublicSiteController::class, 'storeDemoRequest'])
+        ->middleware('throttle:5,1')
+        ->name('marketing.demo-request.store');
 });
 
 Route::get('/takip/is-formu/{token}', [PublicWorkFormTrackingController::class, 'show'])
@@ -89,7 +112,7 @@ Route::prefix('/grafik/onay/{token}')->name('public.graphics.approval.')->group(
     Route::post('/revize-iste', [PublicGraphicApprovalController::class, 'requestRevision'])->name('revision');
 });
 
-Route::middleware(['resolve.tenant', 'tenant.active'])->group(function () {
+Route::middleware(['resolve.tenant'])->group(function () {
     Route::get('/musteri-giris', [CustomerPortalAuthController::class, 'showLoginForm'])->name('customer.login');
     Route::post('/musteri-giris', [CustomerPortalAuthController::class, 'login'])
         ->middleware('throttle:5,1')
@@ -103,6 +126,22 @@ Route::middleware(['resolve.tenant', 'tenant.active'])->group(function () {
     Route::get('/musteri-sifre-yenile/{token}', [CustomerPortalAuthController::class, 'showResetPasswordForm'])->name('customer.password.reset');
     Route::post('/musteri-sifre-yenile/{token}', [CustomerPortalAuthController::class, 'resetPassword'])->name('customer.password.update');
     Route::post('/musteri-cikis', [CustomerPortalAuthController::class, 'logout'])->name('customer.logout');
+});
+
+Route::post('/payment-webhooks/{paymentProvider}', [PaymentWebhookController::class, 'receive'])
+    ->name('payment-webhooks.receive')
+    ->whereNumber('paymentProvider');
+Route::get('/payment-checkouts/{paymentCheckout}/success', [PaymentCheckoutCallbackController::class, 'success'])
+    ->name('payment-checkouts.callbacks.success')
+    ->whereNumber('paymentCheckout');
+Route::get('/payment-checkouts/{paymentCheckout}/failure', [PaymentCheckoutCallbackController::class, 'failure'])
+    ->name('payment-checkouts.callbacks.failure')
+    ->whereNumber('paymentCheckout');
+Route::get('/payment-checkouts/{paymentCheckout}/cancel', [PaymentCheckoutCallbackController::class, 'cancel'])
+    ->name('payment-checkouts.callbacks.cancel')
+    ->whereNumber('paymentCheckout');
+
+Route::middleware(['resolve.tenant', 'tenant.active'])->group(function () {
     Route::get('/musteri-portal', [CustomerPortalDashboardController::class, 'index'])
         ->middleware('customer.portal.auth')
         ->name('customer.portal.home');
@@ -132,11 +171,45 @@ Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 // Super Admin Routes (Central Domain Only)
 Route::prefix('admin/super-admin')->name('admin.super.')->middleware(['auth:web', 'central.access', 'super.admin'])->group(function () {
     Route::get('/dashboard', [SuperAdminDashboardController::class, 'index'])->name('dashboard');
+    Route::prefix('signup-requests')->name('signup-requests.')->group(function () {
+        Route::get('/', [TenantSignupRequestController::class, 'index'])->name('index');
+        Route::get('/{signupRequest}', [TenantSignupRequestController::class, 'show'])->name('show')->whereNumber('signupRequest');
+        Route::get('/{signupRequest}/conversion-preview', [TenantSignupRequestController::class, 'conversionPreview'])->name('conversion-preview')->whereNumber('signupRequest');
+        Route::get('/{signupRequest}/conversion-success', [TenantSignupRequestController::class, 'conversionSuccess'])->name('conversion-success')->whereNumber('signupRequest');
+        Route::patch('/{signupRequest}/status', [TenantSignupRequestController::class, 'updateStatus'])->name('status.update')->whereNumber('signupRequest');
+        Route::post('/{signupRequest}/notes', [TenantSignupRequestController::class, 'storeNote'])->name('notes.store')->whereNumber('signupRequest');
+    });
+    Route::prefix('package-requests')->name('package-requests.')->group(function () {
+        Route::get('/', [TenantPackageUpgradeRequestController::class, 'index'])->name('index');
+        Route::get('/{packageRequest}', [TenantPackageUpgradeRequestController::class, 'show'])->name('show')->whereNumber('packageRequest');
+        Route::patch('/{packageRequest}/status', [TenantPackageUpgradeRequestController::class, 'updateStatus'])->name('status.update')->whereNumber('packageRequest');
+        Route::post('/{packageRequest}/apply', [TenantPackageUpgradeRequestController::class, 'apply'])->name('apply')->whereNumber('packageRequest');
+    });
+    Route::prefix('upgrade-requests')->name('upgrade-requests.')->group(function () {
+        Route::get('/', [SuperAdminTenantUpgradeRequestController::class, 'index'])->name('index');
+        Route::get('/{tenantUpgradeRequest}', [SuperAdminTenantUpgradeRequestController::class, 'show'])->name('show')->whereNumber('tenantUpgradeRequest');
+        Route::post('/{tenantUpgradeRequest}/in-review', [SuperAdminTenantUpgradeRequestController::class, 'inReview'])->name('in-review')->whereNumber('tenantUpgradeRequest');
+        Route::post('/{tenantUpgradeRequest}/approve', [SuperAdminTenantUpgradeRequestController::class, 'approve'])->name('approve')->whereNumber('tenantUpgradeRequest');
+        Route::post('/{tenantUpgradeRequest}/reject', [SuperAdminTenantUpgradeRequestController::class, 'reject'])->name('reject')->whereNumber('tenantUpgradeRequest');
+        Route::post('/{tenantUpgradeRequest}/cancel', [SuperAdminTenantUpgradeRequestController::class, 'cancel'])->name('cancel')->whereNumber('tenantUpgradeRequest');
+        Route::post('/{tenantUpgradeRequest}/apply', [SuperAdminTenantUpgradeRequestController::class, 'apply'])->name('apply')->whereNumber('tenantUpgradeRequest');
+    });
     Route::prefix('tenants')->name('tenants.')->group(function () {
         Route::get('/', [TenantController::class, 'index'])->name('index');
         Route::get('/create', [TenantController::class, 'create'])->name('create');
         Route::post('/', [TenantController::class, 'store'])->name('store');
         Route::get('/{tenant}', [TenantController::class, 'show'])->name('show')->whereNumber('tenant');
+        Route::get('/{tenant}/billing', [TenantBillingController::class, 'index'])->name('billing.index')->whereNumber('tenant');
+        Route::get('/{tenant}/billing/create', [TenantBillingController::class, 'create'])->name('billing.create')->whereNumber('tenant');
+        Route::post('/{tenant}/billing', [TenantBillingController::class, 'store'])->name('billing.store')->whereNumber('tenant');
+        Route::get('/{tenant}/billing/export/csv', [TenantBillingController::class, 'exportCsv'])->name('billing.export.csv')->whereNumber('tenant');
+        Route::get('/{tenant}/billing/export/pdf', [TenantBillingController::class, 'exportPdf'])->name('billing.export.pdf')->whereNumber('tenant');
+        Route::post('/{tenant}/billing/package-fee', [TenantBillingController::class, 'chargePackageFee'])->name('billing.package-fee')->whereNumber('tenant');
+        Route::get('/{tenant}/billing/payment-checkouts/create', [PaymentCheckoutSessionController::class, 'create'])->name('billing.payment-checkouts.create')->whereNumber('tenant');
+        Route::post('/{tenant}/billing/payment-checkouts', [PaymentCheckoutSessionController::class, 'store'])->name('payment-checkouts.store')->whereNumber('tenant');
+        Route::get('/{tenant}/billing/{entry}/edit', [TenantBillingController::class, 'edit'])->name('billing.edit')->whereNumber('tenant')->whereNumber('entry');
+        Route::put('/{tenant}/billing/{entry}', [TenantBillingController::class, 'update'])->name('billing.update')->whereNumber('tenant')->whereNumber('entry');
+        Route::delete('/{tenant}/billing/{entry}', [TenantBillingController::class, 'destroy'])->name('billing.destroy')->whereNumber('tenant')->whereNumber('entry');
         Route::get('/{tenant}/edit', [TenantController::class, 'edit'])->name('edit')->whereNumber('tenant');
         Route::get('/{tenant}/owner/create', [TenantController::class, 'createOwner'])->name('owner.create')->whereNumber('tenant');
         Route::post('/{tenant}/owner', [TenantController::class, 'storeOwner'])->name('owner.store')->whereNumber('tenant');
@@ -157,11 +230,34 @@ Route::prefix('admin/super-admin')->name('admin.super.')->middleware(['auth:web'
         Route::put('/{package}/features', [PackageController::class, 'updateFeatures'])->name('features.update')->whereNumber('package');
         Route::put('/{package}/limits', [PackageController::class, 'updateLimits'])->name('limits.update')->whereNumber('package');
     });
+    Route::prefix('services')->name('services.')->group(function () {
+        Route::get('/', [TenantServiceController::class, 'index'])->name('index');
+        Route::get('/create', [TenantServiceController::class, 'create'])->name('create');
+        Route::post('/', [TenantServiceController::class, 'store'])->name('store');
+        Route::get('/{service}/edit', [TenantServiceController::class, 'edit'])->name('edit')->whereNumber('service');
+        Route::put('/{service}', [TenantServiceController::class, 'update'])->name('update')->whereNumber('service');
+    });
+    Route::prefix('payment-providers')->name('payment-providers.')->group(function () {
+        Route::get('/', [PaymentProviderController::class, 'index'])->name('index');
+        Route::get('/create', [PaymentProviderController::class, 'create'])->name('create');
+        Route::post('/', [PaymentProviderController::class, 'store'])->name('store');
+        Route::get('/{paymentProvider}/edit', [PaymentProviderController::class, 'edit'])->name('edit')->whereNumber('paymentProvider');
+        Route::put('/{paymentProvider}', [PaymentProviderController::class, 'update'])->name('update')->whereNumber('paymentProvider');
+    });
+    Route::prefix('payment-checkouts')->name('payment-checkouts.')->group(function () {
+        Route::get('/', [PaymentCheckoutSessionController::class, 'index'])->name('index');
+        Route::get('/{paymentCheckout}', [PaymentCheckoutSessionController::class, 'show'])->name('show')->whereNumber('paymentCheckout');
+        Route::post('/{paymentCheckout}/cancel', [PaymentCheckoutSessionController::class, 'cancel'])->name('cancel')->whereNumber('paymentCheckout');
+        Route::post('/{paymentCheckout}/expire', [PaymentCheckoutSessionController::class, 'expire'])->name('expire')->whereNumber('paymentCheckout');
+        Route::post('/{paymentCheckout}/retry', [PaymentCheckoutSessionController::class, 'retry'])->name('retry')->whereNumber('paymentCheckout');
+    });
     Route::get('/modules', [ModuleController::class, 'index'])->name('modules');
     Route::get('/settings', [ModuleController::class, 'settings'])->name('settings');
     Route::get('/product-data-hub', [SuperAdminProductDataHubController::class, 'index'])->name('product-data-hub.index');
     Route::get('/product-data-hub/pipeline', [SuperAdminProductDataHubController::class, 'pipeline'])->name('product-data-hub.pipeline');
     Route::get('/product-data-hub/catalog-output', [SuperAdminProductDataHubController::class, 'catalogOutput'])->name('product-data-hub.catalog-output');
+    Route::post('/product-data-hub/catalog-output/project-missing', [SuperAdminProductDataHubController::class, 'catalogOutputProjectMissing'])->name('product-data-hub.catalog-output.project-missing');
+    Route::post('/product-data-hub/catalog-output/project-refresh', [SuperAdminProductDataHubController::class, 'catalogOutputProjectRefresh'])->name('product-data-hub.catalog-output.project-refresh');
     Route::get('/product-data-hub/common-products', [SuperAdminProductDataHubController::class, 'commonProducts'])->name('product-data-hub.common-products');
     Route::get('/product-data-hub/product-panel', [SuperAdminProductDataHubController::class, 'productPanel'])->name('product-data-hub.product-panel');
     Route::post('/product-data-hub/product-panel/category-mappings/{mapping}', [SuperAdminProductDataHubController::class, 'saveProductPanelCategoryMapping'])->name('product-data-hub.product-panel.category-mappings.store')->whereNumber('mapping');
@@ -178,6 +274,7 @@ Route::prefix('admin/super-admin')->name('admin.super.')->middleware(['auth:web'
     Route::get('/product-data-hub/profile-comparison', [SuperAdminProductDataHubController::class, 'profileComparison'])->name('product-data-hub.profile-comparison');
     Route::prefix('product-data-hub/sources')->name('product-data-hub.sources.')->group(function () {
         Route::get('/', [SuperAdminSupplierSourceController::class, 'index'])->name('index');
+        Route::get('/suppliers/{supplier}', [SuperAdminSupplierSourceController::class, 'showSupplier'])->name('suppliers.show')->whereNumber('supplier');
         Route::get('/create', [SuperAdminSupplierSourceController::class, 'create'])->name('create');
         Route::post('/', [SuperAdminSupplierSourceController::class, 'store'])->name('store');
         Route::get('/sync-reports', [SuperAdminSupplierSourceController::class, 'syncReports'])->name('sync-reports');
@@ -189,6 +286,9 @@ Route::prefix('admin/super-admin')->name('admin.super.')->middleware(['auth:web'
         Route::get('/{source}/preview', [SuperAdminSupplierSourceController::class, 'preview'])->name('preview')->whereNumber('source');
         Route::post('/{source}/test', [SuperAdminSupplierSourceController::class, 'testConnection'])->name('test')->whereNumber('source');
         Route::post('/{source}/sync', [SuperAdminSupplierSourceController::class, 'syncNow'])->name('sync')->whereNumber('source');
+        Route::post('/{source}/delta-dry-run', [SuperAdminSupplierSourceController::class, 'deltaDryRun'])->name('delta-dry-run')->whereNumber('source');
+        Route::post('/{source}/apply-price-stock', [SuperAdminSupplierSourceController::class, 'applyPriceStock'])->name('apply-price-stock')->whereNumber('source');
+        Route::post('/{source}/apply-price-stock-project-dirty', [SuperAdminSupplierSourceController::class, 'applyPriceStockAndProjectDirty'])->name('apply-price-stock-project-dirty')->whereNumber('source');
         Route::post('/{source}/stage-preview', [SuperAdminSupplierSourceController::class, 'stagePreview'])->name('stage-preview')->whereNumber('source');
         Route::post('/{source}/build-standard-products', [SuperAdminStandardProductBuildController::class, 'buildSource'])->name('build-standard-products')->whereNumber('source');
     });
@@ -469,7 +569,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:web', 'resolve.tenant'
         Route::patch('/{delivery}/details', [DeliveryController::class, 'updateDetails'])->name('update-details')->whereNumber('delivery');
     });
 
-    Route::prefix('finance')->name('finance.')->middleware('module.enabled:finance')->group(function () {
+    Route::prefix('finance')->name('finance.')->middleware(['module.enabled:finance', 'feature.enabled:finance,finance_summary'])->group(function () {
         Route::get('/', [FinanceController::class, 'index'])->name('index');
         Route::get('/{order}', [FinanceController::class, 'show'])->name('show')->whereNumber('order');
         Route::post('/{order}/payments', [OrderPaymentController::class, 'store'])->name('payments.store')->whereNumber('order');
@@ -495,9 +595,26 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:web', 'resolve.tenant'
         ->whereNumber('attachment');
 
     Route::get('/settings', [SettingsController::class, 'index'])->middleware('module.enabled:tenant_settings')->name('settings');
+    Route::get('/my-package', [TenantPackageOverviewController::class, 'index'])->middleware(['module.enabled:tenant_settings', 'permission.check:manage_users'])->name('my-package.index');
+    Route::prefix('upgrade-requests')->name('upgrade-requests.')->middleware(['module.enabled:tenant_settings', 'permission.check:manage_users'])->group(function () {
+        Route::get('/', [TenantUpgradeRequestController::class, 'index'])->name('index');
+        Route::post('/', [TenantUpgradeRequestController::class, 'store'])->name('store');
+    });
     Route::post('/settings', [SettingsController::class, 'update'])->middleware('module.enabled:tenant_settings')->name('settings.update');
     Route::get('/settings/company-profile', [SettingsController::class, 'editCompanyProfile'])->middleware('module.enabled:tenant_settings')->name('settings.company-profile.edit');
     Route::post('/settings/company-profile', [SettingsController::class, 'updateCompanyProfile'])->middleware('module.enabled:tenant_settings')->name('settings.company-profile.update');
+    Route::prefix('package-requests')->name('package-requests.')->middleware(['module.enabled:tenant_settings', 'permission.check:manage_users'])->group(function () {
+        Route::get('/', [TenantPackageRequestController::class, 'index'])->name('index');
+        Route::post('/', [TenantPackageRequestController::class, 'store'])->name('store');
+    });
+    Route::prefix('users')->name('users.')->middleware(['module.enabled:user_management', 'permission.check:manage_users'])->group(function () {
+        Route::get('/', [UserController::class, 'index'])->name('index');
+        Route::get('/create', [UserController::class, 'create'])->name('create');
+        Route::post('/', [UserController::class, 'store'])->name('store');
+        Route::get('/{user}/edit', [UserController::class, 'edit'])->name('edit')->whereNumber('user');
+        Route::put('/{user}', [UserController::class, 'update'])->name('update')->whereNumber('user');
+        Route::delete('/{user}', [UserController::class, 'destroy'])->name('destroy')->whereNumber('user');
+    });
     Route::prefix('/settings/notifications')->name('settings.notifications.')->middleware(['module.enabled:notification_center', 'feature.enabled:notification_center,smtp_settings'])->group(function () {
         Route::get('/smtp', [NotificationSettingsController::class, 'smtp'])->name('smtp');
         Route::put('/smtp', [NotificationSettingsController::class, 'updateSmtp'])->name('smtp.update');

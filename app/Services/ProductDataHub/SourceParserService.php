@@ -33,15 +33,26 @@ class SourceParserService
         $profileKey ??= $this->getSupplierProfileKey($source);
         $nodePath = $this->resolveNodePath($source, $profileKey);
 
+        if ($this->containsBlockedXmlDirective($content)) {
+            return $this->failedResult($profileKey, 'xml', $nodePath, [
+                'XML güvenlik politikası nedeniyle reddedildi: DOCTYPE/ENTITY kullanımı desteklenmez.',
+            ]);
+        }
+
+        $previousUseInternalErrors = libxml_use_internal_errors(true);
         try {
-            $xml = simplexml_load_string($content, SimpleXMLElement::class, LIBXML_NOCDATA);
+            $xml = simplexml_load_string($content, SimpleXMLElement::class, LIBXML_NONET | LIBXML_NOCDATA);
 
             if (!$xml) {
+                libxml_clear_errors();
+
                 return $this->failedResult($profileKey, 'xml', $nodePath, ['XML içeriği ayrıştırılamadı.']);
             }
 
             $nodes = $this->resolveXmlNodes($xml, $nodePath, $limit);
             $rows = array_map(fn (SimpleXMLElement $node) => $this->xmlNodeToArray($node), $nodes);
+
+            libxml_clear_errors();
 
             return $this->successfulResult($profileKey, 'xml', $nodePath, $rows);
         } catch (\Throwable $exception) {
@@ -49,10 +60,14 @@ class SourceParserService
                 'source_id' => $source->id,
                 'profile_key' => $profileKey,
                 'node_path' => $nodePath,
-                'message' => $exception->getMessage(),
+                'message' => 'XML parse exception',
             ]);
 
-            return $this->failedResult($profileKey, 'xml', $nodePath, ['XML ayrıştırma hatası: ' . $exception->getMessage()]);
+            libxml_clear_errors();
+
+            return $this->failedResult($profileKey, 'xml', $nodePath, ['XML güvenli şekilde ayrıştırılamadı.']);
+        } finally {
+            libxml_use_internal_errors($previousUseInternalErrors);
         }
     }
 
@@ -211,11 +226,8 @@ class SourceParserService
 
     private function getSupplierProfileKey(SupplierSource $source): string
     {
-        if (filled($source->config['profile_key'] ?? null) && ($source->config['profile_key'] ?? null) !== 'CUSTOM') {
-            return (string) $source->config['profile_key'];
-        }
-
-        return $this->fieldDictionary->detectSupplierKey(
+        return $this->fieldDictionary->resolveProfileTemplateKey(
+            (array) ($source->config ?? []),
             $source->supplier?->code,
             $source->supplier?->name
         ) ?? 'ETKIN';
@@ -362,5 +374,11 @@ class SourceParserService
             'warnings' => [],
             'errors' => $errors,
         ];
+    }
+
+    private function containsBlockedXmlDirective(string $content): bool
+    {
+        return preg_match('/<!DOCTYPE/i', $content) === 1
+            || preg_match('/<!ENTITY/i', $content) === 1;
     }
 }

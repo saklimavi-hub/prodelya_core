@@ -147,14 +147,24 @@
                                     <td>{{ is_null($listPrice) ? 'Fiyat eksik' : number_format((float) $listPrice, 2, ',', '.') . ' ' . ($product->currency ?: 'TL') }}</td>
                                     <td>
                                         <div class="pd-inline-badges">
-                                            @if($product->warning_flag)
-                                                <span class="pd-badge pd-badge-red">Uyarı</span>
+                                            @php
+                                                $supplierName = $product->supplier?->name ?: '';
+                                            @endphp
+                                            @if(data_get($product->normalized_payload, 'supplier_warning_flag'))
+                                                @if(str_contains(mb_strtolower($supplierName), 'etkin'))
+                                                    <span class="pd-badge pd-badge-red">Kırmızı Ürün</span>
+                                                @elseif(str_contains(mb_strtolower($supplierName), 'yeni nesil'))
+                                                    <span class="pd-badge pd-badge-amber">Turuncu Ürün</span>
+                                                @endif
+                                            @endif
+                                            @if($product->warning_flag && !data_get($product->normalized_payload, 'supplier_warning_flag'))
+                                                <span class="pd-badge pd-badge-amber">Veri kalite uyarısı</span>
                                             @endif
                                             @if(data_get($product->normalized_payload, 'net_price_warning'))
-                                                <span class="pd-badge pd-badge-amber">Net fiyat</span>
+                                                <span class="pd-badge pd-badge-amber">Net fiyat uyarısı</span>
                                             @endif
                                             @if(data_get($product->normalized_payload, 'price_policy_warning'))
-                                                <span class="pd-badge pd-badge-amber">Özel fiyat</span>
+                                                <span class="pd-badge pd-badge-blue">Fiyat kontrolü gerekli</span>
                                             @endif
                                             @if(blank($product->standard_category_id) && blank(data_get($product->normalized_payload, 'category_override_standard_category_id')))
                                                 <span class="pd-badge pd-badge-amber">Kategori eksik</span>

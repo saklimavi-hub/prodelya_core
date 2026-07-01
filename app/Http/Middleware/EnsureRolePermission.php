@@ -41,7 +41,7 @@ class EnsureRolePermission
                 $tenant->id,
                 $user->id,
                 $permission,
-                get_class($request->route()->getControllerClass()),
+                (string) $request->route()->getControllerClass(),
                 $request->route()->getActionMethod()
             );
             

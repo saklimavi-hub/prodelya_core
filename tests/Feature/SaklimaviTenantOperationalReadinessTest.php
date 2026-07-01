@@ -78,10 +78,10 @@ class SaklimaviTenantOperationalReadinessTest extends TestCase
             ->get($this->tenantUrl($tenant, '/admin/settings'));
 
         $settings->assertOk();
-        $settings->assertSee('Tenant Profili ve Hazırlık');
-        $settings->assertSee('Eski veri import yapılmadı');
-        $settings->assertSee('İlk firma/cari bu fazda otomatik oluşturulmadı.');
-        $settings->assertSee('Kurulum bekliyor');
+        $settings->assertSee('Kurulum Merkezi');
+        $settings->assertSee('Firma Profili');
+        $settings->assertSee('Kurulum Özeti');
+        $settings->assertSee('Çalışma klasörü kök adı');
         $settings->assertSee('http://saklimavi-readiness.' . self::CENTRAL_HOST . '/admin');
         $settings->assertDontSee('smtp_password', false);
         $settings->assertDontSee('file_path', false);

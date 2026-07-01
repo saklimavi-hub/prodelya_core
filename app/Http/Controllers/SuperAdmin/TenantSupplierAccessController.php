@@ -16,7 +16,7 @@ class TenantSupplierAccessController extends Controller
 {
     public function __construct()
     {
-        // TODO: Add middleware/permission: manage_tenant_supplier_access
+        // Route group auth:web + central.access + super.admin middleware katmanlariyla korunur.
     }
 
     public function index(): View

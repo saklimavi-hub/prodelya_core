@@ -39,14 +39,15 @@ class SuperAdminTenantCreateStoreTest extends TestCase
 
         $index->assertOk();
         $index->assertSee(route('admin.super.tenants.create'), false);
-        $index->assertDontSee('type="button" class="pd-btn pd-btn-primary">Yeni Tenant', false);
+        $index->assertDontSee('type="button" class="pd-btn pd-btn-primary">Yeni Abone Firma', false);
 
         $create = $this->actingAs($this->platformAdmin, 'web')
             ->get($this->centralUrl('/admin/super-admin/tenants/create'));
 
         $create->assertOk();
-        $create->assertSee('Yeni Tenant');
-        $create->assertSee('Owner kullanıcı bu adımda oluşturulmaz.');
+        $create->assertSee('Yeni Abone Firma Oluştur');
+        $create->assertSee('Yönetici Kullanıcı');
+        $create->assertSee('Abone Firma Oluştur ve Onboarding Hazırla');
     }
 
     public function test_tenant_admin_and_demo_admin_cannot_open_create_form(): void
@@ -87,8 +88,9 @@ class SuperAdminTenantCreateStoreTest extends TestCase
 
         $tenant = TenantAccount::query()->where('slug', 'sakli-mavi')->firstOrFail();
 
-        $response->assertRedirect(route('admin.super.tenants.edit', $tenant));
+        $response->assertRedirect(route('admin.super.tenants.show', $tenant));
         $response->assertSessionHas('success');
+        $response->assertSessionHas('onboarding_defaults_summary');
 
         $this->assertSame($package->key, $tenant->package_key);
         $this->assertSame('sakli-mavi', $tenant->slug);
@@ -101,12 +103,16 @@ class SuperAdminTenantCreateStoreTest extends TestCase
         $this->assertDatabaseMissing('tenant_modules', [
             'tenant_account_id' => $tenant->id,
         ]);
+        $this->assertTrue($tenant->settings()->exists());
+        $this->assertTrue($tenant->notificationTemplates()->exists());
+        $this->assertTrue($tenant->printSettings()->exists());
 
-        $edit = $this->actingAs($this->platformAdmin, 'web')
-            ->get(route('admin.super.tenants.edit', $tenant));
+        $show = $this->actingAs($this->platformAdmin, 'web')
+            ->get(route('admin.super.tenants.show', $tenant));
 
-        $edit->assertOk();
-        $edit->assertSee('Owner kullanıcı henüz oluşturulmadı.');
+        $show->assertOk();
+        $show->assertSee('Owner kullanıcı henüz oluşturulmadı.');
+        $show->assertSee('Tenant ayarları varsayılanları');
 
         $access = app(TenantAccessService::class);
         $this->assertTrue($access->canAccessModule($tenant, 'customer_portal'));

@@ -138,12 +138,27 @@ class AdminDashboardWorkQueueTest extends TestCase
 
         $response->assertOk();
         $response->assertSee('Yönetim Paneli');
+        $response->assertSee('Bugün Ne Yapmalıyım?');
+        $response->assertSee('Hızlı Başla');
+        $response->assertSee('Canlıya Hazırlık');
+        $response->assertSee('Paket ve Limit Özeti');
+        $response->assertSee('Katalog / Product Hub Özeti');
+        $response->assertSee('Katalogdaki Ürünler');
+        $response->assertSee('Katalogda görünen aktif ürün ve varyant satırları.');
+        $response->assertSee('Teklif ekranında seçilebilir ürün ve varyant satırları.');
+        $response->assertSee('Kontrol Gereken Ürünler');
+        $response->assertSee('Kategori, fiyat veya stok uyarısı olan ürün ve varyant satırları.');
         $response->assertSee('İş Kuyruğu');
+        $response->assertSee('Super Admin Operasyon Paneline Geç');
+        $response->assertSee(route('admin.super.dashboard'), false);
+        $response->assertDontSee('Debug geçişi');
         $response->assertSee('Genel Özet');
         $response->assertSee('Süreç Akış Şeridi');
         $response->assertSee('Öncelikli Aksiyonlar');
         $response->assertSee('Kontrol Paneli');
-        $response->assertSee('Portal ve Public Linkler');
+        $response->assertSee('Portal ve Paylaşım Linkleri');
+        $response->assertDontSee('Portal ve Public Linkler');
+        $response->assertDontSee('Public Tracking');
         $response->assertSee('Modül Kısayolları');
         $response->assertSee('Onay Bekleyen Teklifler');
         $response->assertSee('Siparişe Çevrilebilir Teklifler');
@@ -155,6 +170,8 @@ class AdminDashboardWorkQueueTest extends TestCase
         $response->assertSee('Başarısız Bildirimler');
         $response->assertSee('Sıradaki İşler');
         $response->assertSee('Baskı Ayarları');
+        $response->assertSee('Talep Merkezi');
+        $response->assertSee('Kataloğu Aç');
         $response->assertSee(route('admin.settings.print-settings.index'), false);
         $response->assertSee($waitingQuote->document_number);
         $response->assertSee($convertibleQuote->document_number);
@@ -182,6 +199,19 @@ class AdminDashboardWorkQueueTest extends TestCase
         $response->assertDontSee('subcontractor_cost', false);
         $response->assertDontSee('current_account_transactions', false);
         $response->assertDontSee($graphicApprovalRequest->token);
+        $response->assertSeeInOrder([
+            'Bugün Ne Yapmalıyım?',
+            'Genel Özet',
+            'Süreç Akış Şeridi',
+            'Öncelikli Aksiyonlar',
+            'Sıradaki İşler',
+            'Canlıya Hazırlık',
+            'Paket ve Limit Özeti',
+            'Hızlı Başla',
+            'Katalog / Product Hub Özeti',
+        ]);
+        $response->assertSee('position: sticky;', false);
+        $response->assertSee('top: 10px;', false);
 
         $response->assertViewHas('dashboard', function (array $dashboard) {
             $cards = collect($dashboard['cards'] ?? [])->keyBy('title');
@@ -265,6 +295,22 @@ class AdminDashboardWorkQueueTest extends TestCase
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->get(route('admin.dashboard'))
             ->assertRedirect(route('login'));
+    }
+
+    public function test_dashboard_hides_super_admin_transition_link_for_non_platform_tenant_user(): void
+    {
+        $this->adminUser->forceFill([
+            'is_platform_admin' => false,
+        ])->save();
+
+        $response = $this->actingAs($this->adminUser, 'web')
+            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
+            ->get(route('admin.dashboard'));
+
+        $response->assertOk();
+        $response->assertDontSee('Super Admin Operasyon Paneline Geç');
+        $response->assertDontSee(route('admin.super.dashboard'), false);
+        $response->assertDontSee('Debug geçişi');
     }
 
     private function createQuote(string $documentNumber, string $approvalStatus, string $status): Order

@@ -2,7 +2,7 @@
 
 @section('title', 'Kategori Eşleme')
 @section('page_title', 'Kategori Eşleme')
-@section('page_subtitle', 'Tedarikçi kategorilerini Prodelya standart kategori ağacına bağlayın.')
+@section('page_subtitle', 'Tedarikçi kategorilerini Prodelya standart kategori ağacına bağlayın. Orijinal tedarikçi kategorisi silinmez; kontrol ve dışa aktarma için korunur.')
 
 @php
     $isSimpleMode = ($filters['mode'] ?? 'simple') === 'simple';
@@ -12,7 +12,7 @@
         'safe_candidate' => 'Güvenli Öneriler',
         'target_missing' => 'Hedef Bulunamayan',
         'review' => 'Kontrol Gereken',
-        'review_required' => 'Review Required',
+        'review_required' => 'Kontrollü İnceleme',
         'risk_groups' => 'Riskli Gruplar',
         'approved' => 'Eşlenenler',
         'cancelled' => 'İptal Edilmiş',
@@ -50,7 +50,7 @@
             <div class="pd-hero-main">
                 <div class="pd-hero-copy">
                     <h1 class="pd-hero-title">Kategori Eşleme</h1>
-                    <p class="pd-hero-subtitle">Tedarikçi kategorisini Prodelya standart kategorisine bağlayın.</p>
+                    <p class="pd-hero-subtitle">Tedarikçi kategorisini Prodelya standart kategorisine bağlayın. Orijinal kategori korunur; bu ekran karar kaydı içindir.</p>
                     <div class="pd-hero-badges">
                         <span class="pd-badge pd-badge-blue">Basit Mod</span>
                         <span class="pd-badge pd-badge-amber">{{ $stats['pending'] + $stats['needs_review'] }} bekleyen</span>
@@ -69,12 +69,12 @@
             <div class="pd-hero-main">
                 <div class="pd-hero-copy">
                     <h1 class="pd-hero-title">Kategori Eşleme Kuyruğu</h1>
-                    <p class="pd-hero-subtitle">Tedarikçi kategorisini, sistem önerisini ve operatör kararını yan yana görüp hızlıca bağlayın.</p>
+                    <p class="pd-hero-subtitle">Tedarikçi kategorisini, sistem önerisini ve operatör kararını yan yana görüp hızlıca bağlayın. Orijinal tedarikçi kategorisi silinmez; kontrol ve dışa aktarma için korunur.</p>
                     <div class="pd-hero-badges">
                         <span class="pd-badge pd-badge-blue">Super Admin</span>
                         <span class="pd-badge pd-badge-green">{{ $stats['mapped'] }} öneri bağlı</span>
                         <span class="pd-badge pd-badge-amber">{{ $stats['pending'] + $stats['needs_review'] }} karar bekleyen</span>
-                        <span class="pd-badge pd-badge-green">{{ $stats['safe_apply'] }} safe apply adayı</span>
+                        <span class="pd-badge pd-badge-green">{{ $stats['safe_apply'] }} güvenli kayıt adayı</span>
                         <span class="pd-badge pd-badge-purple">{{ $stats['approved_aliases'] }} alias kayıtlı</span>
                     </div>
                 </div>
@@ -102,7 +102,7 @@
     @endif
 
     @unless($isSimpleMode)
-    <section class="pd-metric-grid">
+    <section class="pd-kpi-strip">
         <div class="pd-metric-card pd-metric-card-soft-blue">
             <div class="pd-metric-card-label">Tedarikçi Kategorisi</div>
             <div class="pd-metric-card-value">{{ $stats['total'] }}</div>
@@ -125,40 +125,42 @@
         </div>
     </section>
 
-    <section class="pd-metric-grid">
+    <section class="pd-kpi-strip">
         <div class="pd-metric-card pd-metric-card-soft-green">
-            <div class="pd-metric-card-label">Approved</div>
+            <div class="pd-metric-card-label">Onaylı</div>
             <div class="pd-metric-card-value">{{ $stats['approved'] }}</div>
-            <div class="pd-metric-card-note">Güvenli kabul edilmiş mapping</div>
+            <div class="pd-metric-card-note">Onaylı kategori eşleme kaydı</div>
         </div>
         <div class="pd-metric-card pd-metric-card-soft-blue">
-            <div class="pd-metric-card-label">Safe Apply Adayı</div>
+            <div class="pd-metric-card-label">Güvenli Karar Adayı</div>
             <div class="pd-metric-card-value">{{ $stats['safe_apply'] }}</div>
-            <div class="pd-metric-card-note">%95+, review yok, kalıcı hedef</div>
+            <div class="pd-metric-card-note">%95+, kontrollü risk yok, kalıcı hedef</div>
         </div>
         <div class="pd-metric-card pd-metric-card-soft-amber">
-            <div class="pd-metric-card-label">Refresh Bekleyen Ürün</div>
+            <div class="pd-metric-card-label">Kategori Bekleyen Ürün</div>
             <div class="pd-metric-card-value">{{ $stats['refresh_waiting_products'] }}</div>
-            <div class="pd-metric-card-note">Standard product kategori bekliyor</div>
+            <div class="pd-metric-card-note">Ürün tarafında kategori güncellemesi bekliyor</div>
         </div>
         <div class="pd-metric-card pd-metric-card-soft-purple">
-            <div class="pd-metric-card-label">Refresh Bekleyen Tenant</div>
+            <div class="pd-metric-card-label">Abone Firma Kataloğu Bekleyen</div>
             <div class="pd-metric-card-value">{{ $stats['refresh_waiting_tenant_catalog'] }}</div>
-            <div class="pd-metric-card-note">Tenant catalog kategori bekliyor</div>
+            <div class="pd-metric-card-note">Abone Firma kataloğunda kategori güncellemesi bekliyor</div>
         </div>
     </section>
 
     <div class="pd-alert pd-alert-info">
         <div class="pd-chip-group">
             <span class="pd-badge pd-badge-amber" title="Tedarikçi kategorileri yeni kalıcı omurgaya yeniden eşlenmelidir.">Review Kararı Bekliyor</span>
-            <span class="pd-badge pd-badge-blue" title="Eşleme yoksa ürün erişimi olan tenantlarda geçici kategoriyle görünebilir.">Fallback ile Görünebilir</span>
+            <span class="pd-badge pd-badge-blue" title="Eşleme yoksa ürün erişimi olan Abone Firma kataloglarında geçici kategoriyle görünebilir.">Geçici görünüm olabilir</span>
             <span class="pd-badge pd-badge-green" title="Onaylı mapping ürünlere ayrıca category refresh ile yansır.">Mapping / Refresh Ayrı</span>
         </div>
         <details class="pd-inline-details mt-3">
             <summary>Detay</summary>
-            <p>Standart kategori ağacı yenilendi. Arşiv kategoriler hedef listelerinde kullanılmaz. Bu ekranda toplu apply veya category refresh çalıştırılmaz; hedef bulunamayan kayıtlar otomatik “Diğer” kategorisine atanmaz.</p>
+            <p>Standart kategori ağacı yenilendi. Arşiv kategoriler hedef listelerinde kullanılmaz. Bu ekranda toplu kategori uygulaması veya kategori yenileme çalıştırılmaz; hedef bulunamayan kayıtlar otomatik “Diğer” kategorisine atanmaz.</p>
         </details>
     </div>
+
+    <div class="pd-note mt-4">Orijinal kategori korunur. Abone Firma isterse ileride dışa aktarma çıktısında Prodelya kategorisini veya tedarikçi orijinal kategorisini kullanabilir.</div>
 
     <section class="pd-main-utility-grid">
         <div class="pd-nav-card pd-nav-card-compact">
@@ -242,45 +244,47 @@
             </div>
         </div>
         <div class="pd-section-body">
-            <form method="GET" class="pd-grid pd-grid-4">
+            <form method="GET" class="pd-stack-md">
                 <input type="hidden" name="mode" value="{{ $filters['mode'] }}">
                 <input type="hidden" name="view_mode" value="{{ $activeViewMode }}">
-                <div>
-                    <label class="pd-label">Tedarikçi</label>
-                    <select name="supplier_id" class="pd-select">
-                        <option value="">Tümü</option>
-                        @foreach($suppliers as $supplier)
-                            <option value="{{ $supplier->id }}" @selected(($filters['supplier_id'] ?? null) == $supplier->id)>{{ $supplier->name }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div>
-                    <label class="pd-label">Durum</label>
-                    <select name="status" class="pd-select">
-                        <option value="">Tümü</option>
-                        <option value="pending" @selected(($filters['status'] ?? '') === 'pending')>Bekleyen</option>
-                        <option value="auto_approved" @selected(($filters['status'] ?? '') === 'auto_approved')>Otomatik Öneri</option>
-                        <option value="needs_review" @selected(($filters['status'] ?? '') === 'needs_review')>Kontrol Gerekli</option>
-                        <option value="conflict" @selected(($filters['status'] ?? '') === 'conflict')>Çakışmalı</option>
-                        <option value="approved" @selected(($filters['status'] ?? '') === 'approved')>Onaylı</option>
-                        <option value="rejected" @selected(($filters['status'] ?? '') === 'rejected')>Reddedilen</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="pd-label">Hedef Kategori</label>
-                    <select name="standard_category_id" class="pd-select">
-                        <option value="">Tümü</option>
-                        @foreach($standardCategories as $category)
-                            <option value="{{ $category->id }}" @selected(($filters['standard_category_id'] ?? null) == $category->id)>{{ $category->full_path }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div>
-                    <label class="pd-label">Arama</label>
-                    <input type="text" name="search" value="{{ $filters['search'] ?? '' }}" class="pd-input" placeholder="Kategori, yol veya tedarikçi ara">
+                <div class="pd-filter-row pd-filter-row-4">
+                    <div>
+                        <label class="pd-label">Tedarikçi</label>
+                        <select name="supplier_id" class="pd-select">
+                            <option value="">Tümü</option>
+                            @foreach($suppliers as $supplier)
+                                <option value="{{ $supplier->id }}" @selected(($filters['supplier_id'] ?? null) == $supplier->id)>{{ $supplier->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div>
+                        <label class="pd-label">Durum</label>
+                        <select name="status" class="pd-select">
+                            <option value="">Tümü</option>
+                            <option value="pending" @selected(($filters['status'] ?? '') === 'pending')>Bekleyen</option>
+                            <option value="auto_approved" @selected(($filters['status'] ?? '') === 'auto_approved')>Otomatik Öneri</option>
+                            <option value="needs_review" @selected(($filters['status'] ?? '') === 'needs_review')>Kontrol Gerekli</option>
+                            <option value="conflict" @selected(($filters['status'] ?? '') === 'conflict')>Çakışmalı</option>
+                            <option value="approved" @selected(($filters['status'] ?? '') === 'approved')>Onaylı</option>
+                            <option value="rejected" @selected(($filters['status'] ?? '') === 'rejected')>Reddedilen</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="pd-label">Hedef Kategori</label>
+                        <select name="standard_category_id" class="pd-select">
+                            <option value="">Tümü</option>
+                            @foreach($standardCategories as $category)
+                                <option value="{{ $category->id }}" @selected(($filters['standard_category_id'] ?? null) == $category->id)>{{ $category->full_path }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div>
+                        <label class="pd-label">Arama</label>
+                        <input type="text" name="search" value="{{ $filters['search'] ?? '' }}" class="pd-input" placeholder="Kategori, yol veya tedarikçi ara">
+                    </div>
                 </div>
                 @unless($isSimpleMode)
-                <div style="grid-column: 1 / -1;">
+                <div>
                     <div class="pd-chip-row">
                         @foreach($queueOptions as $queueKey => $queueLabel)
                             <label class="pd-filter-chip {{ $activeQueue === $queueKey ? 'active' : '' }}">
@@ -290,7 +294,7 @@
                         @endforeach
                     </div>
                 </div>
-                <div style="grid-column: 1 / -1;">
+                <div>
                     <div class="pd-chip-row">
                         @foreach($riskQuickChips as $groupKey => $groupLabel)
                             <a href="{{ route('admin.super.product-data-hub.category-mappings.index', array_merge(request()->query(), ['queue' => 'risk_groups', 'review_group' => $groupKey, 'view_mode' => $activeViewMode])) }}" class="pd-filter-chip {{ $activeQueue === 'risk_groups' && $activeReviewGroup === $groupKey ? 'active' : '' }}">
@@ -300,7 +304,7 @@
                     </div>
                 </div>
                 @endunless
-                <div class="flex gap-2 flex-wrap" style="grid-column: 1 / -1;">
+                <div class="pd-form-actions">
                     <button type="submit" class="pd-btn pd-btn-primary">Filtrele</button>
                     <a href="{{ route('admin.super.product-data-hub.category-mappings.index') }}" class="pd-btn pd-btn-light">Temizle</a>
                 </div>
@@ -335,7 +339,7 @@
                 @endforeach
             </div>
 
-            <form method="GET" class="pd-grid pd-grid-4 mt-3">
+            <form method="GET" class="pd-filter-row pd-filter-row-4 mt-3">
                 @foreach(request()->except(['limit', 'page']) as $key => $value)
                     @if(is_scalar($value))
                         <input type="hidden" name="{{ $key }}" value="{{ $value }}">
@@ -354,7 +358,7 @@
                 </div>
             </form>
 
-            <div class="pd-metric-grid mt-3">
+            <div class="pd-kpi-strip mt-3">
                 <div class="pd-metric-card pd-metric-card-soft-purple">
                     <div class="pd-metric-card-label">Alias Adayı</div>
                     <div class="pd-metric-card-value">{{ $reviewReport['summary']['by_class']['alias_candidate'] ?? 0 }}</div>
@@ -430,9 +434,9 @@
                         <div class="pd-source-main">
                             <h4 class="pd-source-name">{{ $supplierRow['supplier_name'] }}</h4>
                             <div class="pd-source-subline">
-                                <span class="pd-badge pd-badge-blue">Approved {{ $supplierRow['approved'] }}</span>
-                                <span class="pd-badge pd-badge-amber">Pending {{ $supplierRow['pending'] }}</span>
-                                <span class="pd-badge pd-badge-purple">Review {{ $supplierRow['review_required'] }}</span>
+                                <span class="pd-badge pd-badge-blue">Onaylı {{ $supplierRow['approved'] }}</span>
+                                <span class="pd-badge pd-badge-amber">Bekleyen {{ $supplierRow['pending'] }}</span>
+                                <span class="pd-badge pd-badge-purple">Kontrol {{ $supplierRow['review_required'] }}</span>
                                 <span class="pd-badge pd-badge-gray">Hedef yok {{ $supplierRow['target_missing'] }}</span>
                             </div>
                         </div>
@@ -586,7 +590,7 @@
                         <div class="pd-quick-toolbar">
                             <div>
                                 <strong>Hızlı Eşleme</strong>
-                                <span class="pd-muted">Öneriyi kabul etmek tek adımda mapping kaydeder; ürün/projection refresh çalışmaz.</span>
+                                <span class="pd-muted">Öneriyi kabul etmek tek adımda kategori kararını kaydeder; ürün veya katalog yansıtma çalışmaz.</span>
                             </div>
                             <div class="pd-quick-toolbar-actions">
                                 <button type="button" class="pd-btn pd-btn-light pd-btn-sm" data-select-safe-page>Sayfadaki Güvenli Önerileri Seç</button>
@@ -604,9 +608,9 @@
                                     <tr>
                                         <th><input type="checkbox" data-toggle-page-selection aria-label="Sayfadaki kayıtları seç"></th>
                                         <th>Tedarikçi</th>
-                                        <th>Tedarikçi Kategorisi</th>
+                                        <th>Orijinal Kategori</th>
                                         <th>Ürün</th>
-                                        <th>Önerilen Hedef</th>
+                                        <th>Önerilen Prodelya Kategorisi</th>
                                         <th>Güven</th>
                                         <th>Durum</th>
                                         <th>Risk / Özel Kural</th>
@@ -830,7 +834,7 @@
 
                             <div class="pd-category-queue-body pd-category-compare-grid">
                                 <div class="pd-category-samples pd-category-compare-block">
-                                    <div class="pd-category-compare-title">Sol Blok — Tedarikçi Kategorisi</div>
+                                    <div class="pd-category-compare-title">Sol Blok — Orijinal Tedarikçi Kategorisi</div>
                                     <div class="pd-category-reason-box">
                                         <strong>{{ $mapping->supplier?->name ?: '-' }}</strong><br>
                                         {{ $mapping->source_category ?: '-' }}<br>
@@ -862,7 +866,7 @@
                                 </div>
 
                                 <div class="pd-category-suggestion-block pd-category-compare-block">
-                                    <div class="pd-category-compare-title">Orta Blok — Sistem Önerisi</div>
+                                    <div class="pd-category-compare-title">Orta Blok — Önerilen Prodelya Kategorisi</div>
                                     @php
                                         $targetCategory = $mapping->standardCategory;
                                         $targetIsPermanent = $targetCategory?->isPermanentBackbone() ?? false;
@@ -921,7 +925,7 @@
                                     <div class="pd-category-compare-title">Sağ Blok — Karar</div>
                                     <div class="pd-grid pd-grid-3">
                                         <div>
-                                            <label class="pd-label">Hedef Kategori</label>
+                                            <label class="pd-label">Seçilen Prodelya Kategorisi</label>
                                             <input
                                                 type="text"
                                                 class="pd-input pd-category-target-search"
@@ -931,7 +935,7 @@
                                                 value="{{ $safeTargetCategoryId ? $targetCategory->full_path : '' }}"
                                                 placeholder="Kategori adı, kodu veya yolu ara">
                                             <input type="hidden" name="standard_category_id" id="mapping-category-{{ $mapping->id }}" value="{{ $safeTargetCategoryId }}">
-                                            <div class="pd-profile-note mt-1">En az 2 karakter yazın; yalnız aktif yeni kategori ağacı listelenir.</div>
+                                            <div class="pd-profile-note mt-1">En az 2 karakter yazın; yalnız aktif Prodelya kategori ağacı listelenir. Orijinal tedarikçi kategorisi silinmez.</div>
                                             <div class="pd-category-search-results" id="mapping-category-results-{{ $mapping->id }}"></div>
                                         </div>
                                         <div>

@@ -11,6 +11,15 @@ class ProductDataHubSyncRun extends Model
 {
     use HasFactory;
 
+    public const STATUS_PENDING = 'pending';
+    public const STATUS_RUNNING = 'running';
+    public const STATUS_COMPLETED = 'completed';
+    public const STATUS_COMPLETED_WITH_WARNINGS = 'completed_with_warnings';
+    public const STATUS_FAILED = 'failed';
+    public const STATUS_CANCELLED = 'cancelled';
+    public const STATUS_STUCK = 'stuck';
+    public const STATUS_RECOVERED = 'recovered';
+
     protected $fillable = [
         'supplier_source_id',
         'supplier_id',
@@ -41,6 +50,7 @@ class ProductDataHubSyncRun extends Model
         'started_at' => 'datetime',
         'finished_at' => 'datetime',
         'report_payload' => 'array',
+        'updated_at' => 'datetime',
     ];
 
     public function source(): BelongsTo
@@ -61,5 +71,37 @@ class ProductDataHubSyncRun extends Model
     public function triggeredBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'triggered_by');
+    }
+
+    public static function normalizeStatus(?string $status): string
+    {
+        return match ((string) $status) {
+            'success' => self::STATUS_COMPLETED,
+            'partial' => self::STATUS_COMPLETED_WITH_WARNINGS,
+            'error' => self::STATUS_FAILED,
+            default => (string) ($status ?: self::STATUS_PENDING),
+        };
+    }
+
+    public function normalizedStatus(): string
+    {
+        return self::normalizeStatus($this->status);
+    }
+
+    public function isRunningLike(): bool
+    {
+        return $this->normalizedStatus() === self::STATUS_RUNNING;
+    }
+
+    public function isTerminal(): bool
+    {
+        return in_array($this->normalizedStatus(), [
+            self::STATUS_COMPLETED,
+            self::STATUS_COMPLETED_WITH_WARNINGS,
+            self::STATUS_FAILED,
+            self::STATUS_CANCELLED,
+            self::STATUS_STUCK,
+            self::STATUS_RECOVERED,
+        ], true);
     }
 }
