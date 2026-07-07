@@ -10,7 +10,8 @@ use Illuminate\Support\Str;
 class CustomerPortalQuoteDataBuilder
 {
     public function __construct(
-        private readonly TenantCompanyProfileService $tenantCompanyProfileService
+        private readonly TenantCompanyProfileService $tenantCompanyProfileService,
+        private readonly CustomerFacingPriceDisplayService $customerFacingPriceDisplayService,
     ) {
     }
 
@@ -45,19 +46,25 @@ class CustomerPortalQuoteDataBuilder
                 'note' => $this->sanitizeVisibleNote($quote->notes),
             ],
             'items' => $quote->items->map(function ($item): array {
+                $customerFacing = $this->customerFacingPriceDisplayService->buildItem(
+                    $item,
+                    $item->order?->currency ?: 'TL'
+                );
+
                 return [
                     'product_name' => $item->product_name ?: '-',
                     'product_code' => $item->product_code ?: null,
                     'quantity' => $this->formatQuantity($item->quantity, $item->unit),
-                    'unit_price' => $this->formatMoney($item->unit_price, $item->order?->currency),
-                    'line_total' => $this->formatMoney($item->line_total, $item->order?->currency),
-                    'prints' => $item->prints->map(function ($print): array {
+                    'unit_price' => $customerFacing['customer_unit_price_label'],
+                    'line_total' => $customerFacing['customer_line_total_label'],
+                    'prints' => collect($customerFacing['prints'])->map(function (array $print): array {
                         return [
-                            'label' => trim($print->displayPrintType() . ' ' . ($print->print_option ?: '')),
-                            'quantity' => $this->formatQuantity($print->print_quantity, $print->orderItem?->unit),
-                            'unit_price' => $this->formatMoney($print->print_unit_price, $print->order?->currency),
-                            'line_total' => $this->formatMoney($print->print_total, $print->order?->currency),
-                            'note' => $this->sanitizeVisibleNote($print->note),
+                            'label' => trim(collect([$print['print_type'] ?? null, $print['print_option'] ?? null])->filter()->implode(' ')),
+                            'quantity' => $print['quantity_label'] ?? '-',
+                            'unit_price' => $print['unit_price_label'] ?? null,
+                            'line_total' => $print['total_label'] ?? null,
+                            'show_price_details' => (bool) ($print['show_price_details'] ?? false),
+                            'note' => $this->sanitizeVisibleNote($print['note'] ?? null),
                         ];
                     })->values()->all(),
                 ];

@@ -4,42 +4,42 @@
     <meta charset="utf-8">
     <title>{{ $quote->document_number }} Teklif</title>
     <style>
-        @page { margin: 24px 28px; }
-        body { font-family: DejaVu Sans, Arial, Helvetica, sans-serif; color: #1f2937; font-size: 12px; line-height: 1.45; margin: 0; }
+        @page { margin: 18px 20px; }
+        body { font-family: DejaVu Sans, Arial, Helvetica, sans-serif; color: #1f2937; font-size: 10.5px; line-height: 1.32; margin: 0; }
         .sheet { width: 100%; }
-        .header { border-bottom: 2px solid #d9e2ec; padding-bottom: 12px; margin-bottom: 18px; }
-        .header-table, .meta-table, .totals-table, .item-table { width: 100%; border-collapse: collapse; }
-        .header-title { font-size: 24px; font-weight: 700; color: #0f172a; margin-bottom: 4px; }
-        .header-subtitle { font-size: 12px; color: #64748b; }
-        .box-grid { margin-bottom: 16px; }
-        .box-grid td { width: 50%; vertical-align: top; padding-right: 10px; }
-        .panel { border: 1px solid #e4e8ef; border-radius: 10px; padding: 12px; background: #ffffff; }
-        .panel-title { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 6px; }
-        .panel-value { font-size: 13px; font-weight: 700; color: #111827; margin-bottom: 4px; }
-        .panel-line { color: #475569; font-size: 12px; margin-bottom: 3px; }
-        .meta-table td { padding: 8px 10px; border: 1px solid #e7edf4; }
-        .meta-label { width: 25%; background: #f8fafc; color: #64748b; font-weight: 700; }
-        .section-title { font-size: 14px; font-weight: 700; color: #0f172a; margin: 18px 0 8px; }
-        .item-table th, .item-table td { border: 1px solid #e7edf4; padding: 8px 9px; vertical-align: top; }
-        .item-table th { background: #f8fafc; color: #475569; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
-        .item-title { font-weight: 700; color: #111827; margin-bottom: 4px; }
-        .item-sub { color: #64748b; font-size: 11px; }
-        .item-note { color: #475569; font-size: 11px; margin-top: 5px; }
-        .print-list { margin-top: 6px; }
-        .print-row { padding: 6px 8px; border: 1px solid #edf2f7; background: #fbfcfe; border-radius: 8px; margin-top: 6px; }
-        .print-title { font-weight: 700; color: #111827; }
-        .print-meta { color: #64748b; font-size: 11px; margin-top: 2px; }
-        .print-note { color: #475569; font-size: 11px; margin-top: 4px; }
-        .text-right { text-align: right; }
-        .totals-wrap { margin-top: 16px; }
-        .totals-table td { padding: 7px 0; }
+        .header { border-bottom: 1px solid #d8e1eb; padding-bottom: 8px; margin-bottom: 10px; }
+        .header-table, .meta-table, .item-table, .totals-table, .sign-table { width: 100%; border-collapse: collapse; }
+        .header-title { font-size: 19px; font-weight: 700; color: #111827; margin: 0 0 2px; }
+        .header-subtitle { font-size: 10px; color: #64748b; }
+        .header-right { text-align: right; white-space: nowrap; }
+        .mini-meta { margin-top: 4px; color: #64748b; font-size: 10px; }
+        .meta-table { margin-bottom: 8px; }
+        .meta-table td { border: 1px solid #e7edf4; padding: 5px 7px; vertical-align: top; }
+        .meta-label { width: 18%; background: #f8fafc; color: #64748b; font-weight: 700; }
+        .meta-value { width: 32%; }
+        .section-title { font-size: 11.5px; font-weight: 700; color: #111827; margin: 10px 0 5px; }
+        .item-table th, .item-table td { border: 1px solid #e7edf4; padding: 5px 6px; vertical-align: top; }
+        .item-table th { background: #f8fafc; color: #475569; font-size: 10px; font-weight: 700; letter-spacing: .02em; }
+        .cell-no { width: 28px; text-align: right; }
+        .cell-qty { width: 80px; text-align: right; white-space: nowrap; }
+        .cell-money { width: 92px; text-align: right; white-space: nowrap; }
+        .item-title { font-weight: 700; color: #111827; margin: 0 0 1px; }
+        .item-note { color: #64748b; font-size: 9.5px; margin-top: 2px; }
+        .print-inline { margin-top: 2px; color: #475569; font-size: 9.5px; line-height: 1.28; }
+        .print-inline .segment { display: inline; }
+        .totals-wrap { margin-top: 8px; width: 40%; margin-left: auto; }
+        .totals-table td { padding: 4px 0; }
         .totals-label { color: #64748b; }
-        .totals-value { text-align: right; font-weight: 700; color: #111827; }
-        .grand td { padding-top: 10px; border-top: 1px solid #dce5ef; font-size: 14px; font-weight: 700; color: #0f172a; }
-        .note-box { margin-top: 16px; border: 1px solid #e7edf4; background: #fbfcfe; border-radius: 10px; padding: 12px; }
-        .approval-box { margin-top: 16px; border: 1px solid #d7e3f4; background: #f8fbff; border-radius: 10px; padding: 12px; }
+        .totals-value { text-align: right; font-weight: 700; color: #111827; white-space: nowrap; }
+        .grand td { border-top: 1px solid #d8e1eb; padding-top: 8px; font-size: 12px; font-weight: 700; color: #111827; }
+        .note-box { margin-top: 8px; border: 1px solid #e7edf4; padding: 7px 9px; color: #475569; }
+        .approval-box { margin-top: 8px; border: 1px solid #d7e3f4; padding: 7px 9px; background: #fafcff; }
         .approval-box a { color: #1d4ed8; text-decoration: none; word-break: break-all; }
-        .footer { margin-top: 18px; font-size: 11px; color: #64748b; }
+        .sign-table { margin-top: 12px; }
+        .sign-table td { width: 50%; padding: 8px 10px 14px 0; vertical-align: top; }
+        .sign-title { font-size: 10px; color: #64748b; font-weight: 700; margin-bottom: 16px; }
+        .sign-line { border-top: 1px solid #d8e1eb; padding-top: 5px; color: #475569; font-size: 10px; }
+        .footer { margin-top: 8px; border-top: 1px solid #e7edf4; padding-top: 6px; color: #64748b; font-size: 9px; line-height: 1.35; }
     </style>
 </head>
 <body>
@@ -49,100 +49,96 @@
             <tr>
                 <td>
                     <div class="header-title">Promosyon Teklifi</div>
-                    <div class="header-subtitle">Müşteriye iletilebilecek satış teklif çıktısı</div>
+                    <div class="header-subtitle">Müşteri teklif özeti</div>
                 </td>
-                <td class="text-right">
+                <td class="header-right">
                     <div class="header-title">{{ $quote->document_number }}</div>
-                    <div class="header-subtitle">{{ $quoteDate ?: '-' }} · {{ $currency }}</div>
+                    <div class="mini-meta">{{ $quoteDate ?: '-' }} · {{ $currency }}</div>
                 </td>
             </tr>
         </table>
     </div>
 
-    <table class="box-grid">
-        <tr>
-            <td>
-                <div class="panel">
-                    <div class="panel-title">Teklifi Hazırlayan</div>
-                    <div class="panel-value">{{ $tenantName }}</div>
-                    <div class="panel-line">Teklif No: {{ $quote->document_number }}</div>
-                    <div class="panel-line">Teklif Tarihi: {{ $quoteDate ?: '-' }}</div>
-                    <div class="panel-line">Geçerlilik: {{ $validUntil ?: '-' }}</div>
-                </div>
-            </td>
-            <td>
-                <div class="panel">
-                    <div class="panel-title">Müşteri</div>
-                    <div class="panel-value">{{ $customerName }}</div>
-                    @if($customerEmail)
-                        <div class="panel-line">{{ $customerEmail }}</div>
-                    @endif
-                    @if($customerPhone)
-                        <div class="panel-line">{{ $customerPhone }}</div>
-                    @endif
-                    <div class="panel-line">Para Birimi: {{ $currency }}</div>
-                </div>
-            </td>
-        </tr>
-    </table>
-
     <table class="meta-table">
         <tr>
+            <td class="meta-label">Hazırlayan</td>
+            <td class="meta-value">{{ $tenantName }}</td>
+            <td class="meta-label">Müşteri</td>
+            <td class="meta-value">{{ $customerName }}</td>
+        </tr>
+        <tr>
             <td class="meta-label">Belge Tipi</td>
-            <td>Promosyon Teklifi</td>
-            <td class="meta-label">Durum</td>
-            <td>{{ $quote->displayQuoteStatusLabel() }}</td>
+            <td class="meta-value">{{ $documentTypeLabel }}</td>
+            <td class="meta-label">Teklif Durumu</td>
+            <td class="meta-value">{{ $quoteStatusLabel }}</td>
         </tr>
         <tr>
             <td class="meta-label">Fatura Durumu</td>
-            <td>{{ $quote->invoice_status === 'fatura' ? 'Faturalı' : 'Fiş / KDV Hariç' }}</td>
+            <td class="meta-value">{{ $invoiceStatusLabel }}</td>
             <td class="meta-label">Müşteri Onayı</td>
-            <td>{{ $approvalStatusLabel ?: 'Bağlantı oluşturulmadı' }}</td>
+            <td class="meta-value">{{ $customerApprovalStatusLabel }}</td>
         </tr>
+        <tr>
+            <td class="meta-label">Teslimat Tipi</td>
+            <td class="meta-value">{{ $deliveryTypeLabel ?: 'Belirtilmedi' }}</td>
+            <td class="meta-label">Geçerlilik</td>
+            <td class="meta-value">{{ $validUntil ?: '-' }}</td>
+        </tr>
+        @if($customerEmail || $customerPhone)
+            <tr>
+                <td class="meta-label">İletişim</td>
+                <td class="meta-value" colspan="3">
+                    {{ $customerEmail ?: '' }}
+                    @if($customerEmail && $customerPhone)
+                        ·
+                    @endif
+                    {{ $customerPhone ?: '' }}
+                </td>
+            </tr>
+        @endif
     </table>
 
     <div class="section-title">Ürün ve Baskı Kalemleri</div>
     <table class="item-table">
         <thead>
         <tr>
-            <th style="width: 42px;">#</th>
-            <th>Ürün</th>
-            <th style="width: 90px;" class="text-right">Miktar</th>
-            <th style="width: 110px;" class="text-right">Birim Fiyat</th>
-            <th style="width: 120px;" class="text-right">Toplam</th>
+            <th class="cell-no">#</th>
+            <th>Ürün / Baskı Bilgisi</th>
+            <th class="cell-qty">Miktar</th>
+            <th class="cell-money">Birim Fiyat</th>
+            <th class="cell-money">Toplam</th>
         </tr>
         </thead>
         <tbody>
         @foreach($items as $item)
             <tr>
-                <td class="text-right">{{ $item['index'] }}</td>
+                <td class="cell-no">{{ $item['index'] }}</td>
                 <td>
                     <div class="item-title">{{ $item['product_name'] }}</div>
-                    <div class="item-sub">{{ $item['product_code'] }}</div>
-                    @if($item['description'])
-                        <div class="item-note">{{ $item['description'] }}</div>
-                    @endif
-                    @if(! empty($item['prints']))
-                        <div class="print-list">
-                            @foreach($item['prints'] as $print)
-                                <div class="print-row">
-                                    <div class="print-title">{{ $print['title'] ?: 'Baskı' }}</div>
-                                    <div class="print-meta">
-                                        {{ number_format($print['quantity'], 2, ',', '.') }} adet
-                                        · {{ number_format($print['unit_price'], 2, ',', '.') }} {{ $currency }}
-                                        · {{ number_format($print['total'], 2, ',', '.') }} {{ $currency }}
-                                    </div>
-                                    @if($print['note'])
-                                        <div class="print-note">{{ $print['note'] }}</div>
-                                    @endif
-                                </div>
+                    @if($item['customer_prints'])
+                        <div class="print-inline">
+                            @foreach($item['customer_prints'] as $print)
+                                @php
+                                    $segments = collect([
+                                        $print['print_type'],
+                                        $print['print_option'],
+                                        $print['quantity_label'],
+                                        $print['note'],
+                                        $print['show_price_details'] ? 'Baskı Birim: ' . $print['unit_price_label'] : null,
+                                        $print['show_price_details'] ? 'Baskı Toplam: ' . $print['total_label'] : null,
+                                    ])->filter(fn ($value) => filled($value))->values();
+                                @endphp
+                                <span class="segment">{{ $segments->implode(' · ') }}</span>@if(! $loop->last) <span class="segment"> | </span>@endif
                             @endforeach
                         </div>
                     @endif
+                    @if($item['description'])
+                        <div class="item-note">{{ $item['description'] }}</div>
+                    @endif
                 </td>
-                <td class="text-right">{{ number_format($item['quantity'], 2, ',', '.') }} {{ $item['unit'] }}</td>
-                <td class="text-right">{{ number_format($item['unit_price'], 2, ',', '.') }} {{ $currency }}</td>
-                <td class="text-right">{{ number_format($item['line_total'] + $item['print_total'], 2, ',', '.') }} {{ $currency }}</td>
+                <td class="cell-qty">{{ number_format($item['quantity'], 2, ',', '.') }} {{ $item['unit'] }}</td>
+                <td class="cell-money">{{ number_format($item['customer_unit_price'], 2, ',', '.') }} {{ $currency }}</td>
+                <td class="cell-money">{{ number_format($item['customer_line_total'], 2, ',', '.') }} {{ $currency }}</td>
             </tr>
         @endforeach
         </tbody>
@@ -150,14 +146,6 @@
 
     <div class="totals-wrap">
         <table class="totals-table">
-            <tr>
-                <td class="totals-label">Ürün Toplamı</td>
-                <td class="totals-value">{{ number_format((float) $quote->product_total, 2, ',', '.') }} {{ $currency }}</td>
-            </tr>
-            <tr>
-                <td class="totals-label">Baskı Toplamı</td>
-                <td class="totals-value">{{ number_format((float) $quote->print_total, 2, ',', '.') }} {{ $currency }}</td>
-            </tr>
             <tr>
                 <td class="totals-label">Ara Toplam</td>
                 <td class="totals-value">{{ number_format((float) $quote->subtotal, 2, ',', '.') }} {{ $currency }}</td>
@@ -176,30 +164,39 @@
             @endif
             <tr class="grand">
                 <td>Genel Toplam</td>
-                <td class="text-right">{{ number_format((float) $quote->grand_total, 2, ',', '.') }} {{ $currency }}</td>
+                <td class="totals-value">{{ number_format((float) $quote->grand_total, 2, ',', '.') }} {{ $currency }}</td>
             </tr>
         </table>
     </div>
 
     @if(filled($notes))
         <div class="note-box">
-            <div class="panel-title">Teklif Notu</div>
-            <div>{!! nl2br(e($notes)) !!}</div>
+            <strong>Teklif Notu:</strong> {!! nl2br(e($notes)) !!}
         </div>
     @endif
 
     @if($approvalUrl)
         <div class="approval-box">
-            <div class="panel-title">Online Onay</div>
-            <div>Teklifinizi online inceleyip yanıtlamak için aşağıdaki bağlantıyı kullanabilirsiniz:</div>
-            <div style="margin-top: 8px;">
-                <a href="{{ $approvalUrl }}">{{ $approvalUrl }}</a>
-            </div>
+            <strong>Online Onay:</strong> Teklifinizi online inceleyip yanıtlamak için aşağıdaki bağlantıyı kullanabilirsiniz.<br>
+            <a href="{{ $approvalUrl }}">{{ $approvalUrl }}</a>
         </div>
     @endif
 
+    <table class="sign-table">
+        <tr>
+            <td>
+                <div class="sign-title">Hazırlayan</div>
+                <div class="sign-line">{{ $tenantName }}</div>
+            </td>
+            <td>
+                <div class="sign-title">Müşteri Onayı</div>
+                <div class="sign-line">Ad / İmza</div>
+            </td>
+        </tr>
+    </table>
+
     <div class="footer">
-        Bu belge müşteri teklif çıktısıdır. İş formu, maliyet ve iç operasyon detayları bu dokümana dahil edilmez.
+        Bu belge müşteri teklif çıktısıdır. İç maliyet, teknik dosya yolları, tedarikçi alış fiyatı ve QR kod bu dokümanda yer almaz.
     </div>
 </div>
 </body>

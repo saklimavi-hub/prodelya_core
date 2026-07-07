@@ -79,10 +79,13 @@ class ProductionPartialCompletionWorkflowTest extends TestCase
 
         $show = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.productions.show', $firstProduction));
+            ->get(route('admin.productions.show', [
+                $firstProduction,
+                'tab' => 'genel',
+            ]));
 
         $show->assertOk();
-        $show->assertSee('Basılan Adet');
+        $show->assertSee('Üretilen Adet');
         $show->assertSee('20');
         $show->assertDontSee('group_code', false);
         $show->assertDontSee('file_path', false);

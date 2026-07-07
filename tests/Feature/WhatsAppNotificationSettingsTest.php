@@ -113,7 +113,7 @@ class WhatsAppNotificationSettingsTest extends TestCase
             TenantSetting::getValue($this->tenant->id, 'whatsapp_default_signature')
         );
         $this->assertSame(
-            '905320000000',
+            '+905320000000',
             TenantSetting::getValue($this->tenant->id, 'whatsapp_test_phone')
         );
     }

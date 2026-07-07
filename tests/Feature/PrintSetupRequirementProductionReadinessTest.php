@@ -113,11 +113,13 @@ class PrintSetupRequirementProductionReadinessTest extends TestCase
 
         $response = $this->actingAs($this->productionUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.productions.show', $setupProduction->fresh()));
+            ->get(route('admin.productions.show', [
+                $setupProduction->fresh(),
+                'tab' => 'genel',
+            ]));
 
         $response->assertOk();
         $response->assertSee('Hazırlık bekliyor');
-        $response->assertSee('Sorun Bildir');
         $response->assertSee('Fotoğraf Ekle');
         $response->assertSee('Hazırlık / Ara Eleman');
         $response->assertSee('Klişe');
@@ -285,7 +287,10 @@ class PrintSetupRequirementProductionReadinessTest extends TestCase
 
         $this->actingAs($this->productionUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.productions.show', $setupProduction->fresh()))
+            ->get(route('admin.productions.show', [
+                $setupProduction->fresh(),
+                'tab' => 'genel',
+            ]))
             ->assertOk()
             ->assertSee('Hazırlık / Ara Eleman')
             ->assertSee('Bekliyor')

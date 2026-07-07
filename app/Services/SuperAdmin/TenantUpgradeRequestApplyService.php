@@ -13,6 +13,7 @@ use App\Models\TenantUpgradeRequest;
 use App\Models\User;
 use App\Services\ModuleFeatureCatalogService;
 use App\Services\PackageCatalogService;
+use App\Services\TenantSupplierCurrentAccountSyncService;
 use App\Services\Tenant\TenantUpgradeRequestService;
 use App\Services\TenantAccessService;
 use App\Services\TenantUsageService;
@@ -29,6 +30,7 @@ class TenantUpgradeRequestApplyService
         protected TenantUsageService $tenantUsageService,
         protected PackageCatalogService $packageCatalogService,
         protected ModuleFeatureCatalogService $catalogService,
+        protected TenantSupplierCurrentAccountSyncService $tenantSupplierCurrentAccountSyncService,
     ) {}
 
     /**
@@ -329,7 +331,7 @@ class TenantUpgradeRequestApplyService
             ]);
         }
 
-        TenantSupplierAccess::query()->updateOrCreate(
+        $access = TenantSupplierAccess::query()->updateOrCreate(
             [
                 'tenant_account_id' => $tenant->id,
                 'supplier_id' => $supplier->id,
@@ -353,6 +355,10 @@ class TenantUpgradeRequestApplyService
                 ],
             ]
         );
+
+        if ($access->is_active) {
+            $this->tenantSupplierCurrentAccountSyncService->syncForTenantSupplierAccess($tenant, $supplier);
+        }
 
         return [
             'request_type' => $request->request_type,

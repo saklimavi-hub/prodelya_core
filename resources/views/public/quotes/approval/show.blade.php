@@ -277,7 +277,7 @@
                 <div>
                     <p class="qa-eyebrow">{{ $tenantName }}</p>
                     <h1 class="qa-title">Teklifinizi İnceleyin</h1>
-                    <p class="qa-copy">Uygunsa teklifinizi onaylayabilir, değişiklik isterseniz revize talebi iletebilirsiniz. Onayınız alındığında firma yetkilileri sipariş sürecini başlatacaktır.</p>
+                    <p class="qa-copy">Teklif sizin için uygunsa onaylayabilir, değişiklik gerekiyorsa kısa bir revize notu bırakabilirsiniz. Onayınız alındığında sipariş süreci başlatılır.</p>
                 </div>
                 <span class="qa-badge {{ $badgeClass }}">{{ $pageStatusLabel }}</span>
             </div>
@@ -319,6 +319,12 @@
                                 <h3 class="qa-item-title">{{ $index + 1 }}. {{ $item['product_name'] }}</h3>
                                 <div class="qa-helper">{{ $item['product_code'] ?: '-' }} · {{ $item['quantity'] }}</div>
                             </div>
+                            @if($item['unit_price'])
+                                <div>
+                                    <span class="qa-label">Birim Fiyat</span>
+                                    <div class="qa-value">{{ $item['unit_price'] }}</div>
+                                </div>
+                            @endif
                             @if($item['line_total'])
                                 <div>
                                     <span class="qa-label">Kalem Toplamı</span>
@@ -331,23 +337,23 @@
                             <div class="qa-list" style="margin-top:12px;">
                                 @foreach($item['print_lines'] as $print)
                                     <div class="qa-print">
-                                        <div class="qa-item-head">
-                                            <div>
-                                                <div class="qa-value">{{ $print['print_type'] }}</div>
-                                                <div class="qa-helper">{{ $print['print_option'] ?: '-' }} · {{ $print['print_quantity'] }}</div>
-                                                @if($print['print_note'])
-                                                    <p class="qa-item-copy">{{ $print['print_note'] }}</p>
+                                    <div class="qa-item-head">
+                                        <div>
+                                            <div class="qa-value">{{ trim(collect([$print['print_type'], $print['print_option']])->filter()->implode(' | ')) ?: '-' }}</div>
+                                            <div class="qa-helper">
+                                                {{ $print['print_quantity'] }}
+                                                @if($print['show_price_details'])
+                                                    · Baskı Birim: {{ $print['print_unit_price'] ?: '-' }}
+                                                    · Baskı Toplam: {{ $print['print_total'] ?: '-' }}
                                                 @endif
                                             </div>
-                                            @if($print['print_total'])
-                                                <div>
-                                                    <span class="qa-label">Baskı Toplamı</span>
-                                                    <div class="qa-value">{{ $print['print_total'] }}</div>
-                                                </div>
+                                            @if($print['print_note'])
+                                                <p class="qa-item-copy">{{ $print['print_note'] }}</p>
                                             @endif
                                         </div>
                                     </div>
-                                @endforeach
+                                </div>
+                            @endforeach
                             </div>
                         @endif
                     </div>
@@ -398,7 +404,7 @@
                 <div class="qa-actions">
                     <div class="qa-action-card">
                         <span class="qa-label">Onay</span>
-                        <div class="qa-copy" style="margin-top:0;">Teklif sizin için uygunsa hemen onaylayabilirsiniz.</div>
+                        <div class="qa-copy" style="margin-top:0;">Teklif uygunsa tek adımda onay verebilirsiniz.</div>
                         <form method="POST" action="onayla" style="margin-top:12px;">
                             @csrf
                             <input type="hidden" name="customer_note" value="">
@@ -422,7 +428,7 @@
 
                     <div class="qa-action-card">
                         <span class="qa-label">Red</span>
-                        <div class="qa-copy" style="margin-top:0;">İsterseniz kısa bir not ekleyerek teklifi reddedebilirsiniz.</div>
+                        <div class="qa-copy" style="margin-top:0;">Uygun değilse kısa bir notla teklifi kapatabilirsiniz.</div>
                         <form method="POST" action="reddet" style="margin-top:12px;">
                             @csrf
                             <label class="qa-label" for="reject_note">Kısa Not</label>
@@ -437,7 +443,7 @@
 
     <div class="qa-card">
         <div class="qa-body">
-            <div class="qa-copy" style="margin-top:0;">Bu bağlantı yalnız teklif değerlendirme amacıyla hazırlanmıştır. Cari hesap, operasyon geçmişi ve teknik dosya yolları bu ekranda yer almaz.</div>
+            <div class="qa-copy" style="margin-top:0;">Bu bağlantı yalnız teklif değerlendirme amacıyla hazırlanmıştır. İç maliyet, operasyon geçmişi ve teknik dosya yolları bu ekranda yer almaz.</div>
         </div>
     </div>
 </div>

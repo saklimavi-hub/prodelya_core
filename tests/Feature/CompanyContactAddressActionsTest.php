@@ -77,19 +77,14 @@ class CompanyContactAddressActionsTest extends TestCase
 
         $response = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.companies.show', $this->company));
+            ->get(route('admin.companies.show', ['company' => $this->company, 'tab' => 'yetkililer']));
 
         $response->assertOk()
             ->assertSee('Yetkili Ekle')
             ->assertSee('Adres Ekle')
             ->assertSee('Detay Yetkilisi')
             ->assertSee('Merkez Ofis')
-            ->assertSee('Portal Kullanıcıları')
-            ->assertSee($portalUser->email)
-            ->assertSee('Firma bilgilerini ve iletişim kayıtlarını yönetin.')
-            ->assertSee('Portal erişimi açık olan firmalara müşteri portal kullanıcısı tanımlanabilir.')
-            ->assertDontSee('Yeni yetkili ve adres aksiyonlari hazir')
-            ->assertDontSee('TODO')
+            ->assertSee('Yetkili ve Adresler')
             ->assertDontSee('placeholder')
             ->assertDontSee('invite_token')
             ->assertDontSee('password_reset_token')
@@ -97,13 +92,24 @@ class CompanyContactAddressActionsTest extends TestCase
             ->assertDontSee('file_path')
             ->assertDontSee('physical_path')
             ->assertDontSee('smtp_password');
+
+        $portalResponse = $this->actingAs($this->adminUser)
+            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
+            ->get(route('admin.companies.show', ['company' => $this->company, 'tab' => 'portal']));
+
+        $portalResponse->assertOk()
+            ->assertSee('Portal Kullanıcıları')
+            ->assertSee($portalUser->email)
+            ->assertDontSee('Yeni yetkili ve adres aksiyonlari hazir')
+            ->assertDontSee('TODO')
+            ->assertDontSee('placeholder');
     }
 
     public function test_contact_and_address_empty_states_are_user_friendly(): void
     {
         $response = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.companies.show', $this->company));
+            ->get(route('admin.companies.show', ['company' => $this->company, 'tab' => 'yetkililer']));
 
         $response->assertOk()
             ->assertSee('Henüz yetkili kişi eklenmemiş.')
@@ -152,7 +158,7 @@ class CompanyContactAddressActionsTest extends TestCase
 
         $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.companies.show', $this->company))
+            ->get(route('admin.companies.show', ['company' => $this->company, 'tab' => 'yetkililer']))
             ->assertSee('Satınalma Yetkilisi')
             ->assertSee('Satınalma Müdürü')
             ->assertSee('satin-alma@example.test');
@@ -245,7 +251,7 @@ class CompanyContactAddressActionsTest extends TestCase
 
         $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.companies.show', $this->company))
+            ->get(route('admin.companies.show', ['company' => $this->company, 'tab' => 'yetkililer']))
             ->assertSee('İstanbul Depo')
             ->assertSee('Teslimat')
             ->assertSee('Tuzla')

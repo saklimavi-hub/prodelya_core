@@ -196,9 +196,9 @@ class OrderItemWorkFormDelivery extends Model
         return [
             self::METHOD_CARGO => 'Kargo',
             self::METHOD_COURIER => 'Kurye',
-            self::METHOD_HAND => 'Elden',
+            self::METHOD_HAND => 'Elden Teslim',
             self::METHOD_FREIGHT => 'Ambar',
-            self::METHOD_CUSTOMER_PICKUP => 'Müşteri Alacak',
+            self::METHOD_CUSTOMER_PICKUP => 'Müşteri Kendisi Alacak',
             self::METHOD_OTHER => 'Diğer',
         ];
     }

@@ -36,6 +36,8 @@
         ], true) && (float) $selectedProcurement->received_quantity <= 0.0001;
         $selectedCanChangeSupplier = $selectedProcurement->supplier_id
             && (float) $selectedProcurement->received_quantity <= 0.0001;
+        $selectedShowRequestAction = $selectedProcurement->procurement_status === \App\Models\OrderItemProcurement::STATUS_PENDING
+            && ($selectedRequestRecord || $selectedProcurement->supplier_id);
         $selectedSummary = [
             'order_number' => $selectedProcurement->order?->document_number ?: '-',
             'work_form_number' => $selectedProcurement->workForm?->work_form_number ?: '-',
@@ -62,13 +64,21 @@
             'request_label' => $selectedRequestRecord ? 'Talebi Aç' : ($selectedProcurement->supplier_id ? 'Talep Aç' : 'Talep Yok'),
             'detail_url' => route('admin.procurements.show', $selectedProcurement),
             'status_action_url' => route('admin.procurements.update-status', $selectedProcurement),
-            'can_supplier_order' => $canManage && !$selectedProcurement->isNotRequired() && !$selectedProcurement->isFullyReceived() && $selectedProcurement->procurement_status !== \App\Models\OrderItemProcurement::STATUS_CANCELLED,
-            'can_partial' => $canManage && !$selectedProcurement->isNotRequired() && !$selectedProcurement->isFullyReceived() && $selectedProcurement->procurement_status !== \App\Models\OrderItemProcurement::STATUS_CANCELLED,
-            'can_receive' => $canManage && !$selectedProcurement->isNotRequired() && !$selectedProcurement->isFullyReceived() && $selectedProcurement->procurement_status !== \App\Models\OrderItemProcurement::STATUS_CANCELLED,
+            'show_request_action' => $selectedShowRequestAction,
+            'can_supplier_order' => $canManage && $selectedProcurement->procurement_status === \App\Models\OrderItemProcurement::STATUS_REQUEST_CREATED,
+            'can_partial' => $canManage && in_array($selectedProcurement->procurement_status, [
+                \App\Models\OrderItemProcurement::STATUS_SUPPLIER_ORDERED,
+                \App\Models\OrderItemProcurement::STATUS_PARTIALLY_RECEIVED,
+            ], true) && !$selectedProcurement->isFullyReceived() && !$selectedProcurement->isNotRequired(),
+            'can_receive' => $canManage && in_array($selectedProcurement->procurement_status, [
+                \App\Models\OrderItemProcurement::STATUS_SUPPLIER_ORDERED,
+                \App\Models\OrderItemProcurement::STATUS_PARTIALLY_RECEIVED,
+            ], true) && !$selectedProcurement->isFullyReceived() && !$selectedProcurement->isNotRequired(),
             'can_reopen' => $canManage && $selectedCanReopen,
             'reopen_label' => $selectedProcurement->procurement_status === \App\Models\OrderItemProcurement::STATUS_CANCELLED ? 'İptalden Geri Al' : 'Geri Al',
             'can_change_supplier' => $canManage && $selectedCanChangeSupplier,
             'supplier_id' => $selectedProcurement->supplier_id,
+            'is_completed' => $selectedProcurement->isFullyReceived(),
         ];
     }
 @endphp
@@ -120,6 +130,9 @@
     .pm-selected-row { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; color: #475569; }
     .pm-selected-row strong { color: #111827; }
     .pm-selected-actions { display: grid; gap: 8px; }
+    .pm-selected-group { display: grid; gap: 8px; padding-top: 10px; border-top: 1px solid #e5e7eb; }
+    .pm-selected-group:first-of-type { padding-top: 0; border-top: 0; }
+    .pm-selected-group-title { color: #6b7280; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
     .pm-selected-empty { color: #6b7280; font-size: 12px; }
     .pm-row-selected { background: #f8fbff; }
     @media (max-width: 1280px) { .pm-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
@@ -242,7 +255,7 @@
                             <option value="bekliyor" @selected(($filters['receipt_state'] ?? '') === 'bekliyor')>Bekliyor</option>
                             <option value="hic_gelmedi" @selected(($filters['receipt_state'] ?? '') === 'hic_gelmedi')>Hiç Gelmedi</option>
                             <option value="kismi" @selected(($filters['receipt_state'] ?? '') === 'kismi')>Kısmi Geldi</option>
-                            <option value="tamam" @selected(($filters['receipt_state'] ?? '') === 'tamam')>Geldi</option>
+                            <option value="tamam" @selected(($filters['receipt_state'] ?? '') === 'tamam')>Tamamı Geldi</option>
                         </select>
                     </div>
                     <div class="pm-actions">
@@ -269,7 +282,8 @@
                             <th>Eksik</th>
                             <th>Durum</th>
                             <th>Talep No</th>
-                            <th>İşlem</th>
+                            <th>Sıradaki İş</th>
+                            <th>Aksiyon</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -296,6 +310,8 @@
                                     \App\Models\OrderItemProcurement::STATUS_SUPPLIER_ORDERED,
                                 ], true) && (float) $row->received_quantity <= 0.0001;
                                 $canChangeSupplier = $row->supplier_id && (float) $row->received_quantity <= 0.0001;
+                                $showRequestAction = $row->procurement_status === \App\Models\OrderItemProcurement::STATUS_PENDING
+                                    && ($requestRecord || $row->supplier_id);
                                 $rowSummary = [
                                     'order_number' => $row->order?->document_number ?: '-',
                                     'work_form_number' => $row->workForm?->work_form_number ?: '-',
@@ -314,13 +330,21 @@
                                     'detail_url' => route('admin.procurements.show', $row),
                                     'status_action_url' => route('admin.procurements.update-status', $row),
                                     'remaining_quantity_raw' => number_format((float) $row->remaining_quantity, 2, '.', ''),
-                                    'can_supplier_order' => $canManage && !$row->isNotRequired() && !$row->isFullyReceived() && $row->procurement_status !== \App\Models\OrderItemProcurement::STATUS_CANCELLED,
-                                    'can_partial' => $canManage && !$row->isNotRequired() && !$row->isFullyReceived() && $row->procurement_status !== \App\Models\OrderItemProcurement::STATUS_CANCELLED,
-                                    'can_receive' => $canManage && !$row->isNotRequired() && !$row->isFullyReceived() && $row->procurement_status !== \App\Models\OrderItemProcurement::STATUS_CANCELLED,
+                                    'show_request_action' => $showRequestAction,
+                                    'can_supplier_order' => $canManage && $row->procurement_status === \App\Models\OrderItemProcurement::STATUS_REQUEST_CREATED,
+                                    'can_partial' => $canManage && in_array($row->procurement_status, [
+                                        \App\Models\OrderItemProcurement::STATUS_SUPPLIER_ORDERED,
+                                        \App\Models\OrderItemProcurement::STATUS_PARTIALLY_RECEIVED,
+                                    ], true) && !$row->isFullyReceived() && !$row->isNotRequired(),
+                                    'can_receive' => $canManage && in_array($row->procurement_status, [
+                                        \App\Models\OrderItemProcurement::STATUS_SUPPLIER_ORDERED,
+                                        \App\Models\OrderItemProcurement::STATUS_PARTIALLY_RECEIVED,
+                                    ], true) && !$row->isFullyReceived() && !$row->isNotRequired(),
                                     'can_reopen' => $canManage && $canReopen,
                                     'reopen_label' => $row->procurement_status === \App\Models\OrderItemProcurement::STATUS_CANCELLED ? 'İptalden Geri Al' : 'Geri Al',
                                     'can_change_supplier' => $canManage && $canChangeSupplier,
                                     'supplier_id' => $row->supplier_id,
+                                    'is_completed' => $row->isFullyReceived(),
                                 ];
                             @endphp
                             <tr data-procurement-row data-summary='@json($rowSummary)'>
@@ -355,96 +379,12 @@
                                         -
                                     @endif
                                 </td>
-                                <td>
-                                    <div class="pm-action-stack">
-                                        <div class="pm-actions-compact">
-                                            @if($requestRecord)
-                                                <a href="{{ route('admin.procurements.supplier-requests.edit', $requestRecord) }}" class="pd-btn pd-btn-sm pd-btn-light">Talebi Aç</a>
-                                                <a href="{{ route('admin.procurements.supplier-requests.print', $requestRecord) }}" class="pd-btn pd-btn-sm pd-btn-light" target="_blank" rel="noopener">Formu Aç</a>
-                                            @elseif($row->supplier_id)
-                                                <a href="{{ route('admin.procurements.supplier-requests.create', ['supplier_id' => $row->supplier_id]) }}" class="pd-btn pd-btn-sm pd-btn-light">Talep Aç</a>
-                                            @endif
-                                            @if($canManage && !$row->isNotRequired() && !$row->isFullyReceived() && $row->procurement_status !== \App\Models\OrderItemProcurement::STATUS_CANCELLED)
-                                                <form method="POST" action="{{ route('admin.procurements.update-status', $row) }}" class="pm-inline-form">
-                                                    @csrf
-                                                    @method('PATCH')
-                                                    <input type="hidden" name="action" value="supplier_ordered">
-                                                    <input type="hidden" name="return_back" value="1">
-                                                    <button type="submit" class="pd-btn pd-btn-sm pd-btn-light">Sipariş Verildi</button>
-                                                </form>
-                                                <button
-                                                    type="button"
-                                                    class="pd-btn pd-btn-sm pd-btn-light"
-                                                    data-partial-trigger
-                                                    data-action-url="{{ route('admin.procurements.update-status', $row) }}"
-                                                    data-product-name="{{ data_get($snapshot, 'product_name', '-') }}"
-                                                    data-remaining="{{ number_format((float) $row->remaining_quantity, 2, ',', '.') }}"
-                                                    data-max-remaining="{{ number_format((float) $row->remaining_quantity, 2, '.', '') }}"
-                                                >Kısmi Geldi</button>
-                                                <form method="POST" action="{{ route('admin.procurements.update-status', $row) }}" class="pm-inline-form" onsubmit="return confirm('Bu ürün için kalan tüm miktar geldi olarak işaretlenecek. Devam edilsin mi?');">
-                                                    @csrf
-                                                    @method('PATCH')
-                                                    <input type="hidden" name="action" value="fully_received">
-                                                    <input type="hidden" name="return_back" value="1">
-                                                    <button type="submit" class="pd-btn pd-btn-sm pd-btn-success">Geldi</button>
-                                                </form>
-                                            @endif
-                                        </div>
-
-                                        <div class="pm-actions-compact">
-                                            <details class="pm-more">
-                                                <summary class="pd-btn pd-btn-sm pd-btn-light">⋯</summary>
-                                                <div class="pm-more-menu">
-                                                    <a href="{{ route('admin.procurements.show', $row) }}" class="pd-btn pd-btn-sm pd-btn-light">Detay</a>
-                                                    @if($canManage && $row->workForm)
-                                                        <a href="{{ route('admin.work-forms.show', $row->workForm) }}" class="pd-btn pd-btn-sm pd-btn-light">İş Formu Aç</a>
-                                                    @endif
-                                                    @if($canManage && $canReopen)
-                                                        <form method="POST" action="{{ route('admin.procurements.update-status', $row) }}" class="pm-inline-form">
-                                                            @csrf
-                                                            @method('PATCH')
-                                                            <input type="hidden" name="action" value="reopen">
-                                                            <input type="hidden" name="return_back" value="1">
-                                                            <button type="submit" class="pd-btn pd-btn-sm pd-btn-light" style="width:100%;">{{ $row->procurement_status === \App\Models\OrderItemProcurement::STATUS_CANCELLED ? 'İptalden Geri Al' : 'Geri Al' }}</button>
-                                                        </form>
-                                                    @endif
-                                                    @if($canManage && !$row->isFullyReceived() && $row->procurement_status !== \App\Models\OrderItemProcurement::STATUS_CANCELLED)
-                                                        <form method="POST" action="{{ route('admin.procurements.update-status', $row) }}" class="pm-inline-form">
-                                                            @csrf
-                                                            @method('PATCH')
-                                                            <input type="hidden" name="action" value="not_required">
-                                                            <input type="hidden" name="return_back" value="1">
-                                                            <button type="submit" class="pd-btn pd-btn-sm pd-btn-light" style="width:100%;">Tedarik Gerekmiyor</button>
-                                                        </form>
-                                                        <form method="POST" action="{{ route('admin.procurements.update-status', $row) }}" class="pm-inline-form" onsubmit="return confirm('Bu tedarik kaydı iptal edilsin mi?');">
-                                                            @csrf
-                                                            @method('PATCH')
-                                                            <input type="hidden" name="action" value="cancel">
-                                                            <input type="hidden" name="return_back" value="1">
-                                                            <button type="submit" class="pd-btn pd-btn-sm pd-btn-light" style="width:100%;">İptal</button>
-                                                        </form>
-                                                    @endif
-                                                    @if($canManage && $canChangeSupplier)
-                                                        <button
-                                                            type="button"
-                                                            class="pd-btn pd-btn-sm pd-btn-light"
-                                                            style="width:100%;"
-                                                            data-change-supplier-trigger
-                                                            data-action-url="{{ route('admin.procurements.update-status', $row) }}"
-                                                            data-current-supplier="{{ $supplierDisplay }}"
-                                                            data-current-supplier-id="{{ $row->supplier_id }}"
-                                                            data-product-name="{{ data_get($snapshot, 'product_name', '-') }}"
-                                                        >Tedarikçi Değiştir</button>
-                                                    @endif
-                                                </div>
-                                            </details>
-                                        </div>
-                                    </div>
-                                </td>
+                                <td><span class="pm-note-muted">{{ $nextAction }}</span></td>
+                                <td><a href="{{ route('admin.procurements.show', $row) }}" class="pd-btn pd-btn-sm pd-btn-light">Detay</a></td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="11" class="pm-note-muted">Filtreye uygun tedarik kaydı bulunamadı.</td>
+                                <td colspan="12" class="pm-note-muted">Filtreye uygun tedarik kaydı bulunamadı.</td>
                             </tr>
                         @endforelse
                     </tbody>
@@ -473,35 +413,42 @@
                                 <div class="pm-selected-row"><span>Alınan</span><strong data-selected-field="received_quantity">{{ $selectedSummary['received_quantity'] }}</strong></div>
                                 <div class="pm-selected-row"><span>Eksik</span><strong data-selected-field="remaining_quantity">{{ $selectedSummary['remaining_quantity'] }}</strong></div>
                                 <div class="pm-selected-row"><span>Durum</span><strong data-selected-field="status_label">{{ $selectedSummary['status_label'] }}</strong></div>
-                                <div class="pm-selected-row"><span>Sıradaki Aksiyon</span><strong data-selected-field="next_action">{{ $selectedSummary['next_action'] }}</strong></div>
+                                <div class="pm-selected-row"><span>Sıradaki İş</span><strong data-selected-field="next_action">{{ $selectedSummary['next_action'] }}</strong></div>
                             </div>
 
                             <div class="pm-selected-actions">
-                                <a href="{{ $selectedSummary['request_url'] ?: '#' }}" class="pd-btn pd-btn-light" data-selected-request-link @if(!$selectedSummary['request_url']) hidden @endif>{{ $selectedSummary['request_label'] }}</a>
-                                <form method="POST" action="{{ $selectedSummary['status_action_url'] }}" data-selected-supplier-ordered-form @if(!$selectedSummary['can_supplier_order']) hidden @endif>
-                                    @csrf
-                                    @method('PATCH')
-                                    <input type="hidden" name="action" value="supplier_ordered">
-                                    <input type="hidden" name="return_back" value="1">
-                                    <button type="submit" class="pd-btn pd-btn-light" style="width:100%;">Sipariş Verildi</button>
-                                </form>
-                                <button type="button" class="pd-btn pd-btn-light" data-selected-partial-trigger @if(!$selectedSummary['can_partial']) hidden @endif>Kısmi Geldi</button>
-                                <form method="POST" action="{{ $selectedSummary['status_action_url'] }}" data-selected-fully-received-form @if(!$selectedSummary['can_receive']) hidden @endif onsubmit="return confirm('Kalan tüm miktar geldi olarak işaretlenecek. Devam edilsin mi?');">
-                                    @csrf
-                                    @method('PATCH')
-                                    <input type="hidden" name="action" value="fully_received">
-                                    <input type="hidden" name="return_back" value="1">
-                                    <button type="submit" class="pd-btn pd-btn-success" style="width:100%;">Geldi</button>
-                                </form>
-                                <form method="POST" action="{{ $selectedSummary['status_action_url'] }}" data-selected-reopen-form @if(!$selectedSummary['can_reopen']) hidden @endif>
-                                    @csrf
-                                    @method('PATCH')
-                                    <input type="hidden" name="action" value="reopen">
-                                    <input type="hidden" name="return_back" value="1">
-                                    <button type="submit" class="pd-btn pd-btn-light" style="width:100%;" data-selected-reopen-label>{{ $selectedSummary['reopen_label'] }}</button>
-                                </form>
-                                <button type="button" class="pd-btn pd-btn-light" data-selected-change-supplier-trigger @if(!$selectedSummary['can_change_supplier']) hidden @endif>Tedarikçi Değiştir</button>
-                                <a href="{{ $selectedSummary['detail_url'] }}" class="pd-btn pd-btn-light" data-selected-detail-link>Detay</a>
+                                <div class="pm-selected-group">
+                                    <div class="pm-selected-group-title">Birincil Aksiyonlar</div>
+                                    <a href="{{ $selectedSummary['request_url'] ?: '#' }}" class="pd-btn pd-btn-primary" data-selected-request-link @if(!$selectedSummary['show_request_action']) hidden @endif>{{ $selectedSummary['request_label'] }}</a>
+                                    <form method="POST" action="{{ $selectedSummary['status_action_url'] }}" data-selected-supplier-ordered-form @if(!$selectedSummary['can_supplier_order']) hidden @endif>
+                                        @csrf
+                                        @method('PATCH')
+                                        <input type="hidden" name="action" value="supplier_ordered">
+                                        <input type="hidden" name="return_back" value="1">
+                                        <button type="submit" class="pd-btn pd-btn-primary" style="width:100%;">Sipariş Verildi</button>
+                                    </form>
+                                    <button type="button" class="pd-btn pd-btn-primary" data-selected-partial-trigger @if(!$selectedSummary['can_partial']) hidden @endif>Kısmi Geldi</button>
+                                    <form method="POST" action="{{ $selectedSummary['status_action_url'] }}" data-selected-fully-received-form @if(!$selectedSummary['can_receive']) hidden @endif onsubmit="return confirm('Kalan tüm miktar geldi olarak işaretlenecek. Devam edilsin mi?');">
+                                        @csrf
+                                        @method('PATCH')
+                                        <input type="hidden" name="action" value="fully_received">
+                                        <input type="hidden" name="return_back" value="1">
+                                        <button type="submit" class="pd-btn pd-btn-success" style="width:100%;">Tamamı Geldi</button>
+                                    </form>
+                                    <div class="pm-band" data-selected-complete-note @if(!$selectedSummary['is_completed']) hidden @endif>Bu tedarik kaydı tamamlandı. Yeni işlem gerekmiyor.</div>
+                                </div>
+                                <div class="pm-selected-group">
+                                    <div class="pm-selected-group-title">Diğer Aksiyonlar</div>
+                                    <a href="{{ $selectedSummary['detail_url'] }}" class="pd-btn pd-btn-light" data-selected-detail-link>Detay</a>
+                                    <form method="POST" action="{{ $selectedSummary['status_action_url'] }}" data-selected-reopen-form @if(!$selectedSummary['can_reopen']) hidden @endif>
+                                        @csrf
+                                        @method('PATCH')
+                                        <input type="hidden" name="action" value="reopen">
+                                        <input type="hidden" name="return_back" value="1">
+                                        <button type="submit" class="pd-btn pd-btn-light" style="width:100%;" data-selected-reopen-label>{{ $selectedSummary['reopen_label'] }}</button>
+                                    </form>
+                                    <button type="button" class="pd-btn pd-btn-light" data-selected-change-supplier-trigger @if(!$selectedSummary['can_change_supplier']) hidden @endif>Tedarikçi Değiştir</button>
+                                </div>
                             </div>
                         @else
                             <div class="pm-selected-empty">Seçilecek açık tedarik kaydı yok.</div>
@@ -608,6 +555,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const selectedReopenLabel = selectedCard?.querySelector('[data-selected-reopen-label]');
     const selectedPartialTrigger = selectedCard?.querySelector('[data-selected-partial-trigger]');
     const selectedChangeSupplierTrigger = selectedCard?.querySelector('[data-selected-change-supplier-trigger]');
+    const selectedCompleteNote = selectedCard?.querySelector('[data-selected-complete-note]');
     const changeSupplierModal = document.getElementById('change-supplier-modal');
     const changeSupplierForm = document.getElementById('change-supplier-form');
     const changeSupplierSelect = document.getElementById('change-supplier-id');
@@ -704,7 +652,7 @@ document.addEventListener('DOMContentLoaded', function () {
         ].forEach((field) => setSelectedField(field, payload[field] || '-'));
 
         if (selectedRequestLink) {
-            if (payload.request_url) {
+            if (payload.show_request_action && payload.request_url) {
                 selectedRequestLink.hidden = false;
                 selectedRequestLink.setAttribute('href', payload.request_url);
                 selectedRequestLink.textContent = payload.request_label || 'Talep Aç';
@@ -743,6 +691,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
         if (selectedChangeSupplierTrigger) {
             selectedChangeSupplierTrigger.hidden = !payload.can_change_supplier;
+        }
+
+        if (selectedCompleteNote) {
+            selectedCompleteNote.hidden = !payload.is_completed;
         }
     };
 

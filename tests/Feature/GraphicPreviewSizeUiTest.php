@@ -67,47 +67,43 @@ class GraphicPreviewSizeUiTest extends TestCase
             ->get(route('admin.graphics.show', $workForm->fresh()));
 
         $showResponse->assertOk();
-        $showResponse->assertSee('graphic-product-image-box', false);
-        $showResponse->assertSee('graphic-product-image-fit', false);
-        $showResponse->assertSee('graphic-preview-stage', false);
+        $showResponse->assertSee('gg-preview-frame--summary', false);
+        $showResponse->assertSee('gg-main-preview-frame', false);
         $showResponse->assertSee('graphic-preview-image', false);
+        $showResponse->assertSee('graphic-operation-tabs', false);
+        $showResponse->assertSee('graphic-action-step-tabs', false);
+        $showResponse->assertSee('pd-allow-large', false);
         $showResponse->assertSee('data-lightbox-modal', false);
-        $showResponse->assertSee('Büyük Gör');
+        $showResponse->assertSee('Büyük Önizleme');
         $showResponse->assertSee('size-one-a.jpg');
-        $showResponse->assertSee('size-proof.pdf');
-        $showResponse->assertSee('PDF dosyası');
+        $showResponse->assertSee('1a');
+        $showResponse->assertSee('1b');
         $showResponse->assertDontSee('alt="size-proof.pdf"', false);
         $showResponse->assertDontSee('file_path', false);
         $showResponse->assertDontSee('physical_path', false);
         $showResponse->assertDontSee('group_code', false);
         $showResponse->assertDontSee('price_snapshot', false);
 
-        $showHtml = $showResponse->getContent();
-        $oneACardStart = strpos($showHtml, 'id="operation-' . $graphics['1a']->id . '"');
-        $oneBCardStart = strpos($showHtml, 'id="operation-' . $graphics['1b']->id . '"');
+        $operationBResponse = $this->actingAs($this->adminUser)
+            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
+            ->get(route('admin.graphics.show', $workForm->fresh()) . '?operation=' . $graphics['1b']->id);
 
-        $this->assertNotFalse($oneACardStart);
-        $this->assertNotFalse($oneBCardStart);
-
-        $oneACardHtml = substr($showHtml, $oneACardStart, max(0, $oneBCardStart - $oneACardStart));
-        $oneBCardHtml = substr($showHtml, $oneBCardStart);
-
-        $this->assertStringContainsString('size-one-a.jpg', $oneACardHtml);
-        $this->assertStringNotContainsString('size-proof.pdf', $oneACardHtml);
-        $this->assertStringContainsString('graphic-preview-image', $oneACardHtml);
-        $this->assertStringContainsString('graphic-preview-stage', $oneACardHtml);
-        $this->assertStringContainsString('size-proof.pdf', $oneBCardHtml);
-        $this->assertStringNotContainsString('alt="size-proof.pdf"', $oneBCardHtml);
+        $operationBResponse->assertOk();
+        $operationBResponse->assertSee('size-proof.pdf');
+        $operationBResponse->assertDontSee('alt="size-proof.pdf"', false);
+        $operationBResponse->assertSee('gg-operation-tab is-active', false);
 
         $indexResponse = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->get(route('admin.graphics.index'));
 
         $indexResponse->assertOk();
+        $indexResponse->assertSee('gg-list-thumb-frame', false);
         $indexResponse->assertSee('graphic-index-product-thumb', false);
         $indexResponse->assertSee('graphic-index-product-image', false);
         $indexResponse->assertSee('graphic-index-preview-thumb', false);
         $indexResponse->assertSee('graphic-index-preview-image', false);
+        $indexResponse->assertSee('pd-allow-large', false);
         $indexResponse->assertSee('size-proof.pdf');
         $indexResponse->assertDontSee('file_path', false);
         $indexResponse->assertDontSee('physical_path', false);

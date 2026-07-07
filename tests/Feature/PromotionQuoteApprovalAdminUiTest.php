@@ -118,7 +118,11 @@ class PromotionQuoteApprovalAdminUiTest extends TestCase
             ]);
 
         $firstResponse->assertRedirect(route('admin.promotion-quotes.show', $quote));
-        $firstResponse->assertSessionHas('success', 'Teklif müşteriye gönderime hazırlandı.');
+        $firstResponse->assertSessionHas('success');
+        $this->assertStringContainsString(
+            'Gönderim kaydı oluşturuldu.',
+            (string) $firstResponse->getSession()->get('success')
+        );
 
         $quote->refresh();
         $firstRequest = $quote->quoteApprovalRequests()->latest('id')->firstOrFail();

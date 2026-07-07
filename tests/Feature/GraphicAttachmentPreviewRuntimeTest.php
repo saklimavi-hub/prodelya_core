@@ -29,6 +29,9 @@ class GraphicAttachmentPreviewRuntimeTest extends TestCase
         parent::setUp();
 
         Storage::fake('public');
+        Storage::fake('local');
+        Storage::disk('public')->makeDirectory('work-forms');
+        Storage::disk('local')->makeDirectory('work-forms');
         $this->adminUser = User::query()->where('email', 'admin@prodelya.local')->firstOrFail();
     }
 
@@ -72,30 +75,22 @@ class GraphicAttachmentPreviewRuntimeTest extends TestCase
 
         $showResponse->assertOk();
         $showResponse->assertSee($previewUrl, false);
-        $showResponse->assertSee(route('admin.work-forms.attachments.preview', $pdfAttachment), false);
         $showResponse->assertSee('runtime-preview.jpg');
-        $showResponse->assertSee('runtime-proof.pdf');
-        $showResponse->assertSee('Dosyayı Aç');
-        $showResponse->assertSee('PDF dosyası');
+        $showResponse->assertSee('Büyük Önizleme');
         $showResponse->assertDontSee('/storage/work-forms/', false);
         $showResponse->assertDontSee('file_path', false);
         $showResponse->assertDontSee('physical_path', false);
 
-        $html = $showResponse->getContent();
-        $oneACardStart = strpos($html, 'id="operation-' . $graphics['1a']->id . '"');
-        $oneBCardStart = strpos($html, 'id="operation-' . $graphics['1b']->id . '"');
+        $pdfOperationResponse = $this->actingAs($this->adminUser)
+            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
+            ->get(route('admin.graphics.show', $workForm->fresh()) . '?operation=' . $graphics['1b']->id . '&step=summary');
 
-        $this->assertNotFalse($oneACardStart);
-        $this->assertNotFalse($oneBCardStart);
-
-        $oneACardHtml = substr($html, $oneACardStart, max(0, $oneBCardStart - $oneACardStart));
-        $oneBCardHtml = substr($html, $oneBCardStart);
-
-        $this->assertStringContainsString('runtime-preview.jpg', $oneACardHtml);
-        $this->assertStringContainsString($previewUrl, $oneACardHtml);
-        $this->assertStringNotContainsString('runtime-proof.pdf', $oneACardHtml);
-        $this->assertStringContainsString('runtime-proof.pdf', $oneBCardHtml);
-        $this->assertStringNotContainsString('alt="runtime-proof.pdf"', $oneBCardHtml);
+        $pdfOperationResponse->assertOk();
+        $pdfOperationResponse->assertSee(route('admin.work-forms.attachments.preview', $pdfAttachment), false);
+        $pdfOperationResponse->assertSee('runtime-proof.pdf');
+        $pdfOperationResponse->assertSee('Dosyayı Aç');
+        $pdfOperationResponse->assertSee('PDF dosyası');
+        $pdfOperationResponse->assertDontSee('alt="runtime-proof.pdf"', false);
 
         Storage::disk('public')->delete($imageAttachment->file_path);
 

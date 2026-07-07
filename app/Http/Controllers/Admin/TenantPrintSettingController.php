@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Company;
 use App\Models\CurrentAccount;
 use App\Models\StandardPrintType;
+use App\Models\TenantPrintOption;
 use App\Models\TenantPrintSetting;
+use App\Services\TenantPrintOptionService;
 use App\Services\TenantPrintSettingSyncService;
 use App\Services\TenantResolver;
 use Illuminate\Http\RedirectResponse;
@@ -21,6 +23,7 @@ class TenantPrintSettingController extends Controller
     public function __construct(
         protected TenantResolver $tenantResolver,
         protected TenantPrintSettingSyncService $syncService,
+        protected TenantPrintOptionService $tenantPrintOptionService,
     ) {
     }
 
@@ -101,13 +104,16 @@ class TenantPrintSettingController extends Controller
         $this->guardTenantScope($tenantPrintSetting, $tenant->id);
 
         $tenantPrintSetting->load(['standardPrintType', 'defaultSubcontractorCompany']);
+        $this->tenantPrintOptionService->ensureDefaultsForSetting($tenantPrintSetting);
 
         return view('admin.settings.print-settings.edit', [
             'tenant' => $tenant,
             'setting' => $tenantPrintSetting,
+            'printOptions' => $this->tenantPrintOptionService->optionsForSetting($tenantPrintSetting),
             'canViewFinancialDefaults' => $request->user()?->canViewFinancialData($tenant->id) ?? false,
             'productionModeOptions' => StandardPrintType::productionModeLabels(),
             'setupTypeOptions' => StandardPrintType::setupTypeLabels(),
+            'setupStatusOptions' => ['Yok', 'Var', 'Yeni üretilecek', 'Mevcut kullanılacak'],
             'currencyOptions' => [
                 'TRY' => 'TRY',
                 'USD' => 'USD',
@@ -176,6 +182,106 @@ class TenantPrintSettingController extends Controller
             ));
     }
 
+    public function storeOption(Request $request, TenantPrintSetting $tenantPrintSetting): RedirectResponse
+    {
+        $tenant = $this->tenantResolver->getCurrentTenant($request);
+        $this->guardTenantScope($tenantPrintSetting, $tenant->id);
+        $this->tenantPrintOptionService->ensureDefaultsForSetting($tenantPrintSetting);
+
+        $validated = $this->validateOptionPayload($request, $tenantPrintSetting, null);
+        $canViewFinancialDefaults = $request->user()?->canViewFinancialData($tenant->id) ?? false;
+
+        $tenantPrintOption = TenantPrintOption::query()->create([
+            'tenant_account_id' => $tenant->id,
+            'tenant_print_setting_id' => $tenantPrintSetting->id,
+            'standard_print_type_id' => $tenantPrintSetting->standard_print_type_id,
+            'name' => $validated['name'],
+            'code' => $validated['code'],
+            'description' => $validated['description'] ?? null,
+            'is_active' => (bool) ($validated['is_active'] ?? false),
+            'sort_order' => (int) ($validated['sort_order'] ?? 0),
+            'is_default' => (bool) ($validated['is_default'] ?? false),
+            'default_unit_price' => $canViewFinancialDefaults ? ($validated['default_unit_price'] ?? null) : null,
+            'requires_setup' => (bool) ($validated['requires_setup'] ?? false),
+            'setup_type' => (bool) ($validated['requires_setup'] ?? false) ? ($validated['setup_type'] ?? null) : null,
+            'setup_status_default' => (bool) ($validated['requires_setup'] ?? false) ? ($validated['setup_status_default'] ?? null) : null,
+        ]);
+
+        if ($tenantPrintOption->is_default) {
+            TenantPrintOption::query()
+                ->where('tenant_account_id', $tenant->id)
+                ->where('tenant_print_setting_id', $tenantPrintSetting->id)
+                ->whereKeyNot($tenantPrintOption->id)
+                ->update(['is_default' => false]);
+        } else {
+            $this->tenantPrintOptionService->normalizeDefaultOption($tenantPrintSetting);
+        }
+
+        return redirect()
+            ->route('admin.settings.print-settings.edit', $tenantPrintSetting)
+            ->with('success', 'Baskı seçeneği eklendi.');
+    }
+
+    public function updateOption(Request $request, TenantPrintSetting $tenantPrintSetting, TenantPrintOption $tenantPrintOption): RedirectResponse
+    {
+        $tenant = $this->tenantResolver->getCurrentTenant($request);
+        $this->guardTenantScope($tenantPrintSetting, $tenant->id);
+        $this->guardPrintOptionScope($tenantPrintOption, $tenant->id, $tenantPrintSetting->id);
+
+        $validated = $this->validateOptionPayload($request, $tenantPrintSetting, $tenantPrintOption);
+        $canViewFinancialDefaults = $request->user()?->canViewFinancialData($tenant->id) ?? false;
+
+        $tenantPrintOption->fill([
+            'name' => $validated['name'],
+            'code' => $validated['code'],
+            'description' => $validated['description'] ?? null,
+            'is_active' => (bool) ($validated['is_active'] ?? false),
+            'sort_order' => (int) ($validated['sort_order'] ?? 0),
+            'is_default' => (bool) ($validated['is_default'] ?? false),
+            'requires_setup' => (bool) ($validated['requires_setup'] ?? false),
+            'setup_type' => (bool) ($validated['requires_setup'] ?? false) ? ($validated['setup_type'] ?? null) : null,
+            'setup_status_default' => (bool) ($validated['requires_setup'] ?? false) ? ($validated['setup_status_default'] ?? null) : null,
+        ]);
+
+        if ($canViewFinancialDefaults) {
+            $tenantPrintOption->default_unit_price = $validated['default_unit_price'] ?? null;
+        }
+
+        $tenantPrintOption->save();
+
+        if ($tenantPrintOption->is_default) {
+            TenantPrintOption::query()
+                ->where('tenant_account_id', $tenant->id)
+                ->where('tenant_print_setting_id', $tenantPrintSetting->id)
+                ->whereKeyNot($tenantPrintOption->id)
+                ->update(['is_default' => false]);
+        } else {
+            $this->tenantPrintOptionService->normalizeDefaultOption($tenantPrintSetting);
+        }
+
+        return redirect()
+            ->route('admin.settings.print-settings.edit', $tenantPrintSetting)
+            ->with('success', 'Baskı seçeneği güncellendi.');
+    }
+
+    public function makeDefaultOption(Request $request, TenantPrintSetting $tenantPrintSetting, TenantPrintOption $tenantPrintOption): RedirectResponse
+    {
+        $tenant = $this->tenantResolver->getCurrentTenant($request);
+        $this->guardTenantScope($tenantPrintSetting, $tenant->id);
+        $this->guardPrintOptionScope($tenantPrintOption, $tenant->id, $tenantPrintSetting->id);
+
+        TenantPrintOption::query()
+            ->where('tenant_account_id', $tenant->id)
+            ->where('tenant_print_setting_id', $tenantPrintSetting->id)
+            ->update(['is_default' => false]);
+
+        $tenantPrintOption->forceFill(['is_default' => true])->save();
+
+        return redirect()
+            ->route('admin.settings.print-settings.edit', $tenantPrintSetting)
+            ->with('success', 'Varsayılan baskı seçeneği güncellendi.');
+    }
+
     private function validatePayload(Request $request, int $tenantId): array
     {
         return $request->validate([
@@ -202,6 +308,31 @@ class TenantPrintSettingController extends Controller
         ]);
     }
 
+    private function validateOptionPayload(Request $request, TenantPrintSetting $setting, ?TenantPrintOption $option): array
+    {
+        return $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'code' => [
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('tenant_print_options', 'code')
+                    ->ignore($option?->id)
+                    ->where(fn ($query) => $query
+                        ->where('tenant_account_id', $setting->tenant_account_id)
+                        ->where('tenant_print_setting_id', $setting->id)),
+            ],
+            'description' => ['nullable', 'string'],
+            'is_active' => ['nullable', 'boolean'],
+            'sort_order' => ['nullable', 'integer', 'min:0', 'max:10000'],
+            'is_default' => ['nullable', 'boolean'],
+            'default_unit_price' => ['nullable', 'numeric', 'min:0'],
+            'requires_setup' => ['nullable', 'boolean'],
+            'setup_type' => ['nullable', Rule::in(array_keys(StandardPrintType::setupTypeLabels()))],
+            'setup_status_default' => ['nullable', Rule::in(['Yok', 'Var', 'Yeni üretilecek', 'Mevcut kullanılacak'])],
+        ]);
+    }
+
     private function subcontractorCompanyOptions(int $tenantId)
     {
         return Company::query()
@@ -215,6 +346,13 @@ class TenantPrintSettingController extends Controller
     {
         if ($setting->tenant_account_id !== $tenantId) {
             abort(403, 'Bu baskı ayarına erişim yetkiniz yok.');
+        }
+    }
+
+    private function guardPrintOptionScope(TenantPrintOption $option, int $tenantId, int $settingId): void
+    {
+        if ($option->tenant_account_id !== $tenantId || $option->tenant_print_setting_id !== $settingId) {
+            abort(403, 'Bu baskı seçeneğine erişim yetkiniz yok.');
         }
     }
 

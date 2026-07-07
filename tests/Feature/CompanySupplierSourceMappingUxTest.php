@@ -173,9 +173,9 @@ class CompanySupplierSourceMappingUxTest extends TestCase
         ]);
 
         $this->actingAs($this->owner, 'web')
-            ->get($this->tenantUrl('/admin/companies/' . $company->id))
+            ->get($this->tenantUrl('/admin/companies/' . $company->id . '?tab=tedarikci'))
             ->assertOk()
-            ->assertSee('Tedarikçi Kaynak Eşleştirme')
+            ->assertSee('Tedarikçi Eşleşme')
             ->assertSee('İlpen')
             ->assertSee('Tedarik ekranında kullanılabilir')
             ->assertDontSee('group_code')
@@ -191,7 +191,7 @@ class CompanySupplierSourceMappingUxTest extends TestCase
         $supplierCompany = $this->createCompanyWithRoles('Kaynaksız Tedarikçi Cari', ['supplier']);
 
         $this->actingAs($this->owner, 'web')
-            ->get($this->tenantUrl('/admin/companies/' . $supplierCompany->id))
+            ->get($this->tenantUrl('/admin/companies/' . $supplierCompany->id . '?tab=tedarikci'))
             ->assertOk()
             ->assertSee('Bu cari tedarikçi olarak işaretli fakat hazır ürün kaynağı eşleşmemiş.');
 
@@ -277,11 +277,12 @@ class CompanySupplierSourceMappingUxTest extends TestCase
             ->assertSee('Eşleşen cari: Yok');
 
         $show = $this->actingAs($this->owner, 'web')
-            ->get($this->tenantUrl('/admin/procurements/' . $procurement->id));
+            ->get($this->tenantUrl('/admin/procurements/' . $procurement->id . '?tab=tedarikci'));
 
         $show->assertOk()
-            ->assertSee('Bu ürün kaynağı için cari kart eşleştirilmemiş.')
-            ->assertSee('Tedarik Özeti');
+            ->assertSee('Tedarikçi ve Cari')
+            ->assertSee('Henüz eşleşme yok')
+            ->assertSee('Eşleşme tamamlanınca kullanılabilir');
     }
 
     private function createAccessibleSupplierFixture(string $name, string $code): array

@@ -47,10 +47,11 @@ class CriticalPlaceholderAndRouteConsistencyTest extends TestCase
             ->get(route('admin.promotion-quotes.create'));
 
         $create->assertOk();
-        $create->assertDontSee('Müşteri Ekle');
+        $create->assertSee('Müşteri Ara');
+        $create->assertSee('+ Hızlı Müşteri Ekle');
         $create->assertDontSee('Müşteri Portalında Önizle');
         $create->assertDontSee('Sonraki fazda aktif olacak');
-        $create->assertSee('Yeni müşteri kaydı gerekiyorsa önce Cari Kart ekranından ekleyin.');
+        $create->assertSee('Müşteri bulunamadı');
 
         $quote = $this->createQuote();
 

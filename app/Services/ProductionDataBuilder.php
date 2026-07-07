@@ -47,7 +47,8 @@ class ProductionDataBuilder
         $procurementStatus = (string) ($readiness['procurement_status'] ?? data_get($procurementSnapshot, 'procurement_status', ''));
         $graphicRequired = (bool) ($readiness['graphic_required'] ?? true);
 
-        $productionType = $production?->production_type;
+        $productionType = $production?->production_type
+            ?: OrderItemPrintProduction::normalizeProductionType($print->production_type);
         $productionStatus = $production?->production_status ?? OrderItemPrintProduction::STATUS_PENDING;
         $clicheStatus = $production?->cliche_status
             ?: $this->normalizeLegacyClicheStatus($print->cliche_status)

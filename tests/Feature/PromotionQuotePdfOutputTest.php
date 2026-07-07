@@ -106,6 +106,7 @@ class PromotionQuotePdfOutputTest extends TestCase
         $html = app(PromotionQuotePdfService::class)->renderHtml($quote->fresh());
 
         $this->assertStringContainsString('Promosyon Teklifi', $html);
+        $this->assertStringContainsString('Ürün ve Baskı Kalemleri', $html);
         $this->assertStringContainsString('TK-PDF-8004', $html);
         $this->assertStringContainsString('ABC İnşaat A.Ş.', $html);
         $this->assertStringContainsString('PDF Test Ürünü', $html);
@@ -115,6 +116,12 @@ class PromotionQuotePdfOutputTest extends TestCase
         $this->assertStringContainsString('Genel Toplam', $html);
         $this->assertStringContainsString('Teklifinizi online inceleyip yanıtlamak için', $html);
         $this->assertStringContainsString($approvalRequest->token, $html);
+        $this->assertStringContainsString('Hazırlayan', $html);
+        $this->assertStringContainsString('Müşteri Onayı', $html);
+        $this->assertStringContainsString('QR kod bu dokümanda yer almaz.', $html);
+        $this->assertStringNotContainsString('PDF-001', $html);
+        $this->assertStringNotContainsString('<svg', $html);
+        $this->assertStringNotContainsString('data:image/svg+xml', $html);
         $this->assertStringNotContainsString('purchase_total', $html);
         $this->assertStringNotContainsString('purchase_unit_price', $html);
         $this->assertStringNotContainsString('supplier_cost', $html);
@@ -126,9 +133,12 @@ class PromotionQuotePdfOutputTest extends TestCase
         $this->assertStringNotContainsString('current_account_transactions', $html);
         $this->assertStringNotContainsString('payment_logs', $html);
         $this->assertStringNotContainsString('pdh_raw', $html);
+        $this->assertStringNotContainsString('raw', $html);
+        $this->assertStringNotContainsString('projection', $html);
         $this->assertStringNotContainsString('group_code', $html);
         $this->assertStringNotContainsString('file_path', $html);
         $this->assertStringNotContainsString('physical_path', $html);
+        $this->assertStringNotContainsString('secret', $html);
         $this->assertStringNotContainsString('internal_note', $html);
         $this->assertStringNotContainsString('notification_logs', $html);
         $this->assertStringNotContainsString('data-approval-token', $html);

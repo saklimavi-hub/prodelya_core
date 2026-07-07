@@ -81,17 +81,15 @@ class ProductionFinalUiTest extends TestCase
 
         $response = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.productions.show', $productions['Tek taraf']->fresh()));
+            ->get(route('admin.productions.show', $productions['Tek taraf']->fresh()) . '?tab=genel');
 
         $response->assertOk();
-        $response->assertSee('Büyük Hedef Grafik + Gelen Ürün Kontrolü');
-        $response->assertSee('Onaylı Grafik / Hedef Tasarım');
-        $response->assertSee('Gelen Ürün / Ürün Kontrolü');
-        $response->assertSee('final-a-preview.jpg');
-        $response->assertDontSee('final-b-preview.jpg');
-        $response->assertSee(route('admin.graphics.show', $productions['Tek taraf']->workForm), false);
-        $response->assertSee(route('admin.procurements.show', $productions['Tek taraf']->workForm->procurement), false);
+        $response->assertSee('Genel Özet');
+        $response->assertSee('Üretim Durumu Adımları');
+        $response->assertSee('Hızlı Bakış');
         $response->assertSee('Fotoğraf Ekle');
+        $response->assertSee(route('admin.work-forms.show', $productions['Tek taraf']->workForm), false);
+        $response->assertSee(route('admin.orders.show', $productions['Tek taraf']->order), false);
         $response->assertDontSee('group_code', false);
         $response->assertDontSee('file_path', false);
         $response->assertDontSee('physical_path', false);
@@ -105,15 +103,12 @@ class ProductionFinalUiTest extends TestCase
 
         $response = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.productions.show', $production));
+            ->get(route('admin.productions.show', $production) . '?tab=genel');
 
         $response->assertOk();
-        $response->assertSee('Grafik Bekliyor');
-        $response->assertSee('Müşteri Ürünü Bekleniyor');
-        $response->assertSee('Baskıya başlamak için grafik hazır olmalı.');
-        $response->assertSee('Grafiğe Git');
-        $response->assertSee('Tedariğe Git');
-        $response->assertSee('Baskıya Başla');
+        $response->assertSee('Önemli Notlar');
+        $response->assertSee('Grafik bekleniyor');
+        $response->assertSee('Tedarik bekleniyor');
         $response->assertDontSee('Klişe / Kalıp Kontrolü');
     }
 
@@ -132,13 +127,11 @@ class ProductionFinalUiTest extends TestCase
 
         $response = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.productions.show', $production->fresh()));
+            ->get(route('admin.productions.show', $production->fresh()) . '?tab=genel');
 
         $response->assertOk();
-        $response->assertSee('Klişe / Kalıp Kontrolü');
-        $response->assertSee('Klişe Bekliyor');
-        $response->assertSee('Baskıya Başla');
-        $response->assertSee('Baskıya başlamak için klişe hazır olmalı.');
+        $response->assertSee('Önemli Notlar');
+        $response->assertSee('Bu baskı için gerekli ara eleman hazır olmadan baskıya başlanmaz.');
     }
 
     private function createMultiPrintWorkForm(bool $includeNoPrintItem = false): array

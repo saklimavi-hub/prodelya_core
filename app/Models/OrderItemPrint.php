@@ -18,6 +18,7 @@ class OrderItemPrint extends Model
         'order_item_id',
         'tenant_print_setting_id',
         'standard_print_type_id',
+        'tenant_print_option_id',
         'print_type',
         'print_option',
         'print_location',
@@ -26,6 +27,13 @@ class OrderItemPrint extends Model
         'print_color',
         'print_size',
         'cliche_status',
+        'setup_pricing_enabled',
+        'setup_type',
+        'setup_status',
+        'setup_total_amount',
+        'setup_distribution_quantity',
+        'setup_unit_amount',
+        'base_print_unit_price',
         'print_quantity',
         'print_unit_price',
         'print_total',
@@ -36,6 +44,11 @@ class OrderItemPrint extends Model
 
     protected $casts = [
         'print_quantity' => 'decimal:4',
+        'setup_pricing_enabled' => 'boolean',
+        'setup_total_amount' => 'decimal:4',
+        'setup_distribution_quantity' => 'decimal:4',
+        'setup_unit_amount' => 'decimal:4',
+        'base_print_unit_price' => 'decimal:4',
         'print_unit_price' => 'decimal:4',
         'print_total' => 'decimal:4',
         'status' => 'string',
@@ -78,6 +91,11 @@ class OrderItemPrint extends Model
     public function standardPrintType(): BelongsTo
     {
         return $this->belongsTo(StandardPrintType::class, 'standard_print_type_id');
+    }
+
+    public function tenantPrintOption(): BelongsTo
+    {
+        return $this->belongsTo(TenantPrintOption::class, 'tenant_print_option_id');
     }
 
     public function production(): HasOne
@@ -229,6 +247,11 @@ class OrderItemPrint extends Model
         return $this->effectiveRequiresSetup();
     }
 
+    public function setupPricingEnabled(): bool
+    {
+        return (bool) $this->setup_pricing_enabled;
+    }
+
     public function setupStatusSummary(): array
     {
         $requirements = $this->relationLoaded('setupRequirements')
@@ -258,6 +281,9 @@ class OrderItemPrint extends Model
                     'status' => $requirement->status,
                     'status_label' => $requirement->safeStatusLabel(),
                     'assigned_company_name' => $requirement->assignedCompany?->legal_name,
+                    'cost' => $requirement->cost !== null ? (float) $requirement->cost : null,
+                    'currency' => $requirement->currency ?: 'TRY',
+                    'has_current_account_match' => $requirement->assigned_current_account_id !== null,
                     'note' => $requirement->note,
                     'completed_at' => optional($requirement->completed_at)?->toAtomString(),
                 ];

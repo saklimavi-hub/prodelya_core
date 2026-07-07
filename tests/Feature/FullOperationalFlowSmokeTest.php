@@ -560,9 +560,9 @@ class FullOperationalFlowSmokeTest extends TestCase
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->get(route('admin.orders.show', $order));
         $ordersShow->assertOk()
-            ->assertSee('Teslim Edildi')
-            ->assertSee('Modül Geçişleri')
-            ->assertSee('Genel Toplam')
+            ->assertSee('Tamamlandı')
+            ->assertSee('Genel Özet')
+            ->assertSee('Kalan Bakiye')
             ->assertSee(route('admin.finance.show', $order), false);
 
         $workFormShow = $this->actingAs($this->adminUser)

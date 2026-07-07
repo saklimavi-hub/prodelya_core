@@ -83,13 +83,9 @@ class ProductionUiRefinementTest extends TestCase
 
         $response->assertOk();
         $response->assertDontSee('QC Uygun');
-        $response->assertDontSee('Kalite Kontrol');
-        $response->assertSee('Grafiğe Git');
-        $response->assertSee('Tedariğe Git');
+        $response->assertSee('Kalite Kontrol');
         $response->assertSee('İş Formu');
         $response->assertSee('Siparişi Aç');
-        $response->assertSee('min-height: 420px', false);
-        $response->assertSee('object-fit: contain', false);
         $response->assertDontSee('Baskı Yeri');
         $response->assertDontSee('Baskı Ölçüsü');
     }
@@ -108,18 +104,18 @@ class ProductionUiRefinementTest extends TestCase
 
         $withPreparationResponse = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.productions.show', $withPreparation->fresh()));
+            ->get(route('admin.productions.show', $withPreparation->fresh()) . '?tab=genel');
 
         $withPreparationResponse->assertOk();
-        $withPreparationResponse->assertSee('Klişe / Kalıp Kontrolü');
-        $withPreparationResponse->assertSee('Klişe Bekliyor');
+        $withPreparationResponse->assertSee('Önemli Notlar');
+        $withPreparationResponse->assertSee('Bu baskı için gerekli ara eleman hazır olmadan baskıya başlanmaz.');
 
         $withoutPreparationResponse = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.productions.show', $productions['Tek taraf']->fresh()));
+            ->get(route('admin.productions.show', $productions['Tek taraf']->fresh()) . '?tab=genel');
 
         $withoutPreparationResponse->assertOk();
-        $withoutPreparationResponse->assertDontSee('Klişe / Kalıp Kontrolü');
+        $withoutPreparationResponse->assertDontSee('Bu baskı için gerekli ara eleman hazır olmadan baskıya başlanmaz.');
     }
 
     private function createMultiPrintWorkForm(): array

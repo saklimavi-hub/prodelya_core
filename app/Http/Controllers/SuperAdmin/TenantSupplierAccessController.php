@@ -7,6 +7,7 @@ use App\Models\Supplier;
 use App\Models\TenantAccount;
 use App\Models\TenantModule;
 use App\Models\TenantSupplierAccess;
+use App\Services\TenantSupplierCurrentAccountSyncService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -14,7 +15,9 @@ use Illuminate\View\View;
 
 class TenantSupplierAccessController extends Controller
 {
-    public function __construct()
+    public function __construct(
+        protected TenantSupplierCurrentAccountSyncService $tenantSupplierCurrentAccountSyncService,
+    )
     {
         // Route group auth:web + central.access + super.admin middleware katmanlariyla korunur.
     }
@@ -111,7 +114,7 @@ class TenantSupplierAccessController extends Controller
                     continue;
                 }
 
-                TenantSupplierAccess::query()->updateOrCreate(
+                $access = TenantSupplierAccess::query()->updateOrCreate(
                     [
                         'tenant_account_id' => $tenant->id,
                         'supplier_id' => (int) $supplierId,
@@ -135,6 +138,14 @@ class TenantSupplierAccessController extends Controller
                         ],
                     ]
                 );
+
+                if ($access->is_active) {
+                    $supplier = Supplier::query()->find((int) $supplierId);
+
+                    if ($supplier) {
+                        $this->tenantSupplierCurrentAccountSyncService->syncForTenantSupplierAccess($tenant, $supplier);
+                    }
+                }
             }
         });
 

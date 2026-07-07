@@ -85,7 +85,9 @@ class ProcurementUiTest extends TestCase
         $response->assertSee($procurement->order->document_number);
         $response->assertSee($procurement->workForm->work_form_number);
         $response->assertSee(route('admin.work-forms.show', $procurement->workForm), false);
-        $response->assertSee('Tedarikçi stok bilgisi sipariş anı referansıdır.');
+        $response->assertSee('Tedarik Sekmeleri');
+        $response->assertSee('Genel Özet');
+        $response->assertSee('İşlemler');
         $response->assertDontSee('price_snapshot', false);
         $response->assertDontSee('group_code', false);
         $response->assertDontSee('raw_mapping', false);

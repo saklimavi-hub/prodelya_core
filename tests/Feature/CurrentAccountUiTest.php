@@ -57,38 +57,43 @@ class CurrentAccountUiTest extends TestCase
 
         $response = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.current-accounts.index'));
+            ->get(route('admin.current-accounts.index', ['tab' => 'tumu']));
 
         $response->assertOk();
-        $response->assertSee('Cari Kartlar');
+        $response->assertSee('Cari Bakiyeler');
+        $response->assertSee('Cari kimlik ve iletişim bilgileri Cari Kartlar ekranından yönetilir.');
+        $response->assertSee('Finans Detayı');
+        $response->assertSee('Ekstre');
+        $response->assertDontSee('Düzenle');
         $response->assertSee($customerAccount->display_name);
         $response->assertSee($supplierAccount->display_name);
         $response->assertDontSee('Yabanci Cari');
         $response->assertSee(route('admin.current-accounts.index'), false);
         $response->assertSee(route('admin.companies.create'), false);
-        $response->assertDontSee('Bakiye');
-        $response->assertDontSee('Borç');
-        $response->assertDontSee('Alacak');
+        $response->assertSee('Güncel Bakiye');
+        $response->assertSee('Bakiye Durumu');
+        $response->assertSee('Kapalı');
+        $response->assertDontSee('Current Account');
         $response->assertDontSee('group_code', false);
         $response->assertDontSee('file_path', false);
 
         $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.current-accounts.index', ['role' => CurrentAccountRole::ROLE_CUSTOMER]))
+            ->get(route('admin.current-accounts.index', ['tab' => 'tumu', 'role' => CurrentAccountRole::ROLE_CUSTOMER]))
             ->assertOk()
             ->assertSee($customerAccount->display_name)
             ->assertDontSee($supplierAccount->display_name);
 
         $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.current-accounts.index', ['role' => CurrentAccountRole::ROLE_SUPPLIER]))
+            ->get(route('admin.current-accounts.index', ['tab' => 'tumu', 'role' => CurrentAccountRole::ROLE_SUPPLIER]))
             ->assertOk()
             ->assertSee($supplierAccount->display_name)
             ->assertDontSee($customerAccount->display_name);
 
         $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.current-accounts.index', ['role' => CurrentAccountRole::ROLE_CARRIER]))
+            ->get(route('admin.current-accounts.index', ['tab' => 'tumu', 'role' => CurrentAccountRole::ROLE_CARRIER]))
             ->assertOk()
             ->assertSee($supplierAccount->display_name)
             ->assertDontSee($customerAccount->display_name);

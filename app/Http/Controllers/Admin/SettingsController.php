@@ -14,6 +14,7 @@ use App\Services\ModuleFeatureCatalogService;
 use App\Services\TenantAccessService;
 use App\Services\TenantCompanyProfileService;
 use App\Services\TenantCatalog\TenantCatalogListRowQueryService;
+use App\Services\TenantDeliveryTypeService;
 use App\Services\TenantResolver;
 use App\Services\TenantSubscriptionStatusService;
 use App\Services\TenantUsageService;
@@ -35,6 +36,7 @@ class SettingsController extends Controller
         protected TenantCompanyProfileService $tenantCompanyProfileService,
         protected TenantNotificationSettingsService $tenantNotificationSettingsService,
         protected TenantCatalogListRowQueryService $tenantCatalogListRowQueryService,
+        protected TenantDeliveryTypeService $tenantDeliveryTypeService,
     ) {}
 
     /**
@@ -64,6 +66,7 @@ class SettingsController extends Controller
             $accessSummary['features'] ?? []
         );
         $domainSummary = $this->buildDomainSummary($tenant);
+        $deliveryTypeSummary = $this->buildDeliveryTypeSummary($tenant);
 
         return view('admin.settings.index', [
             'tenant' => $tenant,
@@ -99,6 +102,7 @@ class SettingsController extends Controller
             'userRoleSummary' => $this->buildUserRoleSummary($tenant),
             'moduleCategories' => $moduleCategories,
             'storageSummary' => $this->buildStorageSummary($workFolderRootName),
+            'deliveryTypeSummary' => $deliveryTypeSummary,
         ]);
     }
 
@@ -580,6 +584,7 @@ class SettingsController extends Controller
             ),
             'quick_links' => array_values(array_filter([
                 $this->quickLink('Firma Bilgileri', Route::has('admin.settings.company-profile.edit') ? route('admin.settings.company-profile.edit') : null),
+                $this->quickLink('Teslimat Tipleri', Route::has('admin.settings.delivery-types.index') ? route('admin.settings.delivery-types.index') : null),
                 $this->quickLink('Paket ve Kullanım', $packageOverviewRoute),
                 $this->quickLink('Katalog', Route::has('admin.catalog.index') ? route('admin.catalog.index') : null),
                 $this->quickLink('Kullanıcılar', Route::has('admin.users.index') ? route('admin.users.index') : null),
@@ -750,6 +755,19 @@ class SettingsController extends Controller
             'storage_label' => 'Yerel sunucu',
             'planned_providers' => ['Amazon S3', 'Google Drive', 'Yandex Disk', 'CDN / dosya arşivi'],
             'note' => 'Bu entegrasyonlar aktif edilmeden erişim bilgisi veya şifre girilmez.',
+        ];
+    }
+
+    private function buildDeliveryTypeSummary(TenantAccount $tenant): array
+    {
+        $types = $this->tenantDeliveryTypeService->ensureDefaultsForTenant($tenant);
+        $default = $types->firstWhere('is_default', true);
+
+        return [
+            'count' => $types->count(),
+            'active_count' => $types->where('is_active', true)->count(),
+            'default_label' => $default?->name ?: 'Henüz seçilmedi',
+            'route' => Route::has('admin.settings.delivery-types.index') ? route('admin.settings.delivery-types.index') : null,
         ];
     }
 

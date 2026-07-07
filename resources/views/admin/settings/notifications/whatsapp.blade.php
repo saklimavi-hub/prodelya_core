@@ -59,8 +59,12 @@
                             @error('whatsapp_default_signature')<p class="mt-2 text-sm text-red-600">{{ $message }}</p>@enderror
                         </div>
                         <div class="md:col-span-2">
-                            <label for="whatsapp_test_phone" class="block text-sm font-medium text-gray-700">Test Telefonu</label>
-                            <input id="whatsapp_test_phone" name="whatsapp_test_phone" type="text" value="{{ old('whatsapp_test_phone', $whatsappSettings['test_phone']) }}" class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900">
+                            <label for="whatsapp_test_phone" class="block text-sm font-medium text-gray-700">WhatsApp Cep Telefonu</label>
+                            <div class="mt-1 flex overflow-hidden rounded-md border border-gray-300 bg-white">
+                                <span class="inline-flex items-center gap-2 border-r border-gray-200 bg-gray-50 px-3 text-sm text-gray-700">🇹🇷 +90</span>
+                                <input id="whatsapp_test_phone" name="whatsapp_test_phone" type="text" value="{{ app(\App\Services\PhoneNumberNormalizer::class)->formatTurkishPhoneForDisplay(old('whatsapp_test_phone', $whatsappSettings['test_phone'])) ?: old('whatsapp_test_phone', $whatsappSettings['test_phone']) }}" placeholder="5xx xxx xx xx" class="block w-full border-0 px-3 py-2 text-gray-900 focus:ring-0">
+                            </div>
+                            <p class="mt-2 text-xs text-gray-500">WhatsApp gönderimleri için kullanılır. Türkiye numarası 05xx veya 5xx xxx xx xx formatında girilebilir.</p>
                             @error('whatsapp_test_phone')<p class="mt-2 text-sm text-red-600">{{ $message }}</p>@enderror
                         </div>
                     </div>
@@ -87,8 +91,11 @@
                             @error('customer_name')<p class="mt-2 text-sm text-red-600">{{ $message }}</p>@enderror
                         </div>
                         <div>
-                            <label for="recipient_phone" class="block text-sm font-medium text-gray-700">Telefon</label>
-                            <input id="recipient_phone" name="recipient_phone" type="text" value="{{ old('recipient_phone', $whatsappSettings['test_phone']) }}" class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900">
+                            <label for="recipient_phone" class="block text-sm font-medium text-gray-700">WhatsApp Cep Telefonu</label>
+                            <div class="mt-1 flex overflow-hidden rounded-md border border-gray-300 bg-white">
+                                <span class="inline-flex items-center gap-2 border-r border-gray-200 bg-gray-50 px-3 text-sm text-gray-700">🇹🇷 +90</span>
+                                <input id="recipient_phone" name="recipient_phone" type="text" value="{{ app(\App\Services\PhoneNumberNormalizer::class)->formatTurkishPhoneForDisplay(old('recipient_phone', $whatsappSettings['test_phone'])) ?: old('recipient_phone', $whatsappSettings['test_phone']) }}" placeholder="5xx xxx xx xx" class="block w-full border-0 px-3 py-2 text-gray-900 focus:ring-0">
+                            </div>
                             @error('recipient_phone')<p class="mt-2 text-sm text-red-600">{{ $message }}</p>@enderror
                         </div>
                         <div>

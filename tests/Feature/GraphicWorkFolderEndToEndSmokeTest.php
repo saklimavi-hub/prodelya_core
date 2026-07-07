@@ -31,6 +31,8 @@ class GraphicWorkFolderEndToEndSmokeTest extends TestCase
 
         Storage::fake('public');
         Storage::fake('local');
+        Storage::disk('public')->makeDirectory('work-forms');
+        Storage::disk('local')->makeDirectory('work-forms');
         $this->adminUser = User::query()->where('email', 'admin@prodelya.local')->firstOrFail();
     }
 

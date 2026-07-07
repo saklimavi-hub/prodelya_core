@@ -92,9 +92,9 @@ class ProductionUiTest extends TestCase
         $response->assertSee('UI-DET-PRD');
         $response->assertDontSee('Üretim Ataması');
         $response->assertDontSee('Üretime Başlama Kontrol Kartları');
-        $response->assertDontSee('Kalite Kontrol');
+        $response->assertSee('Üretim Durumu Adımları');
+        $response->assertSee('Kalite Kontrol');
         $response->assertSee('Fotoğraf Ekle');
-        $response->assertSee('capture="environment"', false);
         $response->assertSee(route('admin.work-forms.show', $production->workForm), false);
         $response->assertSee(route('admin.orders.show', $production->order), false);
         $response->assertDontSee('price_snapshot', false);

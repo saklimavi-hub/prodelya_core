@@ -240,7 +240,7 @@
 
     <section class="a4-sheet">
         <div class="spr-print-title">TEDARİKÇİ TALEP FORMU</div>
-        <div class="spr-print-subtitle">Bu form yalnız tedarik talebi içindir. Fiyat ve maliyet bilgileri içermez.</div>
+        <div class="spr-print-subtitle">Bu form yalnız tedarik talebi içindir. Fiyat bilgileri içermez.</div>
 
         <div class="spr-print-head">
             <div class="spr-print-box">

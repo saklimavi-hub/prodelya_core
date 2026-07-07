@@ -25,6 +25,7 @@ use App\Http\Controllers\Admin\NotificationLogController;
 use App\Http\Controllers\Admin\NotificationTemplateController;
 use App\Http\Controllers\Admin\TenantPackageRequestController;
 use App\Http\Controllers\Admin\TenantPrintSettingController;
+use App\Http\Controllers\Admin\TenantDeliveryTypeController;
 use App\Http\Controllers\Admin\CompanyController;
 use App\Http\Controllers\Admin\CompanyAddressController;
 use App\Http\Controllers\Admin\CompanyContactController;
@@ -353,6 +354,12 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:web', 'resolve.tenant'
         Route::get('/', [PromotionQuoteController::class, 'index'])->name('index');
         Route::get('/create', [PromotionQuoteController::class, 'create'])->name('create');
         Route::post('/', [PromotionQuoteController::class, 'store'])->name('store');
+        Route::get('/customer-search', [PromotionQuoteController::class, 'customerSearch'])
+            ->middleware('module.enabled:current_accounts')
+            ->name('customer-search');
+        Route::post('/quick-customer', [PromotionQuoteController::class, 'quickStoreCustomer'])
+            ->middleware('module.enabled:current_accounts')
+            ->name('quick-customer.store');
         Route::post('/{quote}/mark-approved', [PromotionQuoteController::class, 'markApproved'])->name('mark-approved')->whereNumber('quote');
         Route::post('/{quote}/send-to-customer', [PromotionQuoteController::class, 'sendToCustomer'])->middleware('feature.enabled:quote_customer_approval,public_quote_approval')->name('send-to-customer')->whereNumber('quote');
         Route::get('/{quote}/customer-approval/open', [PromotionQuoteController::class, 'openCustomerApproval'])
@@ -412,6 +419,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:web', 'resolve.tenant'
         Route::post('/{currentAccount}/supplier-link', [CurrentAccountController::class, 'attachSupplier'])->name('supplier-link.store')->whereNumber('currentAccount');
         Route::delete('/{currentAccount}/supplier-link', [CurrentAccountController::class, 'detachSupplier'])->name('supplier-link.destroy')->whereNumber('currentAccount');
         Route::get('/{currentAccount}/transactions', [CurrentAccountTransactionController::class, 'accountTransactions'])->name('transactions.index')->whereNumber('currentAccount');
+        Route::get('/{currentAccount}/transactions/export/pdf', [CurrentAccountTransactionController::class, 'exportPdf'])->name('transactions.export.pdf')->whereNumber('currentAccount');
+        Route::get('/{currentAccount}/transactions/export/excel', [CurrentAccountTransactionController::class, 'exportExcel'])->name('transactions.export.excel')->whereNumber('currentAccount');
         Route::post('/{currentAccount}/transactions', [CurrentAccountTransactionController::class, 'store'])->name('transactions.store')->whereNumber('currentAccount');
     });
 
@@ -450,6 +459,10 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:web', 'resolve.tenant'
         ->name('companies.portal-users.toggle-status')
         ->whereNumber('company')
         ->whereNumber('portalUser');
+    Route::post('/companies/{company}/archive-duplicate', [CompanyController::class, 'archiveDuplicate'])
+        ->middleware('module.enabled:current_accounts')
+        ->name('companies.archive-duplicate')
+        ->whereNumber('company');
     Route::get('/companies/{company}/edit', [CompanyController::class, 'edit'])->middleware('module.enabled:current_accounts')->name('companies.edit')->whereNumber('company');
     Route::put('/companies/{company}', [CompanyController::class, 'update'])->middleware('module.enabled:current_accounts')->name('companies.update')->whereNumber('company');
     Route::delete('/companies/{company}', [CompanyController::class, 'destroy'])->middleware('module.enabled:current_accounts')->name('companies.destroy')->whereNumber('company');
@@ -507,6 +520,11 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:web', 'resolve.tenant'
         Route::get('/{order}/tracking/{workForm}', [OrderController::class, 'openTracking'])->name('tracking.open')
             ->whereNumber('order')
             ->whereNumber('workForm');
+        Route::post('/{order}/delivery-packages', [OrderController::class, 'storeDeliveryPackages'])->name('delivery-packages.store')->whereNumber('order');
+        Route::post('/{order}/delivery-labels', [OrderController::class, 'storeDeliveryLabels'])->name('delivery-labels.store')->whereNumber('order');
+        Route::post('/{order}/delivery-info', [OrderController::class, 'updateDeliveryInfo'])->name('delivery-info.update')->whereNumber('order');
+        Route::post('/{order}/delivery-complete', [OrderController::class, 'completeDelivery'])->name('delivery.complete')->whereNumber('order');
+        Route::get('/{order}/delivery-labels/print', [OrderController::class, 'printDeliveryLabels'])->name('delivery-labels.print')->whereNumber('order');
         Route::get('/{order}', [OrderController::class, 'show'])->name('show')->whereNumber('order');
         Route::get('/{order}/edit', [OrderController::class, 'edit'])->name('edit')->whereNumber('order');
         Route::put('/{order}', [OrderController::class, 'update'])->name('update')->whereNumber('order');
@@ -603,6 +621,12 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:web', 'resolve.tenant'
     Route::post('/settings', [SettingsController::class, 'update'])->middleware('module.enabled:tenant_settings')->name('settings.update');
     Route::get('/settings/company-profile', [SettingsController::class, 'editCompanyProfile'])->middleware('module.enabled:tenant_settings')->name('settings.company-profile.edit');
     Route::post('/settings/company-profile', [SettingsController::class, 'updateCompanyProfile'])->middleware('module.enabled:tenant_settings')->name('settings.company-profile.update');
+    Route::prefix('/settings/delivery-types')->name('settings.delivery-types.')->middleware('module.enabled:tenant_settings')->group(function () {
+        Route::get('/', [TenantDeliveryTypeController::class, 'index'])->name('index');
+        Route::post('/', [TenantDeliveryTypeController::class, 'store'])->name('store');
+        Route::put('/{tenantDeliveryType}', [TenantDeliveryTypeController::class, 'update'])->name('update')->whereNumber('tenantDeliveryType');
+        Route::post('/{tenantDeliveryType}/default', [TenantDeliveryTypeController::class, 'makeDefault'])->name('default')->whereNumber('tenantDeliveryType');
+    });
     Route::prefix('package-requests')->name('package-requests.')->middleware(['module.enabled:tenant_settings', 'permission.check:manage_users'])->group(function () {
         Route::get('/', [TenantPackageRequestController::class, 'index'])->name('index');
         Route::post('/', [TenantPackageRequestController::class, 'store'])->name('store');
@@ -631,6 +655,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:web', 'resolve.tenant'
         Route::post('/sync', [TenantPrintSettingController::class, 'sync'])->name('sync');
         Route::get('/{tenantPrintSetting}/edit', [TenantPrintSettingController::class, 'edit'])->name('edit')->whereNumber('tenantPrintSetting');
         Route::put('/{tenantPrintSetting}', [TenantPrintSettingController::class, 'update'])->name('update')->whereNumber('tenantPrintSetting');
+        Route::post('/{tenantPrintSetting}/options', [TenantPrintSettingController::class, 'storeOption'])->name('options.store')->whereNumber('tenantPrintSetting');
+        Route::put('/{tenantPrintSetting}/options/{tenantPrintOption}', [TenantPrintSettingController::class, 'updateOption'])->name('options.update')->whereNumber('tenantPrintSetting')->whereNumber('tenantPrintOption');
+        Route::post('/{tenantPrintSetting}/options/{tenantPrintOption}/default', [TenantPrintSettingController::class, 'makeDefaultOption'])->name('options.default')->whereNumber('tenantPrintSetting')->whereNumber('tenantPrintOption');
     });
 
     Route::prefix('notifications')->name('notifications.')->middleware('module.enabled:notification_center')->group(function () {

@@ -10,6 +10,7 @@ use App\Models\Supplier;
 use App\Models\SupplierProcurementRequest;
 use App\Models\SupplierProcurementRequestItem;
 use App\Models\SupplierSource;
+use App\Models\TenantSupplierAccess;
 use App\Services\ProcurementWorkflowService;
 use App\Services\SupplierProcurementCurrentAccountSyncService;
 use App\Services\SupplierProcurementRequestDataBuilder;
@@ -102,21 +103,37 @@ class ProcurementController extends Controller
             'supplierRequestItems.request',
         ]);
 
+        $allowedTabs = ['genel', 'urun', 'tedarikci', 'talep', 'islemler', 'gelen', 'gecmis'];
+
         $history = $procurement->workForm
             ? $procurement->workForm->activityLogs
                 ->filter(fn ($log) => in_array($log->action_type, $this->procurementActionTypes(), true))
                 ->values()
             : collect();
 
+        $supplierCompanyMatch = $this->buildSupplierCompanyMap(
+            $tenant->id,
+            collect([$procurement->supplier_id])->filter()->values()
+        )[$procurement->supplier_id] ?? null;
+
+        $requestedTab = (string) $request->query('tab', 'genel');
+        $activeTab = in_array($requestedTab, $allowedTabs, true) ? $requestedTab : 'genel';
+        $tabItems = $this->buildShowTabs($activeTab);
+        $linkedRequest = $procurement->supplierRequestItems->first()?->request;
+        $actionStage = $this->actionStage($procurement);
+        $actionStages = $this->buildActionStages($actionStage);
+
         return view('admin.procurements.show', [
             'procurement' => $procurement,
             'history' => $history,
             'nextActionLabel' => $this->nextActionLabel($procurement),
             'actionOptions' => $this->actionOptions($procurement),
-            'supplierCompanyMatch' => $this->buildSupplierCompanyMap(
-                $tenant->id,
-                collect([$procurement->supplier_id])->filter()->values()
-            )[$procurement->supplier_id] ?? null,
+            'supplierCompanyMatch' => $supplierCompanyMatch,
+            'activeTab' => $activeTab,
+            'tabItems' => $tabItems,
+            'linkedRequest' => $linkedRequest,
+            'actionStage' => $actionStage,
+            'actionStages' => $actionStages,
         ]);
     }
 
@@ -340,19 +357,55 @@ class ProcurementController extends Controller
         };
     }
 
+    private function actionStage(OrderItemProcurement $procurement): string
+    {
+        return match ($procurement->procurement_status) {
+            OrderItemProcurement::STATUS_PENDING => 'request',
+            OrderItemProcurement::STATUS_REQUEST_CREATED => 'ordered',
+            OrderItemProcurement::STATUS_SUPPLIER_ORDERED => 'partial',
+            OrderItemProcurement::STATUS_PARTIALLY_RECEIVED => 'partial',
+            OrderItemProcurement::STATUS_FULLY_RECEIVED,
+            OrderItemProcurement::STATUS_CUSTOMER_RECEIVED => 'completed',
+            OrderItemProcurement::STATUS_CANCELLED,
+            OrderItemProcurement::STATUS_NOT_REQUIRED => 'closed',
+            default => 'summary',
+        };
+    }
+
     private function actionOptions(OrderItemProcurement $procurement): array
     {
-        $base = [
-            ['action' => 'request_created', 'label' => 'Tedarik Talebi Aç', 'show' => !$procurement->isNotRequired()],
-            ['action' => 'supplier_ordered', 'label' => 'Sipariş Verildi İşaretle', 'show' => $procurement->isSupplierBased()],
-            ['action' => 'partially_received', 'label' => 'Kısmi Geldi', 'show' => !$procurement->isNotRequired() && !$procurement->isFullyReceived()],
-            ['action' => 'fully_received', 'label' => 'Tamamı Geldi', 'show' => !$procurement->isNotRequired() && !$procurement->isFullyReceived()],
-            ['action' => 'customer_received', 'label' => 'Müşteri Ürünü Geldi', 'show' => $procurement->isCustomerSupplied()],
-            ['action' => 'not_required', 'label' => 'Tedarik Gerekmiyor', 'show' => true],
-            ['action' => 'cancel', 'label' => 'İptal', 'show' => true],
-        ];
+        $stage = $this->actionStage($procurement);
+        $options = [];
 
-        return array_values(array_filter($base, fn (array $row) => $row['show']));
+        if ($stage === 'request' && !$procurement->isNotRequired()) {
+            $options[] = ['action' => 'request_created', 'label' => 'Talep Aç', 'tone' => 'primary', 'is_primary' => true];
+        }
+
+        if ($stage === 'ordered' && $procurement->isSupplierBased()) {
+            $options[] = ['action' => 'supplier_ordered', 'label' => 'Sipariş Verildi', 'tone' => 'primary', 'is_primary' => true];
+        }
+
+        if (in_array($stage, ['partial'], true) && !$procurement->isNotRequired() && !$procurement->isFullyReceived()) {
+            $options[] = ['action' => 'partially_received', 'label' => 'Kısmi Geldi', 'tone' => 'light', 'is_primary' => true];
+            $options[] = ['action' => 'fully_received', 'label' => 'Tamamı Geldi', 'tone' => 'success', 'is_primary' => true];
+        }
+
+        if ($procurement->isCustomerSupplied() && !in_array($stage, ['completed', 'closed'], true)) {
+            $options[] = ['action' => 'customer_received', 'label' => 'Müşteri Ürünü Geldi', 'tone' => 'primary', 'is_primary' => true];
+        }
+
+        if ($procurement->procurement_status === OrderItemProcurement::STATUS_CANCELLED
+            || $procurement->procurement_status === OrderItemProcurement::STATUS_NOT_REQUIRED
+            || ($procurement->procurement_status === OrderItemProcurement::STATUS_SUPPLIER_ORDERED
+                && (float) $procurement->received_quantity <= 0.0001)) {
+            $options[] = ['action' => 'reopen', 'label' => 'Geri Al', 'tone' => 'light', 'is_primary' => false];
+        }
+
+        if ($stage === 'summary' && !$procurement->isNotRequired() && !$procurement->isFullyReceived()) {
+            $options[] = ['action' => 'request_created', 'label' => 'Talep Aç', 'tone' => 'primary', 'is_primary' => true];
+        }
+
+        return $options;
     }
 
     private function procurementActionTypes(): array
@@ -425,11 +478,28 @@ class ProcurementController extends Controller
             return [];
         }
 
+        $tenantAccesses = TenantSupplierAccess::query()
+            ->where('tenant_account_id', $tenantId)
+            ->whereIn('supplier_id', $supplierIds->all())
+            ->get(['id', 'supplier_id'])
+            ->keyBy('id');
+
         $supplierLinks = CurrentAccountLink::query()
             ->where('tenant_account_id', $tenantId)
-            ->where('link_type', CurrentAccountLink::LINK_SUPPLIER)
-            ->whereIn('link_id', $supplierIds->all())
-            ->get(['current_account_id', 'link_id']);
+            ->where(function ($query) use ($supplierIds, $tenantAccesses): void {
+                $query->where(function ($supplierLinkQuery) use ($supplierIds): void {
+                    $supplierLinkQuery->where('link_type', CurrentAccountLink::LINK_SUPPLIER)
+                        ->whereIn('link_id', $supplierIds->all());
+                });
+
+                if ($tenantAccesses->isNotEmpty()) {
+                    $query->orWhere(function ($accessLinkQuery) use ($tenantAccesses): void {
+                        $accessLinkQuery->where('link_type', CurrentAccountLink::LINK_TENANT_SUPPLIER_ACCESS)
+                            ->whereIn('link_id', $tenantAccesses->keys()->all());
+                    });
+                }
+            })
+            ->get(['current_account_id', 'link_id', 'link_type']);
 
         if ($supplierLinks->isEmpty()) {
             return [];
@@ -451,7 +521,7 @@ class ProcurementController extends Controller
 
         $map = [];
 
-        foreach ($supplierLinks as $supplierLink) {
+        foreach ($supplierLinks->sortBy(fn (CurrentAccountLink $link): int => $link->link_type === CurrentAccountLink::LINK_TENANT_SUPPLIER_ACCESS ? 0 : 1) as $supplierLink) {
             $companyLink = $companyLinks->get($supplierLink->current_account_id);
             $company = $companyLink ? $companies->get($companyLink->link_id) : null;
 
@@ -459,12 +529,62 @@ class ProcurementController extends Controller
                 continue;
             }
 
-            $map[$supplierLink->link_id] = [
+            $supplierId = $supplierLink->link_type === CurrentAccountLink::LINK_SUPPLIER
+                ? (int) $supplierLink->link_id
+                : (int) optional($tenantAccesses->get($supplierLink->link_id))->supplier_id;
+
+            if (! $supplierId || isset($map[$supplierId])) {
+                continue;
+            }
+
+            $map[$supplierId] = [
                 'company_id' => $company->id,
                 'company_name' => $company->short_name ?: $company->legal_name,
             ];
         }
 
         return $map;
+    }
+
+    private function buildShowTabs(string $activeTab): array
+    {
+        $tabs = [
+            'genel' => 'Genel Özet',
+            'urun' => 'Ürün ve Sipariş',
+            'tedarikci' => 'Tedarikçi ve Cari',
+            'talep' => 'Talep / Form',
+            'islemler' => 'İşlemler',
+            'gelen' => 'Gelen / Miktar',
+            'gecmis' => 'Geçmiş',
+        ];
+
+        return collect($tabs)
+            ->map(fn (string $label, string $key) => [
+                'key' => $key,
+                'label' => $label,
+                'is_active' => $key === $activeTab,
+            ])
+            ->values()
+            ->all();
+    }
+
+    private function buildActionStages(string $activeStage): array
+    {
+        $stages = [
+            'request' => '1. Talep Aç',
+            'ordered' => '2. Sipariş Verildi',
+            'partial' => '3. Kısmi Geldi',
+            'completed' => '4. Tamamı Geldi',
+            'closed' => '5. Tamamlandı',
+        ];
+
+        return collect($stages)
+            ->map(fn (string $label, string $key) => [
+                'key' => $key,
+                'label' => $label,
+                'is_active' => $key === $activeStage,
+            ])
+            ->values()
+            ->all();
     }
 }

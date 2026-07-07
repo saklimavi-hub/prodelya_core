@@ -228,8 +228,8 @@ class DashboardPendingActionCounterTest extends TestCase
         $readiness = collect($dashboard['readiness_checklist'])->keyBy('label');
         $quickStart = collect($dashboard['quick_start'])->keyBy('title');
 
-        $this->assertSame('Hazır', $readiness['Müşteri / Cari']['status'] ?? null);
-        $this->assertSame('Hazır', $quickStart['Müşteri / Cari ekle']['status'] ?? null);
+        $this->assertSame('Hazır', $readiness['Cari Kartlar']['status'] ?? null);
+        $this->assertSame('Hazır', $quickStart['Cari kart ekle']['status'] ?? null);
     }
 
     public function test_customer_readiness_is_missing_when_tenant_has_no_active_company_or_current_account(): void
@@ -241,8 +241,8 @@ class DashboardPendingActionCounterTest extends TestCase
         $readiness = collect($dashboard['readiness_checklist'])->keyBy('label');
         $quickStart = collect($dashboard['quick_start'])->keyBy('title');
 
-        $this->assertSame('Eksik', $readiness['Müşteri / Cari']['status'] ?? null);
-        $this->assertSame('Eksik', $quickStart['Müşteri / Cari ekle']['status'] ?? null);
+        $this->assertSame('Eksik', $readiness['Cari Kartlar']['status'] ?? null);
+        $this->assertSame('Eksik', $quickStart['Cari kart ekle']['status'] ?? null);
     }
 
     public function test_quote_readiness_is_ready_when_customer_and_catalog_are_available(): void

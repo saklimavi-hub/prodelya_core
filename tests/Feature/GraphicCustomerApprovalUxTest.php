@@ -130,7 +130,7 @@ class GraphicCustomerApprovalUxTest extends TestCase
         $revisionResponse->assertOk();
         $revisionResponse->assertSee('Revize İstendi');
         $revisionResponse->assertSee('Logo biraz yukari alin.');
-        $revisionResponse->assertSee('Revize istendi. Üretime hazır işaretlenemez.');
+        $revisionResponse->assertSee('graphic-step-panel-revision', false);
     }
 
     public function test_graphic_show_displays_approved_state_without_auto_production_ready_and_list_shows_customer_approval(): void

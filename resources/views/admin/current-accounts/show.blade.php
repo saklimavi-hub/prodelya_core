@@ -1,13 +1,13 @@
 @extends('layouts.prodelya-admin')
 
-@section('title', $account->safeDisplayName() . ' / Finansal Cari Hesap')
-@section('page_title', 'Finansal Cari Hesap')
-@section('page_subtitle', $account->safeDisplayName() . ' teknik finans omurgası ve bağlantı özetleri')
+@section('title', $account->safeDisplayName() . ' / Cari Bakiye Detayı')
+@section('page_title', 'Cari Bakiye Detayı')
+@section('page_subtitle', $account->safeDisplayName() . ' için finansal omurga ve ekstre bağlantı özeti')
 
 @section('page_actions')
 <div class="flex gap-3">
-    <a href="{{ route('admin.current-accounts.edit', $account) }}" class="pd-btn pd-btn-light">Düzenle</a>
-    <a href="{{ route('admin.current-accounts.index') }}" class="pd-btn pd-btn-primary">Listeye Dön</a>
+    <a href="{{ route('admin.companies.index') }}" class="pd-btn pd-btn-light">Cari Kartlar</a>
+    <a href="{{ route('admin.current-accounts.index') }}" class="pd-btn pd-btn-primary">Cari Bakiyeler</a>
 </div>
 @endsection
 
@@ -16,8 +16,8 @@
     <div>
         <div class="pd-card" style="margin-bottom: 14px;">
             <div class="pd-card-header">
-                <h3 class="pd-card-title">Üst Özet</h3>
-                <p class="pd-card-subtitle">Cari kimlik, roller ve güvenli bağlantılar.</p>
+                    <h3 class="pd-card-title">Üst Özet</h3>
+                    <p class="pd-card-subtitle">Cari omurga kaydı, bakiye özeti ve güvenli bağlantılar.</p>
             </div>
             <div class="pd-card-body">
                 <div class="pd-grid pd-grid-2">
@@ -146,7 +146,7 @@
                                     <div class="text-sm text-gray-600" style="margin-top: 4px;">{{ $linkedCompany->legal_name }}</div>
                                     <div class="text-sm text-gray-600" style="margin-top: 4px;">Firma Kaydı</div>
                                 </div>
-                                <a href="{{ route('admin.companies.show', $linkedCompany) }}" class="pd-btn pd-btn-light pd-btn-sm">Firma Kaydını Aç</a>
+                                <a href="{{ route('admin.companies.show', $linkedCompany) }}" class="pd-btn pd-btn-light pd-btn-sm">Cari Kartı Aç</a>
                             </div>
                         </div>
                     @endif
@@ -183,7 +183,7 @@
 
                 @if($account->hasRole(\App\Models\CurrentAccountRole::ROLE_SUPPLIER))
                     <div style="margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--pd-line);">
-                        <h4 class="pd-summary-section-title" style="margin-bottom: 10px;">Ürün/Data Kaynağı Bağlantısı</h4>
+                        <h4 class="pd-summary-section-title" style="margin-bottom: 10px;">Ürün Kaynağı Bağlantısı</h4>
                         <form method="POST" action="{{ route('admin.current-accounts.supplier-link.store', $account) }}">
                             @csrf
                             <div class="pd-grid pd-grid-2">
@@ -219,7 +219,7 @@
                                 <div class="text-sm text-gray-600">{{ $currencySummary['currency'] }}</div>
                                 <div style="margin-top: 8px;">Borç: <strong>{{ $currencySummary['debit_total_label'] }}</strong></div>
                                 <div style="margin-top: 6px;">Alacak: <strong>{{ $currencySummary['credit_total_label'] }}</strong></div>
-                                <div style="margin-top: 6px;">Bakiye: <strong>{{ $currencySummary['balance_label'] }}</strong></div>
+                                <div style="margin-top: 6px;">Bakiye: @include('admin.current-accounts._money-display', ['label' => $currencySummary['balance_label'], 'amount' => $currencySummary['balance'] ?? 0])</div>
                             </div>
                         @empty
                             <div class="pd-note">Henüz cari hareket kaydı yok.</div>
@@ -335,10 +335,9 @@
             </div>
             <div class="pd-card-body">
                 <div class="pd-summary-list">
-                    <a href="{{ route('admin.current-accounts.edit', $account) }}" class="pd-summary-item">Düzenle</a>
-                    <a href="{{ route('admin.current-accounts.index') }}" class="pd-summary-item">Listeye Dön</a>
+                    <a href="{{ route('admin.current-accounts.index') }}" class="pd-summary-item">Cari bakiyelere dön</a>
                     @if($linkedCompany)
-                        <a href="{{ route('admin.companies.show', $linkedCompany) }}" class="pd-summary-item">Firma kaydını aç</a>
+                        <a href="{{ route('admin.companies.show', $linkedCompany) }}" class="pd-summary-item">Cari kartı aç</a>
                     @endif
                 </div>
             </div>

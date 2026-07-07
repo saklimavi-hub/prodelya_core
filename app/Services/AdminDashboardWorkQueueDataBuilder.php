@@ -676,10 +676,10 @@ class AdminDashboardWorkQueueDataBuilder
                 'url' => route('admin.settings.company-profile.edit'),
             ],
             [
-                'title' => 'Müşteri / Cari ekle',
-                'description' => 'İlk tekliften önce en az bir müşteri ve cari kart açın.',
+                'title' => 'Cari kart ekle',
+                'description' => 'İlk tekliften önce en az bir cari kart açın.',
                 'status' => $customerReadiness,
-                'url' => route('admin.current-accounts.index'),
+                'url' => route('admin.companies.index'),
             ],
             [
                 'title' => 'Katalog durumunu kontrol et',
@@ -732,7 +732,7 @@ class AdminDashboardWorkQueueDataBuilder
             $this->readinessItem('Firma bilgileri', $this->companyProfileReady($tenant) ? 'Hazır' : 'Eksik', route('admin.settings.company-profile.edit')),
             $this->readinessItem('Panel adresi', $panelReady ? 'Hazır' : 'Eksik', route('admin.settings')),
             $this->readinessItem('Paket durumu', ($subscription['is_active'] || $subscription['is_trial']) ? 'Hazır' : 'Kontrol Gerekir', Route::has('admin.my-package.index') ? route('admin.my-package.index') : route('admin.settings')),
-            $this->readinessItem('Müşteri / Cari', $customerReadiness, route('admin.current-accounts.index')),
+            $this->readinessItem('Cari Kartlar', $customerReadiness, route('admin.companies.index')),
             $this->readinessItem('Katalog / Product Data Hub', $catalogSummary['status_label'], route('admin.catalog.index')),
             $this->readinessItem('Teklif Oluşturma', $quoteCreationReadiness, route('admin.promotion-quotes.create')),
             $this->readinessItem('Müşteri portalı', $portalEnabled ? 'Hazır' : ($portalModuleEnabled ? 'Kontrol Gerekir' : 'Pakette Yok'), route('admin.settings')),

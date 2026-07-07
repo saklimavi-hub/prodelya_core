@@ -8,6 +8,11 @@ use Illuminate\Support\Str;
 
 class CustomerPortalOrderDataBuilder
 {
+    public function __construct(
+        private readonly CustomerFacingPriceDisplayService $customerFacingPriceDisplayService,
+    ) {
+    }
+
     public function buildListRow(Order $order): array
     {
         return [
@@ -31,23 +36,39 @@ class CustomerPortalOrderDataBuilder
                 'order_date' => optional($order->created_at)->format('d.m.Y') ?: '-',
                 'status_label' => $this->humanizeStatus((string) $order->status),
                 'company_name' => $order->customer?->legal_name ?: '-',
+                'currency' => $order->currency ?: 'TL',
                 'note' => $this->sanitizeVisibleNote($order->notes),
                 'customer_message' => $this->customerFacingOrderMessage($order),
             ],
             'items' => $order->items->map(function ($item): array {
+                $customerFacing = $this->customerFacingPriceDisplayService->buildItem(
+                    $item,
+                    $item->order?->currency ?: 'TL'
+                );
+
                 return [
                     'product_name' => $item->product_name ?: '-',
                     'product_code' => $item->product_code ?: null,
                     'quantity' => $this->formatQuantity($item->quantity, $item->unit),
-                    'prints' => $item->prints->map(function ($print): array {
+                    'unit_price' => $customerFacing['customer_unit_price_label'],
+                    'line_total' => $customerFacing['customer_line_total_label'],
+                    'prints' => collect($customerFacing['prints'])->map(function (array $print): array {
                         return [
-                            'label' => trim($print->displayPrintType() . ' ' . ($print->print_option ?: '')),
-                            'quantity' => $this->formatQuantity($print->print_quantity, $print->orderItem?->unit),
-                            'note' => $this->sanitizeVisibleNote($print->note),
+                            'label' => trim(collect([$print['print_type'] ?? null, $print['print_option'] ?? null])->filter()->implode(' ')),
+                            'quantity' => $print['quantity_label'] ?? '-',
+                            'unit_price' => $print['unit_price_label'] ?? null,
+                            'line_total' => $print['total_label'] ?? null,
+                            'show_price_details' => (bool) ($print['show_price_details'] ?? false),
+                            'note' => $this->sanitizeVisibleNote($print['note'] ?? null),
                         ];
                     })->values()->all(),
                 ];
             })->values()->all(),
+            'totals' => [
+                'subtotal' => $this->formatMoney($order->subtotal, $order->currency),
+                'vat_total' => $this->formatMoney($order->vat_total, $order->currency),
+                'grand_total' => $this->formatMoney($order->grand_total, $order->currency),
+            ],
             'work_forms' => $order->workForms->map(function (OrderItemWorkForm $workForm) use ($trackingHelperUrls): array {
                 return [
                     'id' => $workForm->id,
@@ -171,6 +192,15 @@ class CustomerPortalOrderDataBuilder
         $formatted = rtrim(rtrim($formatted, '0'), ',');
 
         return trim($formatted . ' ' . ($unit ?: ''));
+    }
+
+    private function formatMoney(mixed $amount, ?string $currency): ?string
+    {
+        if ($amount === null || $amount === '') {
+            return null;
+        }
+
+        return number_format((float) $amount, 2, ',', '.') . ' ' . ($currency ?: 'TL');
     }
 
     private function sanitizeTrackingNumber(?string $trackingNumber): ?string

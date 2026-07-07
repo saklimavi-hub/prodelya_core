@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\CurrentAccount;
 use App\Models\CurrentAccountLink;
 use App\Models\CurrentAccountRole;
+use App\Models\CurrentAccountTransaction;
 use App\Models\Role;
 use App\Models\TenantAccount;
 use App\Models\TenantModule;
@@ -123,19 +124,24 @@ class CompanyCurrentAccountUnifiedUxTest extends TestCase
             'tax_number' => '1234567890',
             'status' => CurrentAccount::STATUS_ACTIVE,
         ])->save();
+        $this->createTransaction($linkedAccount);
+        $this->createTransaction($unlinkedAccount, CurrentAccountTransaction::STATUS_CLOSED);
 
         $response = $this->actingAs($this->owner, 'web')
-            ->get($this->tenantUrl('/admin/current-accounts'));
+            ->get($this->tenantUrl('/admin/current-accounts?tab=tumu'));
 
         $response->assertOk()
+            ->assertSee('Cari Bakiyeler')
+            ->assertSee('Cari Kartı Aç')
+            ->assertSee('Ekstre')
             ->assertSee('VKN / TCKN')
             ->assertDontSee('Vergi / Kimlik')
             ->assertSee($this->tenantUrl('/admin/companies/' . $company->id), false)
-            ->assertSee($this->tenantUrl('/admin/companies/' . $company->id . '/edit'), false)
-            ->assertDontSee($this->tenantUrl('/admin/current-accounts/' . $linkedAccount->id), false)
-            ->assertDontSee($this->tenantUrl('/admin/current-accounts/' . $linkedAccount->id . '/edit'), false)
+            ->assertSee($this->tenantUrl('/admin/current-accounts/' . $linkedAccount->id . '/transactions'), false)
+            ->assertDontSee('href="' . $this->tenantUrl('/admin/current-accounts/' . $linkedAccount->id) . '"', false)
             ->assertSee($this->tenantUrl('/admin/current-accounts/' . $unlinkedAccount->id), false)
-            ->assertSee($this->tenantUrl('/admin/current-accounts/' . $unlinkedAccount->id . '/edit'), false);
+            ->assertSee($this->tenantUrl('/admin/current-accounts/' . $unlinkedAccount->id . '/transactions'), false)
+            ->assertDontSee('Düzenle');
 
         $this->actingAs($this->owner, 'web')
             ->get($this->tenantUrl('/admin/current-accounts/create'))
@@ -150,17 +156,20 @@ class CompanyCurrentAccountUnifiedUxTest extends TestCase
             ->get($this->tenantUrl('/admin/companies/' . $company->id));
 
         $ownerResponse->assertOk()
-            ->assertSee('Cari Omurga Özeti')
+            ->assertSee('Genel Özet')
+            ->assertSee('Ekstre ve Ön Muhasebe')
             ->assertSee($account->safeDisplayName())
-            ->assertDontSee('Bakiye')
-            ->assertDontSee('Ödeme Detayı')
+            ->assertSee('Güncel Bakiye')
+            ->assertSee('Toplam Borç')
             ->assertSee($this->tenantUrl('/admin/current-accounts/' . $account->id . '/transactions'), false);
 
         $financeResponse = $this->actingAs($this->financeOwner, 'web')
             ->get($this->tenantUrl('/admin/companies/' . $company->id));
 
         $financeResponse->assertOk()
-            ->assertSee('Cari Omurga Özeti')
+            ->assertSee('Genel Özet')
+            ->assertSee('Ekstre ve Ön Muhasebe')
+            ->assertSee('Güncel Bakiye')
             ->assertSee($this->tenantUrl('/admin/current-accounts/' . $account->id . '/transactions'), false);
     }
 
@@ -212,6 +221,22 @@ class CompanyCurrentAccountUnifiedUxTest extends TestCase
         app(CurrentAccountSyncService::class)->syncRoles($account, [CurrentAccountRole::ROLE_SUPPLIER]);
 
         return $account->fresh(['roles', 'links', 'primaryCompanyLink']);
+    }
+
+    private function createTransaction(CurrentAccount $account, string $status = CurrentAccountTransaction::STATUS_OPEN): void
+    {
+        CurrentAccountTransaction::query()->create([
+            'tenant_account_id' => $account->tenant_account_id,
+            'current_account_id' => $account->id,
+            'transaction_type' => CurrentAccountTransaction::TYPE_CUSTOMER_DEBIT,
+            'source_type' => CurrentAccountTransaction::SOURCE_TYPE_MANUAL,
+            'direction' => CurrentAccountTransaction::DIRECTION_DEBIT,
+            'amount' => 100,
+            'currency' => 'TRY',
+            'transaction_date' => now()->toDateString(),
+            'status' => $status,
+            'description' => 'Unified UX liste testi',
+        ]);
     }
 
     private function enableCurrentAccounts(): void

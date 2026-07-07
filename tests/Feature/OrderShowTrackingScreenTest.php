@@ -41,31 +41,19 @@ class OrderShowTrackingScreenTest extends TestCase
         $response->assertOk();
         $response->assertSee($order->document_number);
         $response->assertSee((string) $order->customer?->legal_name);
-        $response->assertSee((string) $order->source_quote_number);
-        $response->assertSee('Sipariş Özeti');
-        $response->assertSee('Genel Durum');
-        $response->assertSee('Operasyon Durumu');
+        $response->assertSee('Genel Özet');
         $response->assertSee('İş Formu');
         $response->assertSee('Grafik');
         $response->assertSee('Tedarik');
         $response->assertSee('Üretim');
         $response->assertSee('Teslimat');
+        $response->assertSee('Finans');
         $response->assertSee(route('admin.work-forms.show', $order->workForms->first()), false);
         $response->assertSee(route('admin.graphics.show', $order->workForms->first()), false);
         $response->assertSee(route('admin.procurements.show', $order->procurements->first()), false);
         $response->assertSee(route('admin.productions.show', $order->printProductions->first()), false);
         $response->assertSee(route('admin.deliveries.show', $order->deliveries->first()), false);
-        $response->assertSee('Smoke Test Kalem');
-        $response->assertSee('SMOKE-001');
-        $response->assertSee('UV Baskı');
-        $response->assertSee('Lazer');
-        $response->assertSee('Baskı Detayları');
-        $response->assertSee('Genel Toplam');
-        $response->assertSee('Bakiye');
-        $response->assertSee('Finans');
         $response->assertSee(route('admin.finance.show', $order), false);
-        $response->assertDontSee('Grafik Görseli Ekle');
-        $response->assertDontSee('Tahsilat Kaydet');
         $response->assertDontSee('group_code', false);
         $response->assertDontSee('file_path', false);
         $response->assertDontSee('physical_path', false);
@@ -108,10 +96,8 @@ class OrderShowTrackingScreenTest extends TestCase
 
         $response->assertOk();
         $response->assertSee($order->document_number);
-        $response->assertDontSee('Genel Toplam');
-        $response->assertDontSee('Bakiye');
-        $response->assertDontSee('Ödenen');
-        $response->assertDontSee('Ödeme Durumu');
+        $response->assertDontSee('Müşteri Borcu');
+        $response->assertDontSee('Kalan Bakiye');
         $response->assertDontSee(route('admin.finance.show', $order), false);
         $response->assertDontSee('KDV');
         $response->assertDontSee('Tahsilat');
@@ -126,12 +112,12 @@ class OrderShowTrackingScreenTest extends TestCase
 
         $response = $this->actingAs($salesUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.orders.show', $order));
+            ->get(route('admin.orders.show', ['order' => $order, 'tab' => 'finans']));
 
         $response->assertOk();
-        $response->assertSee('Genel Toplam');
-        $response->assertSee('Ödenen');
-        $response->assertSee('Bakiye');
+        $response->assertSee('Müşteri Borcu');
+        $response->assertSee('Tahsil Edilen');
+        $response->assertSee('Kalan Bakiye');
         $response->assertSee(route('admin.finance.show', $order), false);
     }
 

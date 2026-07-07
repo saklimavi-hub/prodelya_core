@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
 class OrderItem extends Model
@@ -241,6 +242,11 @@ class OrderItem extends Model
     public function delivery()
     {
         return $this->hasOne(OrderItemWorkFormDelivery::class);
+    }
+
+    public function deliveryPackageItems(): HasMany
+    {
+        return $this->hasMany(OrderDeliveryPackageItem::class);
     }
 
     public function printProductions()

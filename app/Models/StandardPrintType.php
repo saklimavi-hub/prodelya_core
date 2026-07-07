@@ -45,6 +45,11 @@ class StandardPrintType extends Model
         return $this->hasMany(TenantPrintSetting::class);
     }
 
+    public function tenantPrintOptions(): HasMany
+    {
+        return $this->hasMany(TenantPrintOption::class);
+    }
+
     public function safeName(): string
     {
         return trim((string) ($this->name ?: $this->code ?: ('Baskı Tipi #' . $this->id)));

@@ -28,6 +28,9 @@ class GraphicVisualPreviewPasteUiTest extends TestCase
         parent::setUp();
 
         Storage::fake('public');
+        Storage::fake('local');
+        Storage::disk('public')->makeDirectory('work-forms');
+        Storage::disk('local')->makeDirectory('work-forms');
         $this->adminUser = User::query()->where('email', 'admin@prodelya.local')->firstOrFail();
     }
 
@@ -67,16 +70,10 @@ class GraphicVisualPreviewPasteUiTest extends TestCase
 
         $response->assertOk();
         $response->assertSee('https://example.test/previews/product-preview.png', false);
-        $response->assertSee('data-product-image-wrap', false);
         $response->assertSee('one-a-preview.jpg');
-        $response->assertSee('manual-proof.pdf');
-        $response->assertSee('PDF dosyası');
+        $response->assertSee('graphic-operation-tabs', false);
         $response->assertSee('data-lightbox-modal', false);
         $response->assertSee('data-lightbox-trigger', false);
-        $response->assertSee('data-paste-zone', false);
-        $response->assertSee('Ctrl + V ile ekran görüntüsü yapıştırın', false);
-        $response->assertSee('data-order-item-print-graphic-id="' . $graphics['1a']->id . '"', false);
-        $response->assertSee('data-order-item-print-graphic-id="' . $graphics['1b']->id . '"', false);
         $response->assertSee('İç Kayıt');
         $response->assertSee('Müşteriye Açık');
         $response->assertDontSee('file_path', false);
@@ -84,20 +81,23 @@ class GraphicVisualPreviewPasteUiTest extends TestCase
         $response->assertDontSee('group_code', false);
         $response->assertDontSee('price_snapshot', false);
 
-        $html = $response->getContent();
-        $oneACardStart = strpos($html, 'id="operation-' . $graphics['1a']->id . '"');
-        $oneBCardStart = strpos($html, 'id="operation-' . $graphics['1b']->id . '"');
+        $uploadStepResponse = $this->actingAs($this->adminUser)
+            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
+            ->get(route('admin.graphics.show', $workForm->fresh()) . '?operation=' . $graphics['1a']->id . '&step=upload');
 
-        $this->assertNotFalse($oneACardStart);
-        $this->assertNotFalse($oneBCardStart);
+        $uploadStepResponse->assertOk();
+        $uploadStepResponse->assertSee('data-paste-zone', false);
+        $uploadStepResponse->assertSee('Ctrl + V ile ekran görüntüsü yapıştırın', false);
+        $uploadStepResponse->assertSee('data-order-item-print-graphic-id="' . $graphics['1a']->id . '"', false);
 
-        $oneACardHtml = substr($html, $oneACardStart, max(0, $oneBCardStart - $oneACardStart));
-        $oneBCardHtml = substr($html, $oneBCardStart);
+        $pdfResponse = $this->actingAs($this->adminUser)
+            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
+            ->get(route('admin.graphics.show', $workForm->fresh()) . '?operation=' . $graphics['1b']->id . '&step=summary');
 
-        $this->assertStringContainsString('one-a-preview.jpg', $oneACardHtml);
-        $this->assertStringNotContainsString('manual-proof.pdf', $oneACardHtml);
-        $this->assertStringContainsString('manual-proof.pdf', $oneBCardHtml);
-        $this->assertStringNotContainsString('alt="manual-proof.pdf"', $oneBCardHtml);
+        $pdfResponse->assertOk();
+        $pdfResponse->assertSee('manual-proof.pdf');
+        $pdfResponse->assertSee('Müşteriye Açık');
+        $this->assertStringNotContainsString('alt="manual-proof.pdf"', $pdfResponse->getContent());
 
         $noImageWorkForm = $this->createConvertedWorkForm('PREVIEW-PASTE-002');
 
@@ -106,7 +106,7 @@ class GraphicVisualPreviewPasteUiTest extends TestCase
             ->get(route('admin.graphics.show', $noImageWorkForm));
 
         $noImageResponse->assertOk();
-        $noImageResponse->assertSee('Ürün Görseli');
+        $noImageResponse->assertSee('Ürün görseli henüz yok');
     }
 
     private function createConvertedWorkForm(string $productCode): OrderItemWorkForm

@@ -224,21 +224,37 @@ class PublicQuoteApprovalController extends Controller
     {
         $snapshot = (array) ($approvalRequest->sendSnapshot?->snapshot_json ?? []);
         $totals = (array) data_get($snapshot, 'totals', []);
+        $snapshotCurrency = data_get($snapshot, 'currency', $approvalRequest->quote?->currency ?: 'TL');
         $items = collect(data_get($snapshot, 'items', []))
-            ->map(function (array $item): array {
+            ->map(function (array $item) use ($snapshotCurrency, $snapshot): array {
+                $currency = data_get($item, 'currency', $snapshotCurrency);
+
                 return [
                     'product_name' => $item['product_name'] ?? '-',
                     'product_code' => $item['product_code'] ?? null,
                     'quantity' => $this->formatQuantity($item['quantity'] ?? 0, $item['unit'] ?? null),
-                    'line_total' => $this->formatMoney($item['line_total'] ?? null, data_get($item, 'currency')),
+                    'unit_price' => $this->formatMoney($item['customer_unit_price'] ?? null, $currency),
+                    'line_total' => $this->formatMoney($item['customer_line_total'] ?? ($item['line_total'] ?? null), $currency),
                     'print_lines' => collect($item['print_lines'] ?? [])
-                        ->map(fn (array $print): array => [
-                            'print_type' => $print['print_type'] ?? '-',
-                            'print_option' => $print['print_option'] ?? null,
-                            'print_quantity' => $this->formatQuantity($print['print_quantity'] ?? 0, $item['unit'] ?? null),
-                            'print_note' => $this->sanitizePublicText($print['print_note'] ?? null),
-                            'print_total' => $this->formatMoney($print['print_total'] ?? null, data_get($item, 'currency')),
-                        ])
+                        ->map(function (array $print) use ($item, $currency, $snapshot): array {
+                            $showPriceDetails = array_key_exists('show_price_details', $print)
+                                ? (bool) $print['show_price_details']
+                                : (bool) ($item['show_print_price_details'] ?? data_get($snapshot, 'show_print_price_details_to_customer', true));
+
+                            return [
+                                'print_type' => $print['print_type'] ?? '-',
+                                'print_option' => $print['print_option'] ?? null,
+                                'print_quantity' => $this->formatQuantity($print['print_quantity'] ?? 0, $item['unit'] ?? null),
+                                'print_note' => $this->sanitizePublicText($print['print_note'] ?? null),
+                                'print_unit_price' => $showPriceDetails
+                                    ? $this->formatMoney($print['print_unit_price'] ?? null, $currency)
+                                    : null,
+                                'print_total' => $showPriceDetails
+                                    ? $this->formatMoney($print['print_total'] ?? null, $currency)
+                                    : null,
+                                'show_price_details' => $showPriceDetails,
+                            ];
+                        })
                         ->all(),
                 ];
             })
@@ -262,21 +278,21 @@ class PublicQuoteApprovalController extends Controller
                 'customer_name' => data_get($snapshot, 'customer.name', $approvalRequest->contact_name ?: 'Müşteri'),
                 'quote_date' => $this->formatDate(data_get($snapshot, 'quote_date')),
                 'valid_until' => $this->formatDate(data_get($snapshot, 'valid_until')),
-                'currency' => data_get($snapshot, 'currency', $approvalRequest->quote?->currency ?: 'TL'),
+                'currency' => $snapshotCurrency,
                 'invoice_status' => data_get($snapshot, 'invoice_status', $approvalRequest->quote?->invoice_status),
             ],
             'items' => $items,
             'totals' => [
-                'product_total' => $this->formatMoney($totals['product_total'] ?? null, data_get($snapshot, 'currency', 'TL')),
-                'print_total' => $this->formatMoney($totals['print_total'] ?? null, data_get($snapshot, 'currency', 'TL')),
-                'subtotal' => $this->formatMoney($totals['subtotal'] ?? null, data_get($snapshot, 'currency', 'TL')),
-                'vat_total' => $this->formatMoney($totals['vat_total'] ?? null, data_get($snapshot, 'currency', 'TL')),
-                'grand_total' => $this->formatMoney($totals['grand_total'] ?? null, data_get($snapshot, 'currency', 'TL')),
+                'product_total' => $this->formatMoney($totals['product_total'] ?? null, $snapshotCurrency),
+                'print_total' => $this->formatMoney($totals['print_total'] ?? null, $snapshotCurrency),
+                'subtotal' => $this->formatMoney($totals['subtotal'] ?? null, $snapshotCurrency),
+                'vat_total' => $this->formatMoney($totals['vat_total'] ?? null, $snapshotCurrency),
+                'grand_total' => $this->formatMoney($totals['grand_total'] ?? null, $snapshotCurrency),
                 'vat_breakdown' => collect($totals['vat_breakdown'] ?? [])
                     ->filter(fn ($row) => is_array($row) && isset($row['rate'], $row['total']))
                     ->map(fn (array $row): array => [
                         'label' => 'KDV %' . rtrim(rtrim(number_format((float) $row['rate'], 2, ',', '.'), '0'), ','),
-                        'total' => $this->formatMoney($row['total'], data_get($snapshot, 'currency', 'TL')),
+                        'total' => $this->formatMoney($row['total'], $snapshotCurrency),
                     ])
                     ->values()
                     ->all(),

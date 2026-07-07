@@ -9,9 +9,13 @@ use App\Models\OrderItemProcurement;
 use App\Models\OrderItemPrint;
 use App\Models\OrderItemPrintProduction;
 use App\Models\OrderItemWorkForm;
+use App\Models\OrderDeliveryLabelBatch;
 use App\Models\Company;
 use App\Models\TenantAccount;
+use App\Services\DeliveryWorkflowService;
 use App\Services\NumberGenerationService;
+use App\Services\OrderDeliveryPlanningService;
+use App\Services\OrderCurrentAccountDebitSyncService;
 use App\Services\OrderListSummaryService;
 use App\Services\OrderShowSummaryService;
 use App\Services\Notifications\NotificationEventService;
@@ -32,8 +36,11 @@ class OrderController extends Controller
         protected TenantResolver $tenantResolver,
         protected NumberGenerationService $numberGenerationService,
         protected WorkFormCreationService $workFormCreationService,
+        protected OrderCurrentAccountDebitSyncService $orderCurrentAccountDebitSyncService,
         protected OrderListSummaryService $orderListSummaryService,
         protected OrderShowSummaryService $orderShowSummaryService,
+        protected OrderDeliveryPlanningService $orderDeliveryPlanningService,
+        protected DeliveryWorkflowService $deliveryWorkflowService,
         protected UsageLimitGuardService $usageLimitGuardService,
         protected NotificationEventService $notificationEventService
     ) {
@@ -292,6 +299,7 @@ class OrderController extends Controller
             'items.workForm',
             'items.delivery',
             'workForms',
+            'workForms.activityLogs.creator',
             'procurements',
             'printProductions',
             'deliveries',
@@ -299,8 +307,43 @@ class OrderController extends Controller
             'sourceQuote:id,document_number',
         ]);
 
+        if ($this->orderDeliveryPlanningService->supportsPlanningStorage()) {
+            $order->loadMissing([
+                'items.deliveryPackageItems',
+                'deliveryPackages.items.orderItem',
+                'deliveryLabelBatches',
+            ]);
+        }
+
         $canViewFinancialData = $request->user()?->canViewFinancialData($tenant->id) ?? false;
+
+        if ($canViewFinancialData) {
+            $this->orderCurrentAccountDebitSyncService->syncOrder(
+                $order->fresh(['customer.companyRoles', 'payments']),
+                $request->user()
+            );
+        }
+
         $screen = $this->orderShowSummaryService->build($order, $canViewFinancialData);
+        $receivableDebitTransaction = $canViewFinancialData
+            ? $this->orderCurrentAccountDebitSyncService->findExistingTransactionForOrder($order)
+            : null;
+        $customerCurrentAccount = $canViewFinancialData
+            ? $this->orderCurrentAccountDebitSyncService->resolveCurrentAccountForOrder($order)
+            : null;
+        $orderTabs = [
+            'genel' => 'Genel Özet',
+            'is-formu' => 'İş Formu',
+            'grafik' => 'Grafik',
+            'tedarik' => 'Tedarik',
+            'uretim' => 'Üretim',
+            'teslimat' => 'Teslimat',
+            'finans' => 'Finans',
+            'gecmis' => 'Geçmiş',
+        ];
+        $requestedTab = (string) $request->query('tab', 'genel');
+        $activeOrderTab = array_key_exists($requestedTab, $orderTabs) ? $requestedTab : 'genel';
+        $deliveryTab = $this->orderDeliveryPlanningService->buildContext($order);
 
         return view('admin.orders.show', [
             'order' => $order,
@@ -310,7 +353,130 @@ class OrderController extends Controller
             'itemRows' => $screen['item_rows'],
             'financialDataVisible' => $canViewFinancialData,
             'financeSummary' => $screen['finance'],
+            'financeOverview' => $screen['finance_overview'],
+            'receivableDebitTransaction' => $receivableDebitTransaction,
+            'customerCurrentAccount' => $customerCurrentAccount,
+            'orderTabs' => $orderTabs,
+            'activeOrderTab' => $activeOrderTab,
+            'deliveryTab' => $deliveryTab,
         ]);
+    }
+
+    public function storeDeliveryPackages(Request $request, Order $order): RedirectResponse
+    {
+        $tenant = $this->tenantResolver->getCurrentTenant($request);
+
+        if (! $tenant || (int) $order->tenant_account_id !== (int) $tenant->id || $order->document_type !== 'order') {
+            abort(403);
+        }
+
+        $validated = $request->validate([
+            'packages' => ['required', 'array', 'min:1'],
+            'packages.*.package_label' => ['nullable', 'string', 'max:120'],
+            'packages.*.package_type' => ['nullable', 'string', 'max:40'],
+            'packages.*.notes' => ['nullable', 'string', 'max:500'],
+            'packages.*.items' => ['required', 'array', 'min:1'],
+            'packages.*.items.*.order_item_id' => ['required', 'integer'],
+            'packages.*.items.*.quantity' => ['required', 'numeric', 'gt:0'],
+        ]);
+
+        $this->orderDeliveryPlanningService->storePackages($order, $validated['packages'], $request->user());
+
+        return redirect()
+            ->to(route('admin.orders.show', ['order' => $order, 'tab' => 'teslimat']))
+            ->with('success', 'Koli planı kaydedildi.');
+    }
+
+    public function storeDeliveryLabels(Request $request, Order $order): RedirectResponse
+    {
+        $tenant = $this->tenantResolver->getCurrentTenant($request);
+
+        if (! $tenant || (int) $order->tenant_account_id !== (int) $tenant->id || $order->document_type !== 'order') {
+            abort(403);
+        }
+
+        $validated = $request->validate([
+            'template_type' => ['required', 'string', 'max:40'],
+            'roll_width_mm' => ['nullable', 'numeric', 'gt:0'],
+            'roll_height_mm' => ['nullable', 'numeric', 'gt:0'],
+            'roll_gap_mm' => ['nullable', 'numeric', 'gte:0'],
+        ]);
+
+        $this->orderDeliveryPlanningService->createLabelBatch($order, $validated, $request->user());
+
+        return redirect()
+            ->to(route('admin.orders.show', ['order' => $order, 'tab' => 'teslimat']))
+            ->with('success', 'Etiket partisi hazırlandı.');
+    }
+
+    public function updateDeliveryInfo(Request $request, Order $order): RedirectResponse
+    {
+        $tenant = $this->tenantResolver->getCurrentTenant($request);
+
+        if (! $tenant || (int) $order->tenant_account_id !== (int) $tenant->id || $order->document_type !== 'order') {
+            abort(403);
+        }
+
+        $validated = $request->validate([
+            'delivery_type' => ['nullable', 'string', 'max:120'],
+            'delivery_method' => ['nullable', 'string', 'max:40'],
+            'recipient_name' => ['nullable', 'string', 'max:120'],
+            'recipient_phone' => ['nullable', 'string', 'max:40'],
+            'delivery_document_no' => ['nullable', 'string', 'max:160'],
+            'tracking_number' => ['nullable', 'string', 'max:120'],
+            'carrier_name' => ['nullable', 'string', 'max:120'],
+            'delivery_note' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $this->orderDeliveryPlanningService->updateDeliveryInfo($order, $validated, $request->user());
+
+        return redirect()
+            ->to(route('admin.orders.show', ['order' => $order, 'tab' => 'teslimat']))
+            ->with('success', 'Teslim bilgisi kaydedildi.');
+    }
+
+    public function completeDelivery(Request $request, Order $order): RedirectResponse
+    {
+        $tenant = $this->tenantResolver->getCurrentTenant($request);
+
+        if (! $tenant || (int) $order->tenant_account_id !== (int) $tenant->id || $order->document_type !== 'order') {
+            abort(403);
+        }
+
+        $validated = $request->validate([
+            'delivery_method' => ['nullable', 'string', 'max:40'],
+            'recipient_name' => ['nullable', 'string', 'max:120'],
+            'delivery_document_no' => ['nullable', 'string', 'max:160'],
+            'tracking_number' => ['nullable', 'string', 'max:120'],
+            'carrier_name' => ['nullable', 'string', 'max:120'],
+            'delivery_note' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $this->orderDeliveryPlanningService->completeDelivery($order, $validated, $request->user());
+
+        return redirect()
+            ->to(route('admin.orders.show', ['order' => $order, 'tab' => 'teslimat']))
+            ->with('success', 'Teslimat tamamlandı. Sipariş operasyon akışından çıkarıldı.');
+    }
+
+    public function printDeliveryLabels(Request $request, Order $order): View
+    {
+        $tenant = $this->tenantResolver->getCurrentTenant($request);
+
+        if (! $tenant || (int) $order->tenant_account_id !== (int) $tenant->id || $order->document_type !== 'order') {
+            abort(403);
+        }
+
+        $batchId = (int) $request->query('batch', 0);
+        $batch = $batchId > 0 && $this->orderDeliveryPlanningService->supportsPlanningStorage()
+            ? OrderDeliveryLabelBatch::query()
+                ->where('tenant_account_id', $tenant->id)
+                ->where('order_id', $order->id)
+                ->whereKey($batchId)
+                ->firstOrFail()
+            : null;
+
+        return view('admin.orders.delivery-labels-print', $this->orderDeliveryPlanningService->buildPrintData($order, $batch));
     }
 
     public function openTracking(Request $request, Order $order, OrderItemWorkForm $workForm): RedirectResponse
@@ -469,6 +635,8 @@ class OrderController extends Controller
                 'valid_until' => $quote->valid_until,
                 'invoice_status' => $quote->invoice_status,
                 'delivery_type' => $quote->delivery_type,
+                'delivery_type_id' => $quote->delivery_type_id,
+                'show_print_price_details_to_customer' => $quote->shouldShowPrintPriceDetailsToCustomer(),
                 'notes' => $quote->notes,
                 'currency' => $quote->currency,
                 'subtotal' => $quote->subtotal,
@@ -517,6 +685,7 @@ class OrderController extends Controller
                         'order_item_id' => $newItem->id,
                         'tenant_print_setting_id' => $quotePrint->tenant_print_setting_id,
                         'standard_print_type_id' => $quotePrint->standard_print_type_id,
+                        'tenant_print_option_id' => $quotePrint->tenant_print_option_id,
                         'print_type' => $quotePrint->print_type,
                         'print_option' => $quotePrint->print_option,
                         'print_location' => $quotePrint->print_location,
@@ -525,6 +694,13 @@ class OrderController extends Controller
                         'print_color' => $quotePrint->print_color,
                         'print_size' => $quotePrint->print_size,
                         'cliche_status' => $quotePrint->cliche_status,
+                        'setup_pricing_enabled' => $quotePrint->setup_pricing_enabled,
+                        'setup_type' => $quotePrint->setup_type,
+                        'setup_status' => $quotePrint->setup_status,
+                        'setup_total_amount' => $quotePrint->setup_total_amount,
+                        'setup_distribution_quantity' => $quotePrint->setup_distribution_quantity,
+                        'setup_unit_amount' => $quotePrint->setup_unit_amount,
+                        'base_print_unit_price' => $quotePrint->base_print_unit_price,
                         'print_quantity' => $quotePrint->print_quantity,
                         'print_unit_price' => $quotePrint->print_unit_price,
                         'print_total' => $quotePrint->print_total,
@@ -545,6 +721,7 @@ class OrderController extends Controller
             ]);
 
             $this->workFormCreationService->createForOrder($order, Auth::user());
+            $this->orderCurrentAccountDebitSyncService->syncOrder($order->fresh(['customer.companyRoles', 'payments']), Auth::user());
 
             $quote->update([
                 'workflow_status' => 'quote_converted',

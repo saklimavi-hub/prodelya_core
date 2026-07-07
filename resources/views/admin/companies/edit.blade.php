@@ -174,9 +174,55 @@
 </style>
 
 <div class="company-edit-shell space-y-6">
+    @php
+        $selectedRoles = old('roles', $company->getRoleKeys());
+        $hasTaxInfo = filled(old('tax_number', $company->tax_number));
+        $hasContactInfo = filled(old('phone', $company->phone)) || filled(old('email', $company->email)) || filled(old('mobile', $company->mobile));
+        $showSupplierMapping = in_array('supplier', $selectedRoles, true);
+        $fieldMeta = [
+            'identity_type' => ['section' => 'Cari Kimliği', 'label' => 'Cari Tipi'],
+            'legal_name' => ['section' => 'Cari Kimliği', 'label' => 'Cari / Firma Adı'],
+            'short_name' => ['section' => 'Cari Kimliği', 'label' => 'Kısa Ad'],
+            'status' => ['section' => 'Cari Kimliği', 'label' => 'Durum'],
+            'risk_status' => ['section' => 'Cari Kimliği', 'label' => 'Risk Durumu'],
+            'tax_number' => ['section' => 'İletişim ve Resmi Bilgiler', 'label' => 'VKN / TCKN'],
+            'tax_office' => ['section' => 'İletişim ve Resmi Bilgiler', 'label' => 'Vergi Dairesi'],
+            'email' => ['section' => 'İletişim ve Resmi Bilgiler', 'label' => 'E-posta'],
+            'phone' => ['section' => 'İletişim ve Resmi Bilgiler', 'label' => 'Normal Telefon'],
+            'mobile' => ['section' => 'İletişim ve Resmi Bilgiler', 'label' => 'WhatsApp Cep Telefonu'],
+            'website' => ['section' => 'İletişim ve Resmi Bilgiler', 'label' => 'Web Sitesi'],
+            'notes' => ['section' => 'İletişim ve Resmi Bilgiler', 'label' => 'Resmi / İç Not'],
+            'roles' => ['section' => 'Cari Rolleri', 'label' => 'Cari Rolleri'],
+            'supplier_id' => ['section' => 'Cari Rolleri', 'label' => 'Hazır ürün kaynağı'],
+            'portal_enabled' => ['section' => 'Durum ve Ayarlar', 'label' => 'Portal erişimi'],
+        ];
+        $errorSummaryLines = collect($errors->getMessages())
+            ->except('error')
+            ->flatMap(function (array $messages, string $field) use ($fieldMeta) {
+                $meta = $fieldMeta[\Illuminate\Support\Str::before($field, '.')] ?? ['section' => 'Form', 'label' => 'Bu alan'];
+                $message = trim((string) ($messages[0] ?? ''));
+
+                if ($message === '') {
+                    return [];
+                }
+
+                return [$meta['section'] . ': ' . $meta['label'] . ' alanı eksik veya hatalı.'];
+            })
+            ->unique()
+            ->values();
+    @endphp
+
     @if($errors->any())
         <div class="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-            Formu kaydetmeden önce işaretli alanları kontrol ediniz.
+            <div class="font-semibold">Lütfen aşağıdaki alanları kontrol edin:</div>
+            <ul class="mt-2 list-disc pl-5">
+                @foreach($errorSummaryLines as $line)
+                    <li>{{ $line }}</li>
+                @endforeach
+                @foreach($errors->get('error') as $message)
+                    <li>{{ $message }}</li>
+                @endforeach
+            </ul>
         </div>
     @endif
 
@@ -193,6 +239,48 @@
         $hasTaxInfo = filled(old('tax_number', $company->tax_number));
         $hasContactInfo = filled(old('phone', $company->phone)) || filled(old('email', $company->email)) || filled(old('mobile', $company->mobile));
         $showSupplierMapping = in_array('supplier', $selectedRoles, true);
+        $fieldMeta = [
+            'identity_type' => ['section' => 'Cari Kimliği', 'label' => 'Cari Tipi'],
+            'legal_name' => ['section' => 'Cari Kimliği', 'label' => 'Cari / Firma Adı'],
+            'short_name' => ['section' => 'Cari Kimliği', 'label' => 'Kısa Ad'],
+            'status' => ['section' => 'Cari Kimliği', 'label' => 'Durum'],
+            'risk_status' => ['section' => 'Cari Kimliği', 'label' => 'Risk Durumu'],
+            'tax_number' => ['section' => 'İletişim ve Resmi Bilgiler', 'label' => 'VKN / TCKN'],
+            'tax_office' => ['section' => 'İletişim ve Resmi Bilgiler', 'label' => 'Vergi Dairesi'],
+            'email' => ['section' => 'İletişim ve Resmi Bilgiler', 'label' => 'E-posta'],
+            'phone' => ['section' => 'İletişim ve Resmi Bilgiler', 'label' => 'Normal Telefon'],
+            'mobile' => ['section' => 'İletişim ve Resmi Bilgiler', 'label' => 'WhatsApp Cep Telefonu'],
+            'website' => ['section' => 'İletişim ve Resmi Bilgiler', 'label' => 'Web Sitesi'],
+            'notes' => ['section' => 'İletişim ve Resmi Bilgiler', 'label' => 'Resmi / İç Not'],
+            'roles' => ['section' => 'Cari Rolleri', 'label' => 'Cari Rolleri'],
+            'supplier_id' => ['section' => 'Cari Rolleri', 'label' => 'Hazır ürün kaynağı'],
+            'portal_enabled' => ['section' => 'Durum ve Ayarlar', 'label' => 'Portal erişimi'],
+        ];
+        $errorSummaryLines = collect($errors->getMessages())
+            ->except('error')
+            ->flatMap(function (array $messages, string $field) use ($fieldMeta) {
+                $meta = $fieldMeta[\Illuminate\Support\Str::before($field, '.')] ?? ['section' => 'Form', 'label' => 'Bu alan'];
+                $message = trim((string) ($messages[0] ?? ''));
+
+                if ($message === '') {
+                    return [];
+                }
+
+                return [$meta['section'] . ': ' . $meta['label'] . ' alanı eksik veya hatalı.'];
+            })
+            ->unique()
+            ->values();
+        $sectionErrors = [
+            'identity' => $errors->hasAny(['identity_type', 'legal_name', 'short_name', 'status', 'risk_status']),
+            'contact' => $errors->hasAny(['tax_number', 'tax_office', 'email', 'phone', 'mobile', 'website', 'notes']),
+            'roles' => $errors->hasAny(['roles', 'roles.*', 'supplier_id']),
+            'settings' => $errors->has('portal_enabled'),
+        ];
+        $summaryMissingDetails = collect([
+            ! $hasTaxInfo ? 'Vergi bilgisi: VKN / TCKN eksik' : null,
+            ! filled(old('tax_office', $company->tax_office)) && $showSupplierMapping ? 'Vergi bilgisi: Vergi Dairesi eksik' : null,
+            ! $hasContactInfo ? 'İletişim durumu: E-posta veya telefon bilgisi eksik' : null,
+        ])->filter()->values();
     @endphp
 
     <form method="POST" action="{{ route('admin.companies.update', $company) }}">
@@ -208,7 +296,12 @@
                                 <h3 class="text-lg font-semibold text-gray-900">Cari Kimliği</h3>
                                 <p class="mt-1 text-sm text-gray-600">Cari adı, resmi unvan görünümü ve sınıflandırma bilgilerini kompakt düzende güncelleyin.</p>
                             </div>
-                            <span class="company-edit-chip">Tenant: {{ $currentTenantForLayout?->name ?? 'Aktif Tenant' }}</span>
+                            <div class="flex flex-wrap gap-2">
+                                @if($sectionErrors['identity'])
+                                    <span class="company-edit-chip" style="background:#fef3c7;color:#92400e;">Eksik bilgi var</span>
+                                @endif
+                                <span class="company-edit-chip">Aktif Çalışma Alanı: {{ $currentTenantForLayout?->name ?? 'Aktif Tenant' }}</span>
+                            </div>
                         </div>
 
                         <div class="company-edit-grid">
@@ -264,6 +357,9 @@
                                 <h3 class="text-lg font-semibold text-gray-900">İletişim ve Resmi Bilgiler</h3>
                                 <p class="mt-1 text-sm text-gray-600">İletişim alanlarını ve vergi kimliğini daha sade, resmi kullanım odaklı blokta yönetin.</p>
                             </div>
+                            @if($sectionErrors['contact'])
+                                <span class="company-edit-chip" style="background:#fef3c7;color:#92400e;">Eksik bilgi var</span>
+                            @endif
                         </div>
 
                         <div class="company-edit-grid">
@@ -284,13 +380,18 @@
                                 @error('email')<div class="company-edit-error">{{ $message }}</div>@enderror
                             </div>
                             <div class="company-edit-third">
-                                <label for="phone" class="company-edit-label">Telefon</label>
-                                <input id="phone" name="phone" type="text" value="{{ old('phone', $company->phone) }}" class="company-edit-input">
+                                <label for="phone" class="company-edit-label">Normal Telefon</label>
+                                <input id="phone" name="phone" type="text" value="{{ old('phone', $company->phone) }}" class="company-edit-input" placeholder="0212 xxx xx xx">
+                                <div class="company-edit-help">Sabit hat veya WhatsApp dışı iletişim numarası.</div>
                                 @error('phone')<div class="company-edit-error">{{ $message }}</div>@enderror
                             </div>
                             <div class="company-edit-third">
-                                <label for="mobile" class="company-edit-label">Mobil</label>
-                                <input id="mobile" name="mobile" type="text" value="{{ old('mobile', $company->mobile) }}" class="company-edit-input">
+                                <label for="mobile" class="company-edit-label">WhatsApp Cep Telefonu</label>
+                                <div style="display:flex; align-items:center; border:1px solid #d0d5dd; border-radius:10px; overflow:hidden; background:#fff;">
+                                    <span style="display:inline-flex; align-items:center; gap:8px; padding:0 12px; min-height:44px; background:#f8fafc; border-right:1px solid #e4e7ec; color:#344054; font-size:13px; white-space:nowrap;">🇹🇷 +90</span>
+                                    <input id="mobile" name="mobile" type="text" value="{{ app(\App\Services\PhoneNumberNormalizer::class)->formatTurkishPhoneForDisplay(old('mobile', $company->mobile)) ?: old('mobile', $company->mobile) }}" class="company-edit-input" placeholder="5xx xxx xx xx" style="border:0; border-radius:0; box-shadow:none;">
+                                </div>
+                                <div class="company-edit-help">WhatsApp gönderimleri için kullanılır. Türkiye numarası 05xx veya 5xx xxx xx xx formatında girilebilir.</div>
                                 @error('mobile')<div class="company-edit-error">{{ $message }}</div>@enderror
                             </div>
                             <div class="company-edit-third">
@@ -314,6 +415,9 @@
                                 <h3 class="text-lg font-semibold text-gray-900">Cari Rolleri</h3>
                                 <p class="mt-1 text-sm text-gray-600">Rol kartları daha kompakt ve hizalı görünür. Birden fazla rol aktif olabilir.</p>
                             </div>
+                            @if($sectionErrors['roles'])
+                                <span class="company-edit-chip" style="background:#fef3c7;color:#92400e;">Eksik bilgi var</span>
+                            @endif
                         </div>
 
                         <div class="company-edit-role-grid">
@@ -365,6 +469,9 @@
                                 <h3 class="text-lg font-semibold text-gray-900">Durum ve Ayarlar</h3>
                                 <p class="mt-1 text-sm text-gray-600">Portal erişimi, operasyon notları ve kayıt durumunu tek blokta yönetin.</p>
                             </div>
+                            @if($sectionErrors['settings'])
+                                <span class="company-edit-chip" style="background:#fef3c7;color:#92400e;">Eksik bilgi var</span>
+                            @endif
                         </div>
 
                         <div class="company-edit-grid">
@@ -419,6 +526,17 @@
                                 <strong class="text-sm text-slate-900">{{ count($selectedRoles) }}</strong>
                             </div>
                         </div>
+
+                        @if($summaryMissingDetails->isNotEmpty())
+                            <div class="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                                <div class="font-semibold">Eksik alan özeti</div>
+                                <ul class="mt-2 list-disc pl-5">
+                                    @foreach($summaryMissingDetails as $detail)
+                                        <li>{{ $detail }}</li>
+                                    @endforeach
+                                </ul>
+                            </div>
+                        @endif
 
                         <div class="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
                             Bu ekran müşteri/cari kart içindir. Tenant firma profili ayrı ayarlar ekranında yönetilir.

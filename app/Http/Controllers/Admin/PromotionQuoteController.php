@@ -3,11 +3,16 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\CompanyContact;
+use App\Models\CompanyRole;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\OrderItemPrint;
 use App\Models\Company;
+use App\Models\CurrentAccountLink;
+use App\Models\NotificationLog;
 use App\Models\TenantAccount;
+use App\Models\TenantPrintOption;
 use App\Models\TenantPrintSetting;
 use App\Models\StandardProduct;
 use App\Models\StandardProductVariant;
@@ -16,19 +21,25 @@ use App\Models\SupplierSource;
 use App\Models\TenantCatalogProduct;
 use App\Models\TenantCatalogProductVariant;
 use App\Services\ModuleFeatureCatalogService;
+use App\Services\CurrentAccountSyncService;
 use App\Services\ProductDataHub\ProductHubSellableTruthService;
 use App\Services\ProductDataHub\SupplierWarningLabelService;
 use App\Services\PromotionQuotePdfService;
 use App\Services\Notifications\TenantNotificationSettingsService;
 use App\Services\Notifications\TenantWhatsappLinkService;
 use App\Services\TenantAccessService;
+use App\Services\TenantDeliveryTypeService;
 use App\Services\TenantResolver;
 use App\Services\NumberGenerationService;
+use App\Services\PrintSetupUnitDistributionService;
 use App\Services\QuoteApprovalService;
+use App\Services\TenantPrintOptionService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
@@ -44,11 +55,15 @@ class PromotionQuoteController extends Controller
         protected QuoteApprovalService $quoteApprovalService,
         protected ModuleFeatureCatalogService $moduleFeatureCatalog,
         protected UsageLimitGuardService $usageLimitGuardService,
+        protected CurrentAccountSyncService $currentAccountSyncService,
         protected TenantWhatsappLinkService $tenantWhatsappLinkService,
         protected TenantNotificationSettingsService $tenantNotificationSettingsService,
         protected TenantAccessService $tenantAccessService,
+        protected TenantDeliveryTypeService $tenantDeliveryTypeService,
         protected SupplierWarningLabelService $supplierWarningLabelService,
         protected ProductHubSellableTruthService $sellableTruthService,
+        protected PrintSetupUnitDistributionService $printSetupUnitDistributionService,
+        protected TenantPrintOptionService $tenantPrintOptionService,
     ) {}
 
     /**
@@ -101,6 +116,18 @@ class PromotionQuoteController extends Controller
         return $this->resolveInvoiceStatus($invoiceStatus) === 'fatura'
             ? 'taxable'
             : 'none';
+    }
+
+    private function resolveShowPrintPriceDetailsToCustomer(array $validated, ?Order $quote = null): bool
+    {
+        if (array_key_exists('show_print_price_details_to_customer', $validated)) {
+            return filter_var(
+                $validated['show_print_price_details_to_customer'],
+                FILTER_VALIDATE_BOOL
+            );
+        }
+
+        return $quote?->shouldShowPrintPriceDetailsToCustomer() ?? true;
     }
 
     private function isConvertedQuote(Order $quote): bool
@@ -352,6 +379,122 @@ class PromotionQuoteController extends Controller
             ->all();
     }
 
+    private function buildNotificationLogRows(Order $quote): array
+    {
+        return NotificationLog::query()
+            ->where('tenant_account_id', $quote->tenant_account_id)
+            ->where('related_type', $quote->getMorphClass())
+            ->where('related_id', $quote->id)
+            ->whereIn('notification_key', ['quote_sent_to_customer', 'whatsapp_manual_link'])
+            ->latest('id')
+            ->limit(6)
+            ->get()
+            ->map(function (NotificationLog $log): array {
+                $recipient = $log->recipient_name
+                    ?: $log->recipient_email
+                    ?: $log->recipient_phone
+                    ?: $log->safeAudienceLabel();
+
+                if (filled($log->recipient_email)) {
+                    $recipient = $this->maskEmail($log->recipient_email);
+                } elseif (filled($log->recipient_phone)) {
+                    $recipient = $this->maskPhone($log->recipient_phone);
+                }
+
+                $detail = match ($log->status) {
+                    NotificationLog::STATUS_PREVIEW => 'Bu ortamda güvenli e-posta önizlemesi oluşturuldu.',
+                    NotificationLog::STATUS_LINK_CREATED => 'Hazır bağlantı oluşturuldu.',
+                    NotificationLog::STATUS_SKIPPED => $log->safeDisplayError() ?: 'Alıcı bilgisi veya kanal ayarı eksik olduğu için gönderim atlandı.',
+                    NotificationLog::STATUS_SENT => $log->safeDisplayPreview() ?: 'Gönderim kaydı başarıyla oluşturuldu.',
+                    NotificationLog::STATUS_FAILED => $log->safeDisplayError() ?: 'Gönderim sırasında kısa süreli bir hata oluştu.',
+                    default => $log->safeDisplayPreview() ?: $log->safeDisplayError() ?: 'Kayıt oluşturuldu.',
+                };
+
+                return [
+                    'date' => optional($log->created_at)->format('d.m.Y H:i'),
+                    'channel' => $log->safeChannelLabel(),
+                    'status' => $log->safeStatusLabel(),
+                    'recipient' => $recipient ?: '-',
+                    'detail' => Str::limit((string) $detail, 180),
+                ];
+            })
+            ->all();
+    }
+
+    private function buildSendNotificationSummary(Order $quote): array
+    {
+        $logs = NotificationLog::query()
+            ->where('tenant_account_id', $quote->tenant_account_id)
+            ->where('related_type', $quote->getMorphClass())
+            ->where('related_id', $quote->id)
+            ->whereIn('notification_key', ['quote_sent_to_customer', 'whatsapp_manual_link'])
+            ->latest('id')
+            ->get();
+
+        $emailLog = $logs
+            ->first(fn (NotificationLog $log) => $log->notification_key === 'quote_sent_to_customer' && $log->channel === NotificationLog::CHANNEL_EMAIL);
+        $whatsappLog = $logs
+            ->first(fn (NotificationLog $log) => in_array($log->notification_key, ['quote_sent_to_customer', 'whatsapp_manual_link'], true) && $log->channel === NotificationLog::CHANNEL_WHATSAPP_LINK);
+        $internalLog = $logs
+            ->first(fn (NotificationLog $log) => $log->notification_key === 'quote_sent_to_customer' && $log->channel === NotificationLog::CHANNEL_INTERNAL);
+
+        return [
+            'email' => $this->mapNotificationSummaryRow($emailLog, 'Henüz oluşturulmadı'),
+            'whatsapp' => $this->mapNotificationSummaryRow($whatsappLog, 'Henüz oluşturulmadı'),
+            'internal' => $this->mapNotificationSummaryRow($internalLog, 'Henüz oluşturulmadı'),
+        ];
+    }
+
+    private function mapNotificationSummaryRow(?NotificationLog $log, string $missingLabel): array
+    {
+        if (! $log) {
+            return [
+                'status' => $missingLabel,
+                'helper' => null,
+                'created_at' => null,
+                'status_code' => null,
+            ];
+        }
+
+        $helper = match ($log->status) {
+            NotificationLog::STATUS_PREVIEW => 'Bu ortamda dış e-posta yerine güvenli önizleme kaydı tutulur.',
+            NotificationLog::STATUS_LINK_CREATED => 'Hazır mesaj veya onay bağlantısı güvenli link olarak oluşturuldu.',
+            NotificationLog::STATUS_SKIPPED => $log->safeDisplayError() ?: 'Bu kanal için alıcı bilgisi veya ayar eksik olduğu için kayıt atlandı.',
+            NotificationLog::STATUS_SENT => 'Operasyon kaydı oluşturuldu.',
+            NotificationLog::STATUS_FAILED => $log->safeDisplayError() ?: 'Gönderim denenirken hata oluştu.',
+            default => $log->safeDisplayError(),
+        };
+
+        return [
+            'status' => $log->safeStatusLabel(),
+            'helper' => $helper,
+            'created_at' => $log->created_at,
+            'status_code' => $log->status,
+        ];
+    }
+
+    private function buildSendSuccessMessage(Order $quote): string
+    {
+        $summary = $this->buildSendNotificationSummary($quote);
+        $segments = ['Gönderim kaydı oluşturuldu.'];
+
+        if (($summary['email']['status_code'] ?? null) === NotificationLog::STATUS_PREVIEW) {
+            $segments[] = 'E-posta bu ortamda önizleme olarak kaydedildi.';
+        } elseif (($summary['email']['status_code'] ?? null) === NotificationLog::STATUS_SKIPPED) {
+            $segments[] = 'E-posta kaydı alıcı bilgisi veya ayar eksikliği nedeniyle atlandı.';
+        }
+
+        if ($quote->latestQuoteApprovalRequest && ! $quote->latestQuoteApprovalRequest->isCancelled()) {
+            $segments[] = 'Public onay linki hazır.';
+        }
+
+        if (($summary['whatsapp']['status_code'] ?? null) === NotificationLog::STATUS_LINK_CREATED) {
+            $segments[] = 'WhatsApp hazır mesaj linki üretildi.';
+        }
+
+        return implode(' ', $segments);
+    }
+
     private function buildQuoteVatSummaryRows(Order $quote): array
     {
         if ($quote->invoice_status !== 'fatura' || (float) $quote->vat_total <= 0) {
@@ -549,7 +692,12 @@ class PromotionQuoteController extends Controller
         return ['UV Baskı', 'Serigrafi', 'Tampon Baskı', 'Lazer', 'DTF', 'Sublimasyon', 'Dijital Baskı', 'Transfer Baskı', 'Nakış', 'Etiket / Sticker', 'Sıcak Baskı', 'Diğer'];
     }
 
-    private function buildTenantPrintSettingsPayload(int $tenantId, bool $canViewFinancialData, array $includeSettingIds = []): array
+    private function buildTenantPrintSettingsPayload(
+        int $tenantId,
+        bool $canViewFinancialData,
+        array $includeSettingIds = [],
+        array $includeOptionIds = []
+    ): array
     {
         $includeSettingIds = collect($includeSettingIds)
             ->filter(fn ($id) => filled($id))
@@ -579,7 +727,25 @@ class PromotionQuoteController extends Controller
             ])
             ->values();
 
-        return $settings->map(function (TenantPrintSetting $setting) use ($canViewFinancialData): array {
+        $settings->each(fn (TenantPrintSetting $setting) => $this->tenantPrintOptionService->ensureDefaultsForSetting($setting));
+
+        $optionsBySetting = TenantPrintOption::query()
+            ->where('tenant_account_id', $tenantId)
+            ->whereIn('tenant_print_setting_id', $settings->pluck('id'))
+            ->where(function ($query) use ($includeOptionIds): void {
+                $query->where('is_active', true);
+
+                if (!empty($includeOptionIds)) {
+                    $query->orWhereIn('id', collect($includeOptionIds)->map(fn ($id) => (int) $id)->all());
+                }
+            })
+            ->orderByDesc('is_default')
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get()
+            ->groupBy('tenant_print_setting_id');
+
+        return $settings->map(function (TenantPrintSetting $setting) use ($canViewFinancialData, $optionsBySetting): array {
             $payload = [
                 'id' => $setting->id,
                 'display_name' => $setting->displayName(),
@@ -594,6 +760,26 @@ class PromotionQuoteController extends Controller
                 'default_subcontractor_company_name' => $setting->defaultSubcontractorCompany?->legal_name,
                 'is_active' => (bool) $setting->is_active,
                 'standard_status' => $setting->standardPrintType?->status,
+                'options' => ($optionsBySetting->get($setting->id) ?? collect())->map(function (TenantPrintOption $option) use ($canViewFinancialData): array {
+                    $row = [
+                        'id' => $option->id,
+                        'name' => $option->displayName(),
+                        'code' => $option->code,
+                        'description' => $option->description,
+                        'is_active' => (bool) $option->is_active,
+                        'sort_order' => (int) $option->sort_order,
+                        'is_default' => (bool) $option->is_default,
+                        'requires_setup' => (bool) $option->requires_setup,
+                        'setup_type' => $option->setup_type,
+                        'setup_status_default' => $option->setup_status_default,
+                    ];
+
+                    if ($canViewFinancialData) {
+                        $row['default_unit_price'] = $option->default_unit_price;
+                    }
+
+                    return $row;
+                })->values()->all(),
             ];
 
             if ($canViewFinancialData) {
@@ -643,6 +829,65 @@ class PromotionQuoteController extends Controller
         return trim((string) $setting->displayName());
     }
 
+    private function findTenantPrintOptionForSave(
+        int $tenantId,
+        ?TenantPrintSetting $setting,
+        ?int $optionId,
+        ?string $legacyLabel = null,
+        array $allowedInactiveIds = []
+    ): ?TenantPrintOption {
+        if (!$optionId) {
+            return null;
+        }
+
+        if (!$setting) {
+            throw ValidationException::withMessages([
+                'items' => 'Seçilen baskı seçeneği bu baskı türüne ait değil.',
+            ]);
+        }
+
+        $option = TenantPrintOption::query()
+            ->where('tenant_account_id', $tenantId)
+            ->where('tenant_print_setting_id', $setting->id)
+            ->find($optionId);
+
+        if (!$option) {
+            throw ValidationException::withMessages([
+                'items' => 'Seçilen baskı seçeneği geçerli değil.',
+            ]);
+        }
+
+        $inactiveAllowed = in_array($option->id, array_map('intval', $allowedInactiveIds), true);
+        if (!$option->is_active && !$inactiveAllowed) {
+            throw ValidationException::withMessages([
+                'items' => 'Pasif baskı seçeneği yeni teklif satırında kullanılamaz.',
+            ]);
+        }
+
+        if (filled($legacyLabel) && trim((string) $legacyLabel) !== $option->displayName()) {
+            throw ValidationException::withMessages([
+                'items' => 'Seçilen baskı seçeneği bu baskı türüne ait değil.',
+            ]);
+        }
+
+        return $option;
+    }
+
+    private function resolveDeliveryTypePayload(
+        int $tenantId,
+        array $validated,
+        ?int $allowedInactiveId = null
+    ): array {
+        return $this->tenantDeliveryTypeService->resolveForPersistence(
+            $tenantId,
+            isset($validated['delivery_type_id']) && $validated['delivery_type_id'] !== ''
+                ? (int) $validated['delivery_type_id']
+                : null,
+            $validated['delivery_type'] ?? null,
+            $allowedInactiveId
+        );
+    }
+
     private function normalizeLegacyProductionType(?string $value, ?string $settingMode): ?string
     {
         if (filled($value)) {
@@ -654,6 +899,85 @@ class PromotionQuoteController extends Controller
             'outsourced' => 'Dış üretim / Fason',
             default => null,
         };
+    }
+
+    private function resolveSetupType(?TenantPrintSetting $setting, ?TenantPrintOption $option, array $printData): ?string
+    {
+        $setupType = trim((string) ($printData['setup_type'] ?? ''));
+
+        if ($setupType !== '') {
+            return $setupType;
+        }
+
+        if (filled($option?->setup_type)) {
+            return (string) $option->setup_type;
+        }
+
+        $setupTypes = $setting?->effectiveSetupTypes() ?? [];
+
+        return filled($setupTypes[0] ?? null)
+            ? (string) $setupTypes[0]
+            : null;
+    }
+
+    private function normalizePrintSetupPricing(
+        array $printData,
+        ?TenantPrintSetting $selectedSetting,
+        ?TenantPrintOption $selectedOption = null,
+        ?int $itemIndex = null
+    ): array {
+        $printQuantity = $this->normalizeDecimal($printData['print_quantity'] ?? 0);
+        $setupStatus = $this->printSetupUnitDistributionService->normalizeStatus(
+            $printData['setup_status']
+                ?? $printData['cliche_status']
+                ?? $selectedOption?->setup_status_default
+                ?? null
+        );
+        $setupType = $this->resolveSetupType($selectedSetting, $selectedOption, $printData);
+        $setupTotalAmount = $this->normalizeDecimal($printData['setup_total_amount'] ?? 0);
+        $basePrintUnitPrice = array_key_exists('base_print_unit_price', $printData)
+            && $printData['base_print_unit_price'] !== null
+            && $printData['base_print_unit_price'] !== ''
+            ? $this->normalizeDecimal($printData['base_print_unit_price'])
+            : $this->normalizeDecimal($printData['print_unit_price'] ?? 0);
+
+        if ($setupTotalAmount < 0) {
+            $this->throwItemValidation($itemIndex, 'prints', 'Ara eleman toplam tutarı negatif olamaz.');
+        }
+
+        $statusRequiresSetupAmount = $this->printSetupUnitDistributionService->statusRequiresSetupAmount($setupStatus);
+        $setupPricingEnabled = filter_var($printData['setup_pricing_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN)
+            || $statusRequiresSetupAmount
+            || $setupTotalAmount > 0;
+
+        if ($setupPricingEnabled && $setupTotalAmount > 0 && $printQuantity <= 0) {
+            $this->throwItemValidation($itemIndex, 'prints', 'Ara eleman tutarı girildi ancak baskı miktarı sıfır. Lütfen baskı miktarını kontrol edin.');
+        }
+
+        if (! $statusRequiresSetupAmount) {
+            $setupPricingEnabled = false;
+            $setupTotalAmount = 0.0;
+        }
+
+        $distribution = $this->printSetupUnitDistributionService->calculate(
+            $basePrintUnitPrice,
+            $setupPricingEnabled ? $setupTotalAmount : 0.0,
+            $printQuantity
+        );
+
+        return [
+            'setup_pricing_enabled' => $setupPricingEnabled,
+            'setup_type' => $setupType,
+            'setup_status' => $setupStatus,
+            'setup_total_amount' => $setupPricingEnabled ? $distribution['setup_total_amount'] : null,
+            'setup_distribution_quantity' => $setupPricingEnabled ? $distribution['setup_distribution_quantity'] : null,
+            'setup_unit_amount' => $setupPricingEnabled ? $distribution['setup_unit_amount'] : null,
+            'base_print_unit_price' => $distribution['base_print_unit_price'],
+            'print_quantity' => $printQuantity,
+            'print_unit_price' => $distribution['final_print_unit_price'],
+            'print_total' => $distribution['final_print_total'],
+            'cliche_status' => $setupStatus ?? ($printData['cliche_status'] ?? null),
+        ];
     }
 
     /**
@@ -780,11 +1104,7 @@ class PromotionQuoteController extends Controller
         ];
 
         // Get customers for filter dropdown
-        $customers = Company::where('tenant_account_id', $tenant->id)
-            ->where('status', 'active')
-            ->whereHas('companyRoles', function ($q) {
-                $q->where('role_key', 'customer');
-            })
+        $customers = $this->promotionQuoteCustomerQuery($tenant->id)
             ->orderBy('legal_name')
             ->get();
 
@@ -812,6 +1132,7 @@ class PromotionQuoteController extends Controller
     {
         $tenant = $this->tenantResolver->getCurrentTenant(request());
         $canViewFinancialData = Auth::user()?->canViewFinancialData($tenant->id) ?? false;
+        $deliveryTypeState = $this->tenantDeliveryTypeService->selectionState($tenant->id);
         
         // Get active customers
         $customers = Company::where('tenant_account_id', $tenant->id)
@@ -827,14 +1148,286 @@ class PromotionQuoteController extends Controller
             ->orderBy('legal_name')
             ->get(['id', 'legal_name']);
 
+        $selectedCustomer = $this->resolveSelectedQuoteCustomer(
+            $tenant->id,
+            filled(old('customer_company_id')) ? (int) old('customer_company_id') : null
+        );
+
         return view('admin.promotion-quotes.create', [
             'customers' => $customers,
             'partnerCompanies' => $partnerCompanies,
             'nextQuoteNumber' => $this->numberGenerationService->getNextNumber($tenant->id, 'quote'),
             'catalogSearchUrl' => route('admin.catalog.search'),
+            'customerSearchUrl' => route('admin.promotion-quotes.customer-search'),
+            'quickCustomerStoreUrl' => route('admin.promotion-quotes.quick-customer.store'),
+            'customerLookup' => $this->buildQuoteCustomerLookup($customers),
+            'selectedCustomer' => $selectedCustomer ? $this->formatQuoteCustomerSummary($selectedCustomer) : null,
             'canViewFinancialData' => $canViewFinancialData,
             'tenantPrintSettings' => $this->buildTenantPrintSettingsPayload($tenant->id, $canViewFinancialData),
+            'deliveryTypeOptions' => $deliveryTypeState['types'],
+            'selectedDeliveryTypeId' => old('delivery_type_id', $deliveryTypeState['selected_id']),
+            'legacyDeliveryTypeLabel' => null,
         ]);
+    }
+
+    public function customerSearch(Request $request): JsonResponse
+    {
+        $tenant = $this->tenantResolver->getCurrentTenant($request);
+        $query = trim((string) $request->string('q'));
+
+        if (mb_strlen($query) < 3) {
+            return response()->json([
+                'data' => [],
+                'meta' => [
+                    'query' => $query,
+                    'minimum_length' => 3,
+                    'message' => 'Müşteri aramak için en az 3 karakter yazın.',
+                ],
+            ]);
+        }
+
+        $customers = $this->promotionQuoteCustomerQuery($tenant->id)
+            ->with(['contacts' => fn ($builder) => $builder->orderByDesc('is_primary')->orderBy('name')])
+            ->where(function ($builder) use ($query): void {
+                foreach ($this->promotionQuoteCustomerSearchVariants($query) as $variant) {
+                    $like = '%' . $variant . '%';
+
+                    $builder->orWhere('legal_name', 'like', $like)
+                        ->orWhere('short_name', 'like', $like)
+                        ->orWhere('email', 'like', $like)
+                        ->orWhere('phone', 'like', $like)
+                        ->orWhere('mobile', 'like', $like)
+                        ->orWhere('tax_number', 'like', $like)
+                        ->orWhereHas('contacts', function ($contactQuery) use ($like): void {
+                            $contactQuery
+                                ->where('name', 'like', $like)
+                                ->orWhere('email', 'like', $like)
+                                ->orWhere('phone', 'like', $like)
+                                ->orWhere('mobile', 'like', $like);
+                        });
+                }
+            })
+            ->orderBy('legal_name')
+            ->limit(12)
+            ->get();
+
+        return response()->json([
+            'data' => $customers->map(fn (Company $company) => $this->formatQuoteCustomerSummary($company))->values()->all(),
+            'meta' => [
+                'query' => $query,
+                'minimum_length' => 3,
+                'message' => $customers->isEmpty()
+                    ? 'Müşteri bulunamadı. Hızlı müşteri ekleyebilirsiniz.'
+                    : null,
+            ],
+        ]);
+    }
+
+    public function quickStoreCustomer(Request $request): JsonResponse
+    {
+        $tenant = $this->tenantResolver->getCurrentTenant($request);
+
+        $validator = Validator::make($request->all(), [
+            'legal_name' => ['required', 'string', 'max:255'],
+            'tax_number' => ['nullable', 'regex:/^\d{10,11}$/'],
+            'identity_type' => ['required', 'in:company,person'],
+            'email' => ['nullable', 'email', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:50'],
+            'contact_name' => ['nullable', 'string', 'max:255'],
+            'city' => ['nullable', 'string', 'max:100'],
+            'address_note' => ['nullable', 'string', 'max:1000'],
+        ], [
+            'legal_name.required' => 'Firma / müşteri adı zorunludur.',
+            'tax_number.regex' => 'Vergi No / TC No 10 veya 11 hane olmalıdır.',
+            'email.email' => 'Geçerli bir e-posta adresi girin.',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Müşteri kaydedilemedi. Alanları kontrol edip tekrar deneyin.',
+                'errors' => $validator->errors()->messages(),
+            ], 422);
+        }
+
+        $validated = $validator->validated();
+
+        $duplicate = Company::query()
+            ->where('tenant_account_id', $tenant->id)
+            ->where('status', 'active')
+            ->where(function ($builder) use ($validated): void {
+                $builder->whereRaw('LOWER(legal_name) = ?', [mb_strtolower(trim((string) $validated['legal_name']))]);
+
+                if (filled($validated['tax_number'] ?? null)) {
+                    $builder->orWhere('tax_number', trim((string) $validated['tax_number']));
+                }
+            })
+            ->first();
+
+        if ($duplicate) {
+            return response()->json([
+                'message' => 'Müşteri kaydedilemedi. Alanları kontrol edip tekrar deneyin.',
+                'errors' => [
+                    'legal_name' => ['Bu müşteri zaten kayıtlı olabilir. Listeden seçebilirsiniz.'],
+                ],
+            ], 422);
+        }
+
+        try {
+            $company = DB::transaction(function () use ($tenant, $validated): Company {
+                $notes = collect([
+                    filled($validated['city'] ?? null) ? 'Şehir: ' . trim((string) $validated['city']) : null,
+                    filled($validated['address_note'] ?? null) ? trim((string) $validated['address_note']) : null,
+                ])->filter()->implode(' | ');
+
+                $company = Company::query()->create([
+                    'tenant_account_id' => $tenant->id,
+                    'legal_name' => trim((string) $validated['legal_name']),
+                    'short_name' => null,
+                    'tax_number' => $this->cleanNullableString($validated['tax_number'] ?? null),
+                    'email' => $this->cleanNullableString($validated['email'] ?? null),
+                    'phone' => $this->cleanNullableString($validated['phone'] ?? null),
+                    'mobile' => $this->cleanNullableString($validated['phone'] ?? null),
+                    'status' => 'active',
+                    'portal_enabled' => false,
+                    'notes' => $this->cleanNullableString($notes),
+                ]);
+
+                CompanyRole::query()->create([
+                    'tenant_account_id' => $tenant->id,
+                    'company_id' => $company->id,
+                    'role_key' => 'customer',
+                ]);
+
+                if (filled($validated['contact_name'] ?? null) || filled($validated['email'] ?? null) || filled($validated['phone'] ?? null)) {
+                    CompanyContact::query()->create([
+                        'tenant_account_id' => $tenant->id,
+                        'company_id' => $company->id,
+                        'name' => trim((string) ($validated['contact_name'] ?? $validated['legal_name'])),
+                        'email' => $this->cleanNullableString($validated['email'] ?? null),
+                        'phone' => $this->cleanNullableString($validated['phone'] ?? null),
+                        'mobile' => $this->cleanNullableString($validated['phone'] ?? null),
+                        'is_primary' => true,
+                    ]);
+                }
+
+                $this->currentAccountSyncService->ensureForCompany($company->fresh('companyRoles'));
+
+                return $company->fresh(['contacts']);
+            });
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'message' => 'Müşteri kaydedilemedi. Alanları kontrol edip tekrar deneyin.',
+                'errors' => [
+                    'general' => ['Müşteri kaydedilemedi. Alanları kontrol edip tekrar deneyin.'],
+                ],
+            ], 422);
+        }
+
+        return response()->json([
+            'message' => 'Müşteri kaydedildi ve teklif formuna seçildi.',
+            'data' => $this->formatQuoteCustomerSummary($company),
+        ], 201);
+    }
+
+    private function promotionQuoteCustomerQuery(int $tenantId)
+    {
+        return Company::query()
+            ->where('tenant_account_id', $tenantId)
+            ->where('status', 'active')
+            ->whereHas('companyRoles', fn ($query) => $query->where('role_key', 'customer'));
+    }
+
+    private function promotionQuoteCustomerSearchVariants(string $query): array
+    {
+        $normalized = trim($query);
+        $variants = [
+            $normalized,
+            mb_strtolower($normalized),
+            Str::ascii($normalized),
+            mb_strtolower(Str::ascii($normalized)),
+        ];
+
+        return array_values(array_unique(array_filter($variants, fn ($value) => $value !== '')));
+    }
+
+    private function buildQuoteCustomerLookup(iterable $customers): array
+    {
+        $lookup = [];
+
+        foreach ($customers as $customer) {
+            if (! $customer instanceof Company) {
+                continue;
+            }
+
+            $lookup[$customer->id] = $this->formatQuoteCustomerSummary($customer);
+        }
+
+        return $lookup;
+    }
+
+    private function formatQuoteCustomerSummary(Company $company): array
+    {
+        $company->loadMissing([
+            'contacts' => fn ($builder) => $builder->orderByDesc('is_primary')->orderBy('name'),
+        ]);
+
+        $primaryContact = $company->contacts->first();
+        $currentAccountId = CurrentAccountLink::query()
+            ->where('tenant_account_id', $company->tenant_account_id)
+            ->where('link_type', CurrentAccountLink::LINK_COMPANY)
+            ->where('link_id', $company->id)
+            ->value('current_account_id');
+        $displayName = trim((string) ($company->short_name ?: $company->legal_name));
+        $email = $company->email ?: $primaryContact?->email;
+        $phone = $company->phone ?: $company->mobile ?: $primaryContact?->phone ?: $primaryContact?->mobile;
+        $contactName = $primaryContact?->name;
+        $summaryParts = array_values(array_filter([
+            $company->legal_name,
+            $contactName ? 'Yetkili: ' . $contactName : null,
+            $phone ? 'Tel: ' . $phone : null,
+            $email ? 'E-posta: ' . $email : null,
+            $company->tax_number ? 'VKN/TCKN: ' . $company->tax_number : null,
+        ]));
+
+        return [
+            'id' => $company->id,
+            'display_name' => $displayName,
+            'legal_name' => $company->legal_name,
+            'email' => $email,
+            'phone' => $phone,
+            'tax_number' => $company->tax_number,
+            'contact_name' => $contactName,
+            'current_account_id' => $currentAccountId,
+            'label' => $displayName,
+            'summary' => implode(' · ', $summaryParts),
+        ];
+    }
+
+    private function resolveSelectedQuoteCustomer(int $tenantId, ?int $companyId): ?Company
+    {
+        if (! $companyId) {
+            return null;
+        }
+
+        return $this->promotionQuoteCustomerQuery($tenantId)
+            ->with([
+                'contacts' => fn ($builder) => $builder->orderByDesc('is_primary')->orderBy('name'),
+            ])
+            ->whereKey($companyId)
+            ->first();
+    }
+
+    private function cleanNullableString(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $clean = trim((string) $value);
+
+        return $clean === '' ? null : $clean;
     }
 
     /**
@@ -879,6 +1472,7 @@ class PromotionQuoteController extends Controller
             'items.*.prints' => 'nullable|array',
             'items.*.prints.*.tenant_print_setting_id' => 'nullable|integer',
             'items.*.prints.*.standard_print_type_id' => 'nullable|integer|exists:standard_print_types,id',
+            'items.*.prints.*.tenant_print_option_id' => 'nullable|integer',
             'items.*.prints.*.print_type' => 'nullable|string|max:255',
             'items.*.prints.*.print_option' => 'nullable|string|max:255',
             'items.*.prints.*.print_location' => 'nullable|string|max:255',
@@ -887,13 +1481,32 @@ class PromotionQuoteController extends Controller
             'items.*.prints.*.print_color' => 'nullable|string|max:255',
             'items.*.prints.*.print_size' => 'nullable|string|max:255',
             'items.*.prints.*.cliche_status' => 'nullable|string|max:255',
+            'items.*.prints.*.setup_pricing_enabled' => 'nullable|boolean',
+            'items.*.prints.*.setup_type' => 'nullable|string|max:100',
+            'items.*.prints.*.setup_status' => 'nullable|string|max:100',
+            'items.*.prints.*.setup_total_amount' => 'nullable|numeric|min:0',
+            'items.*.prints.*.setup_distribution_quantity' => 'nullable|numeric|min:0',
+            'items.*.prints.*.setup_unit_amount' => 'nullable|numeric|min:0',
+            'items.*.prints.*.base_print_unit_price' => 'nullable|numeric|min:0',
             'items.*.prints.*.print_quantity' => 'nullable|numeric|min:0',
             'items.*.prints.*.print_unit_price' => 'nullable|numeric|min:0',
             'items.*.prints.*.note' => 'nullable|string',
             'items.*.prints.*.production_note' => 'nullable|string',
+            'delivery_type_id' => 'nullable|integer',
             'delivery_type' => 'nullable|string|max:100',
+            'show_print_price_details_to_customer' => 'nullable|boolean',
             'notes' => 'nullable|string',
         ]);
+        $selectedCustomer = $this->resolveSelectedQuoteCustomer($tenant->id, (int) $validated['customer_company_id']);
+
+        if (! $selectedCustomer) {
+            throw ValidationException::withMessages([
+                'customer_company_id' => ['Seçilen müşteri geçerli değil.'],
+            ]);
+        }
+
+        $deliveryTypePayload = $this->resolveDeliveryTypePayload($tenant->id, $validated);
+        $showPrintPriceDetailsToCustomer = $this->resolveShowPrintPriceDetailsToCustomer($validated);
 
         DB::beginTransaction();
         try {
@@ -914,7 +1527,9 @@ class PromotionQuoteController extends Controller
                 'quote_date' => $validated['quote_date'],
                 'valid_until' => $validated['valid_until'] ?? null,
                 'invoice_status' => $invoiceStatus,
-                'delivery_type' => $validated['delivery_type'] ?? null,
+                'delivery_type' => $deliveryTypePayload['delivery_type'],
+                'delivery_type_id' => $deliveryTypePayload['delivery_type_id'],
+                'show_print_price_details_to_customer' => $showPrintPriceDetailsToCustomer,
                 'notes' => $validated['notes'] ?? null,
                 'currency' => $validated['currency'],
                 'created_by' => Auth::id(),
@@ -973,12 +1588,15 @@ class PromotionQuoteController extends Controller
                 // Create print details if provided
                 if (($itemData['has_print'] ?? false) && isset($itemData['prints'])) {
                     foreach ($itemData['prints'] as $printData) {
-                        // Normalize print decimal values
-                        $printData['print_quantity'] = $this->normalizeDecimal($printData['print_quantity'] ?? 0);
-                        $printData['print_unit_price'] = $this->normalizeDecimal($printData['print_unit_price'] ?? 0);
                         $selectedSetting = $this->findTenantPrintSettingForSave(
                             $tenant->id,
                             !empty($printData['tenant_print_setting_id']) ? (int) $printData['tenant_print_setting_id'] : null
+                        );
+                        $selectedOption = $this->findTenantPrintOptionForSave(
+                            $tenant->id,
+                            $selectedSetting,
+                            !empty($printData['tenant_print_option_id']) ? (int) $printData['tenant_print_option_id'] : null,
+                            $printData['print_option'] ?? null
                         );
                         $resolvedSubcontractorId = $printData['subcontractor_company_id'] ?? null;
 
@@ -993,11 +1611,8 @@ class PromotionQuoteController extends Controller
                                 ->value('id');
                         }
 
-                        if (!$canViewFinancialData) {
-                            $printData['print_unit_price'] = $this->normalizeDecimal($printData['print_unit_price'] ?? 0);
-                        }
-
-                        $currentPrintLineTotal = ($printData['print_unit_price'] ?? 0) * ($printData['print_quantity'] ?? 0);
+                        $printPricing = $this->normalizePrintSetupPricing($printData, $selectedSetting, $selectedOption, $itemIndex);
+                        $currentPrintLineTotal = $printPricing['print_total'];
 
                         OrderItemPrint::create([
                             'tenant_account_id' => $tenant->id,
@@ -1005,16 +1620,24 @@ class PromotionQuoteController extends Controller
                             'order_item_id' => $orderItem->id,
                             'tenant_print_setting_id' => $selectedSetting?->id,
                             'standard_print_type_id' => $selectedSetting?->standard_print_type_id ?? ($printData['standard_print_type_id'] ?? null),
+                            'tenant_print_option_id' => $selectedOption?->id,
                             'print_type' => $selectedSetting ? $this->normalizePrintTypeForSetting($selectedSetting) : ($printData['print_type'] ?? null),
-                            'print_option' => $printData['print_option'] ?? null,
+                            'print_option' => $selectedOption?->displayName() ?? ($printData['print_option'] ?? null),
                             'print_location' => $printData['print_location'] ?? null,
                             'production_type' => $this->normalizeLegacyProductionType($printData['production_type'] ?? null, $selectedSetting?->production_mode),
                             'subcontractor_company_id' => $resolvedSubcontractorId,
                             'print_color' => $printData['print_color'] ?? null,
                             'print_size' => $printData['print_size'] ?? null,
-                            'cliche_status' => $printData['cliche_status'] ?? null,
-                            'print_quantity' => $printData['print_quantity'] ?? null,
-                            'print_unit_price' => $printData['print_unit_price'] ?? null,
+                            'cliche_status' => $printPricing['cliche_status'],
+                            'setup_pricing_enabled' => $printPricing['setup_pricing_enabled'],
+                            'setup_type' => $printPricing['setup_type'],
+                            'setup_status' => $printPricing['setup_status'],
+                            'setup_total_amount' => $printPricing['setup_total_amount'],
+                            'setup_distribution_quantity' => $printPricing['setup_distribution_quantity'],
+                            'setup_unit_amount' => $printPricing['setup_unit_amount'],
+                            'base_print_unit_price' => $printPricing['base_print_unit_price'],
+                            'print_quantity' => $printPricing['print_quantity'] ?? null,
+                            'print_unit_price' => $printPricing['print_unit_price'] ?? null,
                             'print_total' => $currentPrintLineTotal,
                             'note' => $printData['note'] ?? null,
                             'production_note' => $printData['production_note'] ?? null,
@@ -1159,11 +1782,16 @@ class PromotionQuoteController extends Controller
             ? route('admin.promotion-quotes.customer-approval.open', $quote)
             : null;
         $recipientPhone = $latestApprovalRequest?->contact_phone ?: ($quote->customer?->mobile ?: $quote->customer?->phone);
+        $normalizedRecipientPhone = $recipientPhone
+            ? $this->tenantWhatsappLinkService->toWhatsappDialString($recipientPhone)
+            : null;
+        $sendNotificationSummary = $this->buildSendNotificationSummary($quote);
         $whatsappFeatureEnabled = $this->whatsappLinksFeatureEnabled($tenant->id)
             && $this->tenantNotificationSettingsService->isWhatsappEnabled($tenant);
         $whatsappAvailable = $whatsappFeatureEnabled && $publicQuoteApprovalEnabled;
-        $whatsappReady = $whatsappAvailable && filled($recipientPhone) && filled($approvalHelperUrl);
+        $whatsappReady = $whatsappAvailable && filled($normalizedRecipientPhone) && filled($approvalHelperUrl);
         $quotePdfAvailable = true;
+        $notificationLogRows = $this->buildNotificationLogRows($quote);
 
         return view('admin.promotion-quotes.show', [
             'quote' => $quote,
@@ -1190,10 +1818,42 @@ class PromotionQuoteController extends Controller
             'decisionNote' => $decisionNote,
             'approvalHelperUrl' => $approvalHelperUrl,
             'recipientPhone' => $recipientPhone,
+            'recipientPhoneDisplay' => $this->tenantWhatsappLinkService->formatTurkishPhoneForDisplay($recipientPhone),
+            'sendNotificationSummary' => $sendNotificationSummary,
+            'notificationLogRows' => $notificationLogRows,
             'whatsappAvailable' => $whatsappAvailable,
             'whatsappReady' => $whatsappReady,
             'quotePdfAvailable' => $quotePdfAvailable,
         ]);
+    }
+
+    private function maskEmail(?string $email): ?string
+    {
+        $email = trim((string) $email);
+
+        if ($email === '' || ! str_contains($email, '@')) {
+            return $email !== '' ? $email : null;
+        }
+
+        [$local, $domain] = explode('@', $email, 2);
+        $local = Str::of($local)->substr(0, 2)->append('***')->value();
+
+        return $local . '@' . $domain;
+    }
+
+    private function maskPhone(?string $phone): ?string
+    {
+        $phone = preg_replace('/\D+/', '', (string) $phone) ?? '';
+
+        if ($phone === '') {
+            return null;
+        }
+
+        if (strlen($phone) <= 4) {
+            return '***' . $phone;
+        }
+
+        return substr($phone, 0, 3) . ' *** ** ' . substr($phone, -2);
     }
 
     public function openCustomerApproval(Request $request, Order $quote): RedirectResponse
@@ -1260,17 +1920,25 @@ class PromotionQuoteController extends Controller
             return back()->withErrors(['error' => 'Müşteri telefon bilgisi bulunmuyor.']);
         }
 
+        if (! $this->tenantWhatsappLinkService->toWhatsappDialString($recipientPhone)) {
+            return back()->withErrors(['error' => 'WhatsApp için geçerli bir cep telefonu bulunmuyor.']);
+        }
+
         $publicUrl = route('public.quotes.approval.show', ['token' => $latestApprovalRequest->token]);
         $quoteNumber = $quote->document_number ?: 'teklifiniz';
         $customerName = $latestApprovalRequest->contact_name ?: ($quote->customer?->legal_name ?: 'Müşterimiz');
 
-        $result = $this->tenantWhatsappLinkService->createManualLink($tenant, [
-            'customer_name' => $customerName,
-            'recipient_phone' => $recipientPhone,
-            'message_type' => TenantWhatsappLinkService::TYPE_GENERAL,
-            'message' => "{$quoteNumber} numaralı teklifinizi inceleyip onaylayabilirsiniz: {$publicUrl}",
-            'public_link' => $publicUrl,
-        ], $request->user());
+        try {
+            $result = $this->tenantWhatsappLinkService->createManualLink($tenant, [
+                'customer_name' => $customerName,
+                'recipient_phone' => $recipientPhone,
+                'message_type' => TenantWhatsappLinkService::TYPE_GENERAL,
+                'message' => "{$quoteNumber} numaralı teklifinizi inceleyip onaylayabilirsiniz: {$publicUrl}",
+                'public_link' => $publicUrl,
+            ], $request->user());
+        } catch (\InvalidArgumentException $exception) {
+            return back()->withErrors(['error' => $exception->getMessage()]);
+        }
 
         return redirect()->away($result['url']);
     }
@@ -1361,7 +2029,11 @@ class PromotionQuoteController extends Controller
             return back()->withErrors(['error' => $exception->getMessage()]);
         }
 
-        return back()->with('success', 'Teklif müşteriye gönderime hazırlandı.');
+        $quote = $quote->fresh(['latestQuoteApprovalRequest']);
+
+        return redirect()
+            ->route('admin.promotion-quotes.show', $quote)
+            ->with('success', $this->buildSendSuccessMessage($quote));
     }
 
     /**
@@ -1389,11 +2061,7 @@ class PromotionQuoteController extends Controller
         $quote->load(['customer', 'items.prints.tenantPrintSetting.standardPrintType']);
 
         // Get active customers
-        $customers = Company::where('tenant_account_id', $tenant->id)
-            ->where('status', 'active')
-            ->whereHas('companyRoles', function ($q) {
-                $q->where('role_key', 'customer');
-            })
+        $customers = $this->promotionQuoteCustomerQuery($tenant->id)
             ->orderBy('legal_name')
             ->get();
 
@@ -1408,14 +2076,31 @@ class PromotionQuoteController extends Controller
             ->filter()
             ->values()
             ->all();
+        $linkedOptionIds = $quote->items
+            ->flatMap(fn ($item) => $item->prints->pluck('tenant_print_option_id'))
+            ->filter()
+            ->values()
+            ->all();
+        $deliveryTypeState = $this->tenantDeliveryTypeService->selectionState(
+            $tenant->id,
+            $quote->delivery_type_id,
+            $quote->delivery_type
+        );
 
         return view('admin.promotion-quotes.edit', [
             'quote' => $quote,
             'customers' => $customers,
             'partnerCompanies' => $partnerCompanies,
             'catalogSearchUrl' => route('admin.catalog.search'),
+            'customerSearchUrl' => route('admin.promotion-quotes.customer-search'),
+            'quickCustomerStoreUrl' => route('admin.promotion-quotes.quick-customer.store'),
+            'customerLookup' => $this->buildQuoteCustomerLookup($customers),
+            'selectedCustomer' => $quote->customer ? $this->formatQuoteCustomerSummary($quote->customer) : null,
             'canViewFinancialData' => $canViewFinancialData,
-            'tenantPrintSettings' => $this->buildTenantPrintSettingsPayload($tenant->id, $canViewFinancialData, $linkedSettingIds),
+            'tenantPrintSettings' => $this->buildTenantPrintSettingsPayload($tenant->id, $canViewFinancialData, $linkedSettingIds, $linkedOptionIds),
+            'deliveryTypeOptions' => $deliveryTypeState['types'],
+            'selectedDeliveryTypeId' => old('delivery_type_id', $deliveryTypeState['selected_id']),
+            'legacyDeliveryTypeLabel' => $deliveryTypeState['legacy_label'],
         ]);
     }
 
@@ -1445,6 +2130,11 @@ class PromotionQuoteController extends Controller
         $quote->loadMissing('items.prints');
         $allowedInactiveSettingIds = $quote->items
             ->flatMap(fn ($item) => $item->prints->pluck('tenant_print_setting_id'))
+            ->filter()
+            ->values()
+            ->all();
+        $allowedInactiveOptionIds = $quote->items
+            ->flatMap(fn ($item) => $item->prints->pluck('tenant_print_option_id'))
             ->filter()
             ->values()
             ->all();
@@ -1482,6 +2172,7 @@ class PromotionQuoteController extends Controller
             'items.*.prints' => 'nullable|array',
             'items.*.prints.*.tenant_print_setting_id' => 'nullable|integer',
             'items.*.prints.*.standard_print_type_id' => 'nullable|integer|exists:standard_print_types,id',
+            'items.*.prints.*.tenant_print_option_id' => 'nullable|integer',
             'items.*.prints.*.print_type' => 'nullable|string|max:255',
             'items.*.prints.*.print_option' => 'nullable|string|max:255',
             'items.*.prints.*.print_location' => 'nullable|string|max:255',
@@ -1490,13 +2181,36 @@ class PromotionQuoteController extends Controller
             'items.*.prints.*.print_color' => 'nullable|string|max:255',
             'items.*.prints.*.print_size' => 'nullable|string|max:255',
             'items.*.prints.*.cliche_status' => 'nullable|string|max:255',
+            'items.*.prints.*.setup_pricing_enabled' => 'nullable|boolean',
+            'items.*.prints.*.setup_type' => 'nullable|string|max:100',
+            'items.*.prints.*.setup_status' => 'nullable|string|max:100',
+            'items.*.prints.*.setup_total_amount' => 'nullable|numeric|min:0',
+            'items.*.prints.*.setup_distribution_quantity' => 'nullable|numeric|min:0',
+            'items.*.prints.*.setup_unit_amount' => 'nullable|numeric|min:0',
+            'items.*.prints.*.base_print_unit_price' => 'nullable|numeric|min:0',
             'items.*.prints.*.print_quantity' => 'nullable|numeric|min:0',
             'items.*.prints.*.print_unit_price' => 'nullable|numeric|min:0',
             'items.*.prints.*.note' => 'nullable|string',
             'items.*.prints.*.production_note' => 'nullable|string',
+            'delivery_type_id' => 'nullable|integer',
             'delivery_type' => 'nullable|string|max:100',
+            'show_print_price_details_to_customer' => 'nullable|boolean',
             'notes' => 'nullable|string',
         ]);
+        $selectedCustomer = $this->resolveSelectedQuoteCustomer($tenant->id, (int) $validated['customer_company_id']);
+
+        if (! $selectedCustomer) {
+            throw ValidationException::withMessages([
+                'customer_company_id' => ['Seçilen müşteri geçerli değil.'],
+            ]);
+        }
+
+        $deliveryTypePayload = $this->resolveDeliveryTypePayload(
+            $tenant->id,
+            $validated,
+            $quote->delivery_type_id
+        );
+        $showPrintPriceDetailsToCustomer = $this->resolveShowPrintPriceDetailsToCustomer($validated, $quote);
 
         DB::beginTransaction();
         try {
@@ -1508,7 +2222,9 @@ class PromotionQuoteController extends Controller
                 'quote_date' => $validated['quote_date'],
                 'valid_until' => $validated['valid_until'] ?? null,
                 'invoice_status' => $invoiceStatus,
-                'delivery_type' => $validated['delivery_type'] ?? null,
+                'delivery_type' => $deliveryTypePayload['delivery_type'],
+                'delivery_type_id' => $deliveryTypePayload['delivery_type_id'],
+                'show_print_price_details_to_customer' => $showPrintPriceDetailsToCustomer,
                 'notes' => $validated['notes'] ?? null,
                 'currency' => $validated['currency'],
             ]);
@@ -1570,13 +2286,17 @@ class PromotionQuoteController extends Controller
                 // Create print details if provided
                 if (($itemData['has_print'] ?? false) && isset($itemData['prints'])) {
                     foreach ($itemData['prints'] as $printData) {
-                        // Normalize print decimal values
-                        $printData['print_quantity'] = $this->normalizeDecimal($printData['print_quantity'] ?? 0);
-                        $printData['print_unit_price'] = $this->normalizeDecimal($printData['print_unit_price'] ?? 0);
                         $selectedSetting = $this->findTenantPrintSettingForSave(
                             $tenant->id,
                             !empty($printData['tenant_print_setting_id']) ? (int) $printData['tenant_print_setting_id'] : null,
                             $allowedInactiveSettingIds
+                        );
+                        $selectedOption = $this->findTenantPrintOptionForSave(
+                            $tenant->id,
+                            $selectedSetting,
+                            !empty($printData['tenant_print_option_id']) ? (int) $printData['tenant_print_option_id'] : null,
+                            $printData['print_option'] ?? null,
+                            $allowedInactiveOptionIds
                         );
                         $resolvedSubcontractorId = $printData['subcontractor_company_id'] ?? null;
 
@@ -1591,11 +2311,8 @@ class PromotionQuoteController extends Controller
                                 ->value('id');
                         }
 
-                        if (!$canViewFinancialData) {
-                            $printData['print_unit_price'] = $this->normalizeDecimal($printData['print_unit_price'] ?? 0);
-                        }
-
-                        $currentPrintLineTotal = ($printData['print_unit_price'] ?? 0) * ($printData['print_quantity'] ?? 0);
+                        $printPricing = $this->normalizePrintSetupPricing($printData, $selectedSetting, $selectedOption, $itemIndex);
+                        $currentPrintLineTotal = $printPricing['print_total'];
 
                         OrderItemPrint::create([
                             'tenant_account_id' => $tenant->id,
@@ -1603,16 +2320,24 @@ class PromotionQuoteController extends Controller
                             'order_item_id' => $orderItem->id,
                             'tenant_print_setting_id' => $selectedSetting?->id,
                             'standard_print_type_id' => $selectedSetting?->standard_print_type_id ?? ($printData['standard_print_type_id'] ?? null),
+                            'tenant_print_option_id' => $selectedOption?->id,
                             'print_type' => $selectedSetting ? $this->normalizePrintTypeForSetting($selectedSetting) : ($printData['print_type'] ?? null),
-                            'print_option' => $printData['print_option'] ?? null,
+                            'print_option' => $selectedOption?->displayName() ?? ($printData['print_option'] ?? null),
                             'print_location' => $printData['print_location'] ?? null,
                             'production_type' => $this->normalizeLegacyProductionType($printData['production_type'] ?? null, $selectedSetting?->production_mode),
                             'subcontractor_company_id' => $resolvedSubcontractorId,
                             'print_color' => $printData['print_color'] ?? null,
                             'print_size' => $printData['print_size'] ?? null,
-                            'cliche_status' => $printData['cliche_status'] ?? null,
-                            'print_quantity' => $printData['print_quantity'] ?? null,
-                            'print_unit_price' => $printData['print_unit_price'] ?? null,
+                            'cliche_status' => $printPricing['cliche_status'],
+                            'setup_pricing_enabled' => $printPricing['setup_pricing_enabled'],
+                            'setup_type' => $printPricing['setup_type'],
+                            'setup_status' => $printPricing['setup_status'],
+                            'setup_total_amount' => $printPricing['setup_total_amount'],
+                            'setup_distribution_quantity' => $printPricing['setup_distribution_quantity'],
+                            'setup_unit_amount' => $printPricing['setup_unit_amount'],
+                            'base_print_unit_price' => $printPricing['base_print_unit_price'],
+                            'print_quantity' => $printPricing['print_quantity'] ?? null,
+                            'print_unit_price' => $printPricing['print_unit_price'] ?? null,
                             'print_total' => $currentPrintLineTotal,
                             'note' => $printData['note'] ?? null,
                             'production_note' => $printData['production_note'] ?? null,

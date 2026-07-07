@@ -126,7 +126,7 @@ class OrderPlaceholderRoutesDisabledTest extends TestCase
             ->get(route('admin.orders.show', $order));
 
         $show->assertOk();
-        $show->assertSee('Sipariş Özeti');
+        $show->assertSee('Genel Özet');
         $show->assertSee($order->document_number);
     }
 

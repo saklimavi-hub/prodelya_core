@@ -208,6 +208,7 @@ class SubcontractorProductionCurrentAccountSyncService
             ->where('tenant_account_id', $production->tenant_account_id)
             ->where('source_type', self::SOURCE_TYPE)
             ->where('source_id', $production->id)
+            ->where('transaction_type', CurrentAccountTransaction::TYPE_SUBCONTRACTOR_DEBIT)
             ->latest('id')
             ->first();
     }

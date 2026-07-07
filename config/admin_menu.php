@@ -20,8 +20,11 @@ return [
                 ],
                 [
                     'key' => 'current-accounts',
-                    'label' => 'Müşteriler / Cari Kartlar',
-                    'route' => 'admin.current-accounts.index',
+                    'label' => 'Cari Kartlar',
+                    'route' => 'admin.companies.index',
+                    'active_patterns' => [
+                        'admin.companies.*',
+                    ],
                     'icon' => 'check-circle',
                     'module_key' => 'current_accounts',
                     'feature_key' => 'current_account_cards',

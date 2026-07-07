@@ -15,6 +15,7 @@ class OrderPaymentService
     public function __construct(
         protected FinanceSummaryService $financeSummaryService,
         protected DeliveryDataBuilder $deliveryDataBuilder,
+        protected OrderCurrentAccountDebitSyncService $orderCurrentAccountDebitSyncService,
         protected OrderPaymentCurrentAccountSyncService $orderPaymentCurrentAccountSyncService,
         protected NotificationEventService $notificationEventService,
     ) {
@@ -47,6 +48,10 @@ class OrderPaymentService
                 'updated_by' => $user?->id,
             ]);
 
+            $this->orderCurrentAccountDebitSyncService->syncOrder(
+                $order->fresh(['customer.companyRoles', 'payments']),
+                $user
+            );
             $this->orderPaymentCurrentAccountSyncService->syncPayment($payment->fresh(['order', 'customerCompany.companyRoles', 'creator', 'updater']));
             $this->syncDeliveryFinancialWarnings($order->fresh(['payments', 'deliveries.workForm.attachments']), $user);
 
@@ -81,6 +86,10 @@ class OrderPaymentService
             $this->orderPaymentCurrentAccountSyncService->cancelForPayment(
                 $payment->fresh(['order', 'customerCompany.companyRoles', 'creator', 'updater']),
                 $reason ?: 'Sipariş tahsilatı iptal edildi.',
+                $user
+            );
+            $this->orderCurrentAccountDebitSyncService->syncOrder(
+                $payment->order->fresh(['customer.companyRoles', 'payments']),
                 $user
             );
             $this->syncDeliveryFinancialWarnings($payment->order->fresh(['payments', 'deliveries.workForm.attachments']), $user);

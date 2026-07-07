@@ -11,7 +11,8 @@ use Symfony\Component\HttpFoundation\Response;
 class PromotionQuotePdfService
 {
     public function __construct(
-        private readonly TenantCompanyProfileService $tenantCompanyProfileService
+        private readonly TenantCompanyProfileService $tenantCompanyProfileService,
+        private readonly CustomerFacingPriceDisplayService $customerFacingPriceDisplayService,
     ) {
     }
 
@@ -26,7 +27,12 @@ class PromotionQuotePdfService
 
         $approvalRequest = $quote->latestQuoteApprovalRequest;
         $approvalUrl = $this->resolveApprovalUrl($approvalRequest);
+        $showPrintPriceDetails = $this->customerFacingPriceDisplayService->shouldShowPrintPriceDetails($quote);
         $visibleItems = $quote->items->values()->map(function ($item, int $index): array {
+            $customerFacing = $this->customerFacingPriceDisplayService->buildItem(
+                $item,
+                $item->order?->currency ?: 'TL'
+            );
             $prints = $item->prints
                 ->filter(function ($print) {
                     return filled($print->print_type)
@@ -59,6 +65,10 @@ class PromotionQuotePdfService
                 'unit_price' => (float) $item->unit_price,
                 'line_total' => (float) $item->line_total,
                 'print_total' => (float) $item->print_total,
+                'customer_unit_price' => (float) $customerFacing['customer_unit_price'],
+                'customer_line_total' => (float) $customerFacing['customer_line_total'],
+                'show_print_price_details' => (bool) $customerFacing['show_print_price_details'],
+                'customer_prints' => $customerFacing['prints'],
                 'prints' => $prints,
             ];
         })->all();
@@ -73,11 +83,17 @@ class PromotionQuotePdfService
             'customerPhone' => $quote->customer?->mobile ?: $quote->customer?->phone,
             'approvalUrl' => $approvalUrl,
             'approvalStatusLabel' => $approvalRequest?->safeStatusLabel(),
+            'showPrintPriceDetails' => $showPrintPriceDetails,
             'items' => $visibleItems,
             'vatRows' => $this->buildVatRows($quote),
             'currency' => $quote->currency ?: 'TL',
             'quoteDate' => optional($quote->quote_date)->format('d.m.Y'),
             'validUntil' => optional($quote->valid_until)->format('d.m.Y'),
+            'documentTypeLabel' => 'Promosyon Teklifi',
+            'quoteStatusLabel' => $quote->displayQuoteStatusLabel(),
+            'invoiceStatusLabel' => $quote->invoice_status === 'fatura' ? 'Faturalı' : 'Fiş / KDV Hariç',
+            'customerApprovalStatusLabel' => $approvalRequest?->safeStatusLabel() ?: 'Bağlantı oluşturulmadı',
+            'deliveryTypeLabel' => $quote->delivery_type ?: null,
             'notes' => $quote->notes,
         ];
     }

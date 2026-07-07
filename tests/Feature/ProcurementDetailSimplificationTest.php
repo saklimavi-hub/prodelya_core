@@ -51,22 +51,15 @@ class ProcurementDetailSimplificationTest extends TestCase
             ->get(route('admin.procurements.show', $procurement));
 
         $response->assertOk();
-        $response->assertSee('Tedarik Özeti');
-        $response->assertSee('Adet Takibi');
-        $response->assertSee('Hızlı Aksiyonlar');
-        $response->assertSee('Bağlantılar');
-        $response->assertSee('Kısa Workflow Geçmişi');
-        $response->assertDontSee('A) Sipariş ve Ürün Özeti');
-        $response->assertDontSee('B) Kaynak / Karşılama Bilgisi');
-        $response->assertDontSee('C) Sipariş Anı Snapshot');
-        $response->assertDontSee('D) Tedarik Durumu');
-        $response->assertDontSee('E) Workflow Geçmişi');
-        $response->assertDontSee('F) Tedarik Aksiyonları');
-        $response->assertSee('Tedarik Talebi Aç');
-        $response->assertSee('Sipariş Verildi');
-        $response->assertSee('Kısmi Geldi');
-        $response->assertSee('Tamamı Geldi');
-        $response->assertSee('İptal');
+        $response->assertSee('Tedarik Sekmeleri');
+        $response->assertSee('Genel Özet');
+        $response->assertSee('Ürün ve Sipariş');
+        $response->assertSee('Tedarikçi ve Cari');
+        $response->assertSee('Talep / Form');
+        $response->assertSee('İşlemler');
+        $response->assertSee('Gelen / Miktar');
+        $response->assertSee('Geçmiş');
+        $response->assertDontSee('Tedarik Özeti');
         $response->assertDontSee('KDV', false);
         $response->assertDontSee('grand_total', false);
         $response->assertDontSee('Alış Liste Fiyatı');
@@ -87,11 +80,12 @@ class ProcurementDetailSimplificationTest extends TestCase
 
         $show = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.procurements.show', $procurement));
+            ->get(route('admin.procurements.show', ['procurement' => $procurement, 'tab' => 'talep']));
 
         $show->assertOk();
         $show->assertSee($requestRecord->request_number);
         $show->assertSee(route('admin.procurements.supplier-requests.edit', $requestRecord), false);
+        $show->assertSee('Talebi Düzenle');
 
         $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])

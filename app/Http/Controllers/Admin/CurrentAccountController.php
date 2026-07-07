@@ -7,8 +7,11 @@ use App\Models\Company;
 use App\Models\CurrentAccount;
 use App\Models\CurrentAccountLink;
 use App\Models\CurrentAccountRole;
+use App\Models\CurrentAccountTransaction;
 use App\Models\Supplier;
 use App\Models\TenantSupplierAccess;
+use App\Services\CompanyDuplicateResolutionService;
+use App\Services\CurrentAccountBalanceSummaryService;
 use App\Services\CurrentAccountSyncService;
 use App\Services\CurrentAccountTransactionService;
 use App\Services\TenantResolver;
@@ -25,21 +28,28 @@ class CurrentAccountController extends Controller
     public function __construct(
         protected TenantResolver $tenantResolver,
         protected CurrentAccountSyncService $syncService,
+        protected CurrentAccountBalanceSummaryService $balanceSummaryService,
         protected CurrentAccountTransactionService $transactionService,
         protected UsageLimitGuardService $usageLimitGuardService,
+        protected CompanyDuplicateResolutionService $companyDuplicateResolutionService,
     ) {
     }
 
     public function index(Request $request): View
     {
         $tenant = $this->tenantResolver->getCurrentTenant($request);
+        $canViewFinancialData = $request->user()?->canViewFinancialData($tenant->id) ?? false;
+        $tabOptions = $this->listTabs();
+        $requestedTab = (string) $request->query('tab', 'aktif');
+        $activeTab = array_key_exists($requestedTab, $tabOptions) ? $requestedTab : 'aktif';
+        $filters = $this->sanitizeListFilters($request, $activeTab, $canViewFinancialData);
 
         $query = CurrentAccount::query()
             ->where('tenant_account_id', $tenant->id)
             ->with(['roles', 'primaryCompanyLink']);
 
-        if ($request->filled('search')) {
-            $search = trim((string) $request->string('search'));
+        if ($filters['search'] !== '') {
+            $search = trim((string) $filters['search']);
 
             $query->where(function ($builder) use ($search): void {
                 $builder
@@ -53,24 +63,73 @@ class CurrentAccountController extends Controller
             });
         }
 
-        if ($request->filled('role')) {
-            $query->whereHas('roles', function ($builder) use ($request): void {
-                $builder->where('role', (string) $request->string('role'));
+        if ($filters['role'] !== '') {
+            $query->whereHas('roles', function ($builder) use ($filters): void {
+                $builder->where('role', (string) $filters['role']);
             });
         }
 
-        if ($request->filled('status')) {
-            $query->where('status', (string) $request->string('status'));
+        $this->applyListTabScope($query, $activeTab, $tenant->id);
+
+        if ($filters['status'] !== '') {
+            $query->where('status', (string) $filters['status']);
         }
 
-        if ($request->filled('risk_status')) {
-            $query->where('risk_status', (string) $request->string('risk_status'));
+        if ($filters['risk_status'] !== '') {
+            $query->where('risk_status', (string) $filters['risk_status']);
         }
+
+        $this->applyMovementStatusFilter($query, $filters['movement_status'], $tenant->id);
+        $this->applyBalanceStatusFilter($query, $filters['balance_status'], $tenant->id, $canViewFinancialData);
 
         $accounts = $query
             ->orderBy('display_name')
             ->paginate(20)
             ->withQueryString();
+
+        $balanceSummaries = $canViewFinancialData
+            ? $this->balanceSummaryService->summarizeAccounts($tenant->id, $accounts->getCollection()->pluck('id')->all())
+            : [];
+
+        $linkedCompanyIds = $accounts->getCollection()
+            ->pluck('primaryCompanyLink.link_id')
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        $linkedCompanies = Company::query()
+            ->where('tenant_account_id', $tenant->id)
+            ->whereIn('id', $linkedCompanyIds)
+            ->get()
+            ->keyBy('id');
+
+        $duplicateSummaries = [];
+        $archivedLinkedCompanyIds = $accounts->getCollection()
+            ->filter(fn (CurrentAccount $account): bool => in_array($account->status, [
+                CurrentAccount::STATUS_PASSIVE,
+                CurrentAccount::STATUS_BLOCKED,
+                CurrentAccount::STATUS_ARCHIVED,
+            ], true))
+            ->pluck('primaryCompanyLink.link_id')
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($archivedLinkedCompanyIds !== []) {
+            $archivedLinkedCompanies = Company::query()
+                ->where('tenant_account_id', $tenant->id)
+                ->whereIn('id', $archivedLinkedCompanyIds)
+                ->with(['companyRoles', 'contacts', 'addresses', 'portalUsers'])
+                ->get();
+
+            foreach ($archivedLinkedCompanies as $linkedCompany) {
+                $duplicateSummaries[$linkedCompany->id] = $this->companyDuplicateResolutionService->auditCompanyDuplicateStatus($linkedCompany);
+            }
+        }
 
         $stats = [
             'total' => CurrentAccount::query()->where('tenant_account_id', $tenant->id)->count(),
@@ -81,19 +140,31 @@ class CurrentAccountController extends Controller
             'other' => $this->countByRole($tenant->id, CurrentAccountRole::ROLE_OTHER),
             'inactive' => CurrentAccount::query()
                 ->where('tenant_account_id', $tenant->id)
-                ->whereIn('status', [CurrentAccount::STATUS_PASSIVE, CurrentAccount::STATUS_BLOCKED])
+                ->whereIn('status', [CurrentAccount::STATUS_PASSIVE, CurrentAccount::STATUS_BLOCKED, CurrentAccount::STATUS_ARCHIVED])
                 ->count(),
         ];
+
+        $tabStats = $this->tabStats($tenant->id);
+        $selectedTabSummary = $tabStats[$activeTab] ?? ['count' => 0, 'label' => 'Aktif Bakiyeler'];
 
         return view('admin.current-accounts.index', [
             'accounts' => $accounts,
             'stats' => $stats,
-            'filters' => [
-                'search' => $request->get('search', ''),
-                'role' => $request->get('role', ''),
-                'status' => $request->get('status', ''),
-                'risk_status' => $request->get('risk_status', ''),
-            ],
+            'tabStats' => $tabStats,
+            'selectedTabSummary' => $selectedTabSummary,
+            'balanceSummaries' => $balanceSummaries,
+            'linkedCompanies' => $linkedCompanies,
+            'duplicateSummaries' => $duplicateSummaries,
+            'canViewFinancialData' => $canViewFinancialData,
+            'filters' => $filters,
+            'statusFilterOptions' => $this->statusFilterOptions($activeTab),
+            'movementStatusOptions' => $this->movementStatusOptions(),
+            'balanceStatusOptions' => $this->balanceStatusOptions(),
+            'showStatusFilter' => in_array($activeTab, ['tumu', 'arsiv'], true),
+            'showBalanceFilter' => $canViewFinancialData,
+            'filterNotice' => $filters['filter_notice'],
+            'listTabs' => $tabOptions,
+            'activeTab' => $activeTab,
             'roleTabs' => $this->roleTabs(),
         ]);
     }
@@ -430,6 +501,279 @@ class CurrentAccountController extends Controller
             ['label' => 'Fasoncular', 'value' => CurrentAccountRole::ROLE_SUBCONTRACTOR],
             ['label' => 'Kargo / Kurye', 'value' => CurrentAccountRole::ROLE_CARRIER],
             ['label' => 'Diğer', 'value' => CurrentAccountRole::ROLE_OTHER],
+        ];
+    }
+
+    private function movementStatusOptions(): array
+    {
+        return [
+            '' => 'Tümü',
+            'open' => 'Açık Hareket Var',
+            'none' => 'Hareket Yok',
+            'overdue' => 'Vadesi Geçen Var',
+        ];
+    }
+
+    private function balanceStatusOptions(): array
+    {
+        return [
+            '' => 'Tümü',
+            'receivable' => 'Borç Bakiyesi',
+            'payable' => 'Alacak Bakiyesi',
+            'closed' => 'Kapalı',
+        ];
+    }
+
+    private function statusFilterOptions(string $activeTab): array
+    {
+        return match ($activeTab) {
+            'arsiv' => [
+                CurrentAccount::STATUS_PASSIVE => 'Pasif',
+                CurrentAccount::STATUS_BLOCKED => 'Bloklu',
+                CurrentAccount::STATUS_ARCHIVED => 'Arşivlendi',
+            ],
+            'tumu' => CurrentAccount::statusLabels(),
+            default => [],
+        };
+    }
+
+    private function listTabs(): array
+    {
+        return [
+            'aktif' => 'Aktif Bakiyeler',
+            'acik' => 'Açık Hareketler',
+            'vadesi-gecen' => 'Vadesi Geçenler',
+            'tumu' => 'Tüm Cari Bakiyeler',
+            'arsiv' => 'Pasif / Arşivlenenler',
+        ];
+    }
+
+    private function applyListTabScope($query, string $activeTab, int $tenantId): void
+    {
+        $nonCancelledStatuses = [
+            CurrentAccountTransaction::STATUS_OPEN,
+            CurrentAccountTransaction::STATUS_PARTIALLY_PAID,
+            CurrentAccountTransaction::STATUS_PAID,
+            CurrentAccountTransaction::STATUS_CLOSED,
+        ];
+
+        if ($activeTab === 'aktif') {
+            $query->where('status', CurrentAccount::STATUS_ACTIVE)
+                ->whereHas('transactions', function ($builder) use ($tenantId, $nonCancelledStatuses): void {
+                    $builder
+                        ->where('tenant_account_id', $tenantId)
+                        ->whereIn('status', $nonCancelledStatuses);
+                });
+
+            return;
+        }
+
+        if ($activeTab === 'acik') {
+            $query->where('status', CurrentAccount::STATUS_ACTIVE)
+                ->whereHas('transactions', function ($builder) use ($tenantId): void {
+                    $builder
+                        ->where('tenant_account_id', $tenantId)
+                        ->whereIn('status', [
+                            CurrentAccountTransaction::STATUS_OPEN,
+                            CurrentAccountTransaction::STATUS_PARTIALLY_PAID,
+                        ]);
+                });
+
+            return;
+        }
+
+        if ($activeTab === 'vadesi-gecen') {
+            $query->where('status', CurrentAccount::STATUS_ACTIVE)
+                ->whereHas('transactions', function ($builder) use ($tenantId): void {
+                    $builder
+                        ->where('tenant_account_id', $tenantId)
+                        ->whereIn('status', [
+                            CurrentAccountTransaction::STATUS_OPEN,
+                            CurrentAccountTransaction::STATUS_PARTIALLY_PAID,
+                        ])
+                        ->whereDate('due_date', '<', now()->toDateString());
+                });
+
+            return;
+        }
+
+        if ($activeTab === 'arsiv') {
+            $query->whereIn('status', [
+                CurrentAccount::STATUS_PASSIVE,
+                CurrentAccount::STATUS_BLOCKED,
+                CurrentAccount::STATUS_ARCHIVED,
+            ]);
+
+            return;
+        }
+    }
+
+    private function applyMovementStatusFilter($query, string $movementStatus, int $tenantId): void
+    {
+        if ($movementStatus === '') {
+            return;
+        }
+
+        if ($movementStatus === 'open') {
+            $query->whereHas('transactions', function ($builder) use ($tenantId): void {
+                $builder
+                    ->where('tenant_account_id', $tenantId)
+                    ->whereIn('status', [
+                        CurrentAccountTransaction::STATUS_OPEN,
+                        CurrentAccountTransaction::STATUS_PARTIALLY_PAID,
+                    ]);
+            });
+
+            return;
+        }
+
+        if ($movementStatus === 'none') {
+            $query->whereDoesntHave('transactions', function ($builder) use ($tenantId): void {
+                $builder
+                    ->where('tenant_account_id', $tenantId)
+                    ->where(function ($statusQuery): void {
+                        $statusQuery
+                            ->where('status', '!=', CurrentAccountTransaction::STATUS_CANCELLED)
+                            ->orWhereNull('status');
+                    });
+            });
+
+            return;
+        }
+
+        if ($movementStatus === 'overdue') {
+            $query->whereHas('transactions', function ($builder) use ($tenantId): void {
+                $builder
+                    ->where('tenant_account_id', $tenantId)
+                    ->whereIn('status', [
+                        CurrentAccountTransaction::STATUS_OPEN,
+                        CurrentAccountTransaction::STATUS_PARTIALLY_PAID,
+                    ])
+                    ->whereDate('due_date', '<', now()->toDateString());
+            });
+        }
+    }
+
+    private function applyBalanceStatusFilter($query, string $balanceStatus, int $tenantId, bool $canViewFinancialData): void
+    {
+        if ($balanceStatus === '' || ! $canViewFinancialData) {
+            return;
+        }
+
+        $candidateIds = (clone $query)->pluck('id')->all();
+        $summaries = $this->balanceSummaryService->summarizeAccounts($tenantId, $candidateIds);
+
+        $matchedIds = collect($summaries)
+            ->filter(fn (array $summary): bool => ($summary['balance_direction'] ?? 'closed') === $balanceStatus)
+            ->keys()
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
+
+        if ($matchedIds === []) {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        $query->whereIn('id', $matchedIds);
+    }
+
+    private function tabStats(int $tenantId): array
+    {
+        $base = CurrentAccount::query()->where('tenant_account_id', $tenantId);
+
+        return [
+            'aktif' => [
+                'label' => 'Aktif Bakiyeler',
+                'count' => (clone $base)
+                    ->where('status', CurrentAccount::STATUS_ACTIVE)
+                    ->whereHas('transactions', function ($builder) use ($tenantId): void {
+                        $builder
+                            ->where('tenant_account_id', $tenantId)
+                            ->where('status', '!=', CurrentAccountTransaction::STATUS_CANCELLED);
+                    })
+                    ->count(),
+            ],
+            'acik' => [
+                'label' => 'Açık Hareketler',
+                'count' => (clone $base)
+                    ->where('status', CurrentAccount::STATUS_ACTIVE)
+                    ->whereHas('transactions', function ($builder) use ($tenantId): void {
+                        $builder
+                            ->where('tenant_account_id', $tenantId)
+                            ->whereIn('status', [
+                                CurrentAccountTransaction::STATUS_OPEN,
+                                CurrentAccountTransaction::STATUS_PARTIALLY_PAID,
+                            ]);
+                    })
+                    ->count(),
+            ],
+            'vadesi-gecen' => [
+                'label' => 'Vadesi Geçenler',
+                'count' => (clone $base)
+                    ->where('status', CurrentAccount::STATUS_ACTIVE)
+                    ->whereHas('transactions', function ($builder) use ($tenantId): void {
+                        $builder
+                            ->where('tenant_account_id', $tenantId)
+                            ->whereIn('status', [
+                                CurrentAccountTransaction::STATUS_OPEN,
+                                CurrentAccountTransaction::STATUS_PARTIALLY_PAID,
+                            ])
+                            ->whereDate('due_date', '<', now()->toDateString());
+                    })
+                    ->count(),
+            ],
+            'tumu' => [
+                'label' => 'Tüm Cari Bakiyeler',
+                'count' => (clone $base)->count(),
+            ],
+            'arsiv' => [
+                'label' => 'Pasif / Arşivlenenler',
+                'count' => (clone $base)
+                    ->whereIn('status', [
+                        CurrentAccount::STATUS_PASSIVE,
+                        CurrentAccount::STATUS_BLOCKED,
+                        CurrentAccount::STATUS_ARCHIVED,
+                    ])
+                    ->count(),
+            ],
+        ];
+    }
+
+    private function sanitizeListFilters(Request $request, string $activeTab, bool $canViewFinancialData): array
+    {
+        $status = trim((string) $request->query('status', ''));
+        $balanceStatus = trim((string) $request->query('balance_status', ''));
+        $movementStatus = trim((string) $request->query('movement_status', ''));
+        $filterNotice = null;
+
+        $allowedStatusOptions = array_keys($this->statusFilterOptions($activeTab));
+        if ($status !== '' && ! in_array($status, $allowedStatusOptions, true)) {
+            $status = '';
+            $filterNotice = 'Seçili sekmeyle uyumsuz filtre temizlendi.';
+        }
+
+        if (! $canViewFinancialData) {
+            $balanceStatus = '';
+        }
+
+        if (! array_key_exists($movementStatus, $this->movementStatusOptions())) {
+            $movementStatus = '';
+        }
+
+        if (! array_key_exists($balanceStatus, $this->balanceStatusOptions())) {
+            $balanceStatus = '';
+        }
+
+        return [
+            'search' => trim((string) $request->query('search', '')),
+            'role' => trim((string) $request->query('role', '')),
+            'status' => $status,
+            'risk_status' => trim((string) $request->query('risk_status', '')),
+            'balance_status' => $balanceStatus,
+            'movement_status' => $movementStatus,
+            'filter_notice' => $filterNotice,
         ];
     }
 

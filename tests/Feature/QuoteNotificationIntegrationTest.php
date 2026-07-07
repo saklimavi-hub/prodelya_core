@@ -83,7 +83,11 @@ class QuoteNotificationIntegrationTest extends TestCase
             ]);
 
         $response->assertRedirect(route('admin.promotion-quotes.show', $quote));
-        $response->assertSessionHas('success', 'Teklif müşteriye gönderime hazırlandı.');
+        $response->assertSessionHas('success');
+        $this->assertStringContainsString(
+            'Gönderim kaydı oluşturuldu.',
+            (string) $response->getSession()->get('success')
+        );
 
         $logs = NotificationLog::query()
             ->where('tenant_account_id', $this->tenant->id)
@@ -110,6 +114,8 @@ class QuoteNotificationIntegrationTest extends TestCase
         $this->assertStringNotContainsString('pdh_raw', (string) $emailLog->message_preview);
         $this->assertStringNotContainsString('1440', (string) $emailLog->message_preview);
         $this->assertStringNotContainsString('KDV', (string) $emailLog->message_preview);
+        $this->assertStringNotContainsString('Baskı Birim', (string) $emailLog->message_preview);
+        $this->assertStringNotContainsString('Baskı Toplam', (string) $emailLog->message_preview);
         $this->assertStringStartsWith('https://wa.me/', (string) data_get($whatsappLog->meta_json, 'url'));
         $this->assertSame('tenant_admin', $internalLog->audience_type);
     }

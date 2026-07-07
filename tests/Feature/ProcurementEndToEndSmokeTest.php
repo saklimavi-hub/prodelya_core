@@ -100,12 +100,15 @@ class ProcurementEndToEndSmokeTest extends TestCase
 
         $procurementShow = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.procurements.show', $supplierProcurement));
+            ->get(route('admin.procurements.show', [
+                $supplierProcurement,
+                'tab' => 'islemler',
+            ]));
 
         $procurementShow->assertOk();
         $procurementShow->assertSee('Tedarik Detayı');
         $procurementShow->assertSee('PROC-SUP-001');
-        $procurementShow->assertSee('Tedarik Talebi Aç');
+        $procurementShow->assertSee('Talep Aç');
         $procurementShow->assertSee('Kısmi Geldi');
         $procurementShow->assertSee('Tamamı Geldi');
         $this->assertSafeOutput($procurementShow->getContent());
@@ -192,9 +195,8 @@ class ProcurementEndToEndSmokeTest extends TestCase
             ->get(route('admin.orders.show', $order->fresh()));
 
         $orderShow->assertOk();
-        $orderShow->assertSee('Sipariş Özeti');
-        $orderShow->assertSee('Modül Geçişleri');
-        $orderShow->assertSee('Kalem Özeti');
+        $orderShow->assertSee('Genel Özet');
+        $orderShow->assertSee('Tedarik');
         $orderShow->assertSee('Tedarik');
         $orderShow->assertSee('Tamamı Geldi');
         $orderShow->assertSee(route('admin.procurements.show', $supplierProcurement), false);

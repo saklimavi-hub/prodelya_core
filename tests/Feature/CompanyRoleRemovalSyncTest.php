@@ -215,7 +215,7 @@ class CompanyRoleRemovalSyncTest extends TestCase
         $production = $this->createProduction('SP-FASON-RM-001');
 
         $before = $this->actingAs($this->owner, 'web')
-            ->get($this->tenantUrl('/admin/productions/' . $production->id));
+            ->get($this->tenantUrl('/admin/productions/' . $production->id . '?tab=islemler'));
 
         $before->assertOk()->assertSee($company->legal_name);
 
@@ -229,7 +229,7 @@ class CompanyRoleRemovalSyncTest extends TestCase
             ->assertRedirect($this->tenantUrl('/admin/companies/' . $company->id));
 
         $after = $this->actingAs($this->owner, 'web')
-            ->get($this->tenantUrl('/admin/productions/' . $production->id));
+            ->get($this->tenantUrl('/admin/productions/' . $production->id . '?tab=islemler'));
 
         $after->assertOk()->assertDontSee($company->legal_name);
     }

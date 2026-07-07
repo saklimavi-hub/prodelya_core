@@ -5,6 +5,7 @@ namespace App\Services\Notifications;
 use App\Models\NotificationTemplate;
 use App\Models\TenantAccount;
 use App\Models\User;
+use App\Services\PhoneNumberNormalizer;
 
 class TenantWhatsappLinkService
 {
@@ -16,6 +17,7 @@ class TenantWhatsappLinkService
     public function __construct(
         protected TenantNotificationSettingsService $settingsService,
         protected NotificationDispatchService $dispatchService,
+        protected PhoneNumberNormalizer $phoneNumberNormalizer,
     ) {
     }
 
@@ -37,7 +39,9 @@ class TenantWhatsappLinkService
         return [
             'customer_name' => $customerName,
             'message_type' => $messageType,
-            'phone' => $this->normalizePhone($tenant, (string) ($payload['recipient_phone'] ?? '')),
+            'phone' => $this->formatTurkishPhoneForDisplay((string) ($payload['recipient_phone'] ?? '')),
+            'phone_e164' => $this->normalizePhone($tenant, (string) ($payload['recipient_phone'] ?? '')),
+            'phone_dial' => $this->toWhatsappDialString((string) ($payload['recipient_phone'] ?? '')),
             'public_link' => $publicLink,
             'message' => $body,
         ];
@@ -47,9 +51,13 @@ class TenantWhatsappLinkService
     {
         $preview = $this->buildPreview($tenant, $payload);
 
+        if (! filled($preview['phone_dial'] ?? null)) {
+            throw new \InvalidArgumentException('WhatsApp için geçerli bir cep telefonu bulunmuyor.');
+        }
+
         return $this->dispatchService->createWhatsappLink(
             $tenant,
-            $preview['phone'],
+            $preview['phone_dial'],
             $preview['message'],
             [
                 'notification_key' => 'whatsapp_manual_link',
@@ -69,27 +77,27 @@ class TenantWhatsappLinkService
 
     public function normalizePhone(TenantAccount $tenant, string $phone): string
     {
-        $settings = $this->settingsService->getWhatsappConfig($tenant);
-        $countryCode = preg_replace('/\D+/', '', (string) ($settings['default_country_code'] ?? '90')) ?: '90';
-        $normalized = preg_replace('/\D+/', '', $phone) ?: '';
+        return $this->normalizeTurkishMobileForWhatsapp($phone) ?? '';
+    }
 
-        if ($normalized === '') {
-            return '';
-        }
+    public function normalizeTurkishMobileForWhatsapp(?string $phone): ?string
+    {
+        return $this->phoneNumberNormalizer->normalizeTurkishMobileForWhatsapp($phone);
+    }
 
-        if (str_starts_with($normalized, '00')) {
-            $normalized = substr($normalized, 2);
-        }
+    public function formatTurkishPhoneForDisplay(?string $phone): string
+    {
+        return $this->phoneNumberNormalizer->formatTurkishPhoneForDisplay($phone);
+    }
 
-        if (str_starts_with($normalized, $countryCode)) {
-            return $normalized;
-        }
+    public function isLikelyTurkishMobile(?string $phone): bool
+    {
+        return $this->phoneNumberNormalizer->isLikelyTurkishMobile($phone);
+    }
 
-        if (str_starts_with($normalized, '0')) {
-            return $countryCode . substr($normalized, 1);
-        }
-
-        return $countryCode . $normalized;
+    public function toWhatsappDialString(?string $phone): ?string
+    {
+        return $this->phoneNumberNormalizer->toWhatsappDialString($phone);
     }
 
     private function buildMessageBody(

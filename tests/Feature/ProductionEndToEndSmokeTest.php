@@ -117,12 +117,15 @@ class ProductionEndToEndSmokeTest extends TestCase
 
         $productionShow = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.productions.show', $internalProduction));
+            ->get(route('admin.productions.show', [
+                $internalProduction,
+                'tab' => 'genel',
+            ]));
 
         $productionShow->assertOk();
         $productionShow->assertSee('Üretim Detayı');
-        $productionShow->assertSee('Baskıya başlamak için grafik hazır olmalı.');
-        $productionShow->assertSee('Tedariğe Git');
+        $productionShow->assertSee('Grafik bekleniyor');
+        $productionShow->assertSee('Tedarik bekleniyor');
         $productionShow->assertSee('Fotoğraf Ekle');
         $this->assertSafeOutput($productionShow->getContent());
 
@@ -265,11 +268,14 @@ class ProductionEndToEndSmokeTest extends TestCase
 
         $postReadyShow = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.productions.show', $externalProduction));
+            ->get(route('admin.productions.show', [
+                $externalProduction,
+                'tab' => 'genel',
+            ]));
 
         $postReadyShow->assertOk();
-        $postReadyShow->assertDontSee('Baskıya başlamak için grafik hazır olmalı.');
-        $postReadyShow->assertDontSee('Baskıya başlamak için tedarik tamamlanmalı.');
+        $postReadyShow->assertDontSee('Grafik bekleniyor');
+        $postReadyShow->assertDontSee('Tedarik bekleniyor');
         $postReadyShow->assertSee('Tamamlandı');
         $this->assertSafeOutput($postReadyShow->getContent());
 
@@ -316,11 +322,10 @@ class ProductionEndToEndSmokeTest extends TestCase
             ->get(route('admin.orders.show', $order->fresh()));
 
         $orderShow->assertOk();
-        $orderShow->assertSee('Sipariş Özeti');
-        $orderShow->assertSee('Modül Geçişleri');
-        $orderShow->assertSee('Kalem Özeti');
+        $orderShow->assertSee('Genel Özet');
         $orderShow->assertSee('Üretim');
-        $orderShow->assertSee('Tamamlandı');
+        $orderShow->assertSee('İç Üretimde');
+        $orderShow->assertSee('Teslimat Bekliyor');
         $orderShow->assertSee(route('admin.productions.show', $internalProduction), false);
         $this->assertSafeOutput($orderShow->getContent());
 

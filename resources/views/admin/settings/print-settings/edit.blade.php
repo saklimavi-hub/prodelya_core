@@ -187,6 +187,186 @@
         <button type="submit" class="pd-btn pd-btn-primary">Baskı Ayarını Kaydet</button>
     </div>
 </form>
+
+<div class="pd-card" style="margin-top: 18px;">
+    <div class="pd-card-header">
+        <h3 class="pd-card-title">Baskı Seçenekleri</h3>
+        <p class="pd-card-subtitle">Bu baskı türüne bağlı seçenekleri, tek fiyat önerisini ve ara eleman varsayımlarını yönetin.</p>
+    </div>
+    <div class="pd-card-body">
+        <div class="pd-card" style="margin-bottom: 14px; border:1px dashed var(--pd-line);">
+            <div class="pd-card-body">
+                <form method="POST" action="{{ route('admin.settings.print-settings.options.store', $setting) }}">
+                    @csrf
+                    <div class="pd-grid pd-grid-4">
+                        <div>
+                            <label class="text-sm font-medium">Seçenek Adı</label>
+                            <input type="text" name="name" value="{{ old('name') }}" placeholder="Örn. Tek taraf UV baskı">
+                        </div>
+                        <div>
+                            <label class="text-sm font-medium">Kod</label>
+                            <input type="text" name="code" value="{{ old('code') }}" placeholder="uv-front">
+                        </div>
+                        <div>
+                            <label class="text-sm font-medium">Sıra</label>
+                            <input type="number" name="sort_order" value="{{ old('sort_order', 10) }}" min="0">
+                        </div>
+                        @if($canViewFinancialDefaults)
+                            <div>
+                                <label class="text-sm font-medium">Tek fiyat önerisi</label>
+                                <input type="number" step="0.01" min="0" name="default_unit_price" value="{{ old('default_unit_price') }}">
+                            </div>
+                        @endif
+                        <div class="pd-grid-span-2">
+                            <label class="text-sm font-medium">Açıklama</label>
+                            <input type="text" name="description" value="{{ old('description') }}" placeholder="Kısa not">
+                        </div>
+                        <div>
+                            <label class="text-sm font-medium">Ara eleman tipi</label>
+                            <select name="setup_type">
+                                <option value="">Seçiniz</option>
+                                @foreach($setupTypeOptions as $setupTypeValue => $setupTypeLabel)
+                                    <option value="{{ $setupTypeValue }}" @selected(old('setup_type') === $setupTypeValue)>{{ $setupTypeLabel }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-sm font-medium">Varsayılan durum</label>
+                            <select name="setup_status_default">
+                                <option value="">Seçiniz</option>
+                                @foreach($setupStatusOptions as $statusOption)
+                                    <option value="{{ $statusOption }}" @selected(old('setup_status_default') === $statusOption)>{{ $statusOption }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="pd-grid pd-grid-3" style="margin-top: 14px;">
+                        <label style="display:flex; gap:10px; align-items:center; padding: 12px; border:1px solid var(--pd-line); border-radius:6px; background:#fbfcfe;">
+                            <input type="hidden" name="is_active" value="0">
+                            <input type="checkbox" name="is_active" value="1" @checked(old('is_active', true)) style="width:auto;">
+                            <span>Aktif</span>
+                        </label>
+                        <label style="display:flex; gap:10px; align-items:center; padding: 12px; border:1px solid var(--pd-line); border-radius:6px; background:#fbfcfe;">
+                            <input type="hidden" name="is_default" value="0">
+                            <input type="checkbox" name="is_default" value="1" @checked(old('is_default', false)) style="width:auto;">
+                            <span>Varsayılan seçenek</span>
+                        </label>
+                        <label style="display:flex; gap:10px; align-items:center; padding: 12px; border:1px solid var(--pd-line); border-radius:6px; background:#fbfcfe;">
+                            <input type="hidden" name="requires_setup" value="0">
+                            <input type="checkbox" name="requires_setup" value="1" @checked(old('requires_setup', false)) style="width:auto;">
+                            <span>Ara eleman gerekir</span>
+                        </label>
+                    </div>
+
+                    <div class="flex justify-end" style="margin-top: 14px;">
+                        <button type="submit" class="pd-btn pd-btn-primary">Baskı Seçeneği Ekle</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="pd-table-wrap">
+            <table class="pd-table">
+                <thead>
+                    <tr>
+                        <th>Seçenek</th>
+                        <th>Durum</th>
+                        <th>Setup</th>
+                        @if($canViewFinancialDefaults)
+                            <th>Tek Fiyat Önerisi</th>
+                        @endif
+                        <th>Sıra</th>
+                        <th class="text-right">Aksiyon</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse($printOptions as $option)
+                        <tr>
+                            <td colspan="{{ $canViewFinancialDefaults ? 6 : 5 }}" style="padding: 0;">
+                                <form method="POST" action="{{ route('admin.settings.print-settings.options.update', [$setting, $option]) }}" style="padding: 14px 16px;">
+                                    @csrf
+                                    @method('PUT')
+                                    <div class="pd-grid pd-grid-4">
+                                        <div>
+                                            <label class="text-sm font-medium">Seçenek Adı</label>
+                                            <input type="text" name="name" value="{{ old('name.' . $option->id, $option->name) }}">
+                                        </div>
+                                        <div>
+                                            <label class="text-sm font-medium">Kod</label>
+                                            <input type="text" name="code" value="{{ old('code.' . $option->id, $option->code) }}">
+                                        </div>
+                                        <div>
+                                            <label class="text-sm font-medium">Sıra</label>
+                                            <input type="number" name="sort_order" min="0" value="{{ old('sort_order.' . $option->id, $option->sort_order) }}">
+                                        </div>
+                                        @if($canViewFinancialDefaults)
+                                            <div>
+                                                <label class="text-sm font-medium">Tek fiyat önerisi</label>
+                                                <input type="number" step="0.01" min="0" name="default_unit_price" value="{{ old('default_unit_price.' . $option->id, $option->default_unit_price) }}">
+                                            </div>
+                                        @endif
+                                        <div class="pd-grid-span-2">
+                                            <label class="text-sm font-medium">Açıklama</label>
+                                            <input type="text" name="description" value="{{ old('description.' . $option->id, $option->description) }}">
+                                        </div>
+                                        <div>
+                                            <label class="text-sm font-medium">Ara eleman tipi</label>
+                                            <select name="setup_type">
+                                                <option value="">Seçiniz</option>
+                                                @foreach($setupTypeOptions as $setupTypeValue => $setupTypeLabel)
+                                                    <option value="{{ $setupTypeValue }}" @selected(old('setup_type.' . $option->id, $option->setup_type) === $setupTypeValue)>{{ $setupTypeLabel }}</option>
+                                                @endforeach
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="text-sm font-medium">Varsayılan durum</label>
+                                            <select name="setup_status_default">
+                                                <option value="">Seçiniz</option>
+                                                @foreach($setupStatusOptions as $statusOption)
+                                                    <option value="{{ $statusOption }}" @selected(old('setup_status_default.' . $option->id, $option->setup_status_default) === $statusOption)>{{ $statusOption }}</option>
+                                                @endforeach
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div class="pd-grid pd-grid-3" style="margin-top: 14px;">
+                                        <label style="display:flex; gap:10px; align-items:center; padding: 12px; border:1px solid var(--pd-line); border-radius:6px; background:#fbfcfe;">
+                                            <input type="hidden" name="is_active" value="0">
+                                            <input type="checkbox" name="is_active" value="1" @checked(old('is_active.' . $option->id, $option->is_active)) style="width:auto;">
+                                            <span>Aktif</span>
+                                        </label>
+                                        <label style="display:flex; gap:10px; align-items:center; padding: 12px; border:1px solid var(--pd-line); border-radius:6px; background:#fbfcfe;">
+                                            <input type="hidden" name="is_default" value="0">
+                                            <input type="checkbox" name="is_default" value="1" @checked(old('is_default.' . $option->id, $option->is_default)) style="width:auto;">
+                                            <span>Varsayılan seçenek</span>
+                                        </label>
+                                        <label style="display:flex; gap:10px; align-items:center; padding: 12px; border:1px solid var(--pd-line); border-radius:6px; background:#fbfcfe;">
+                                            <input type="hidden" name="requires_setup" value="0">
+                                            <input type="checkbox" name="requires_setup" value="1" @checked(old('requires_setup.' . $option->id, $option->requires_setup)) style="width:auto;">
+                                            <span>Ara eleman gerekir</span>
+                                        </label>
+                                    </div>
+
+                                    <div class="flex justify-between items-center" style="margin-top: 14px;">
+                                        <div class="text-sm text-gray-600">
+                                            {{ $option->is_default ? 'Varsayılan seçenek' : 'Varsayılan değil' }}
+                                        </div>
+                                        <button type="submit" class="pd-btn pd-btn-primary pd-btn-sm">Güncelle</button>
+                                    </div>
+                                </form>
+                            </td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="{{ $canViewFinancialDefaults ? 6 : 5 }}" class="text-center">Bu baskı türü için seçenek bulunamadı.</td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
 @endsection
 
 @section('side_summary')

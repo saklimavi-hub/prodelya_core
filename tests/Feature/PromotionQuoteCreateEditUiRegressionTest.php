@@ -48,8 +48,12 @@ class PromotionQuoteCreateEditUiRegressionTest extends TestCase
             'Belge Türü',
             'Teslimat Tipi',
             'Para birimi',
+            'Baskı fiyatı gösterimi',
             'Sipariş Notu',
         ]);
+        $response->assertSee('Baskı fiyatı gösterilsin');
+        $response->assertSee('Baskı fiyatı gizlensin');
+        $response->assertDontSee('Müşteri çıktılarında baskı fiyatını göster');
         $response->assertSee('No');
         $response->assertSee('Ürün');
         $response->assertSee('Liste');
@@ -125,8 +129,12 @@ class PromotionQuoteCreateEditUiRegressionTest extends TestCase
             'Belge Türü',
             'Teslimat Tipi',
             'Para birimi',
+            'Baskı fiyatı gösterimi',
             'Sipariş Notu',
         ]);
+        $response->assertSee('Baskı fiyatı gösterilsin');
+        $response->assertSee('Baskı fiyatı gizlensin');
+        $response->assertDontSee('Müşteri çıktılarında baskı fiyatını göster');
         $response->assertSee('Ürün Ekle');
         $response->assertSee('Baskı Ekle');
         $response->assertSee('Ürün Toplamı');

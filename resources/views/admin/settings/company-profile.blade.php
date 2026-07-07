@@ -540,7 +540,7 @@
                 <div class="company-profile-info-icon">i</div>
                 <div>
                     <span class="company-profile-info-title">Bu bilgiler cari kart değildir.</span>
-                    <p class="company-profile-note-text">Buradaki kayıt yalnızca abone firmanın kendi profilini temsil eder. Müşteri, tedarikçi ve fason firmalar Müşteriler / Cari Kartlar ekranından yönetilir.</p>
+                    <p class="company-profile-note-text">Buradaki kayıt yalnızca abone firmanın kendi profilini temsil eder. Müşteri, tedarikçi, fason ve diğer cari kayıtlar Cari Kartlar ekranından yönetilir.</p>
                 </div>
             </div>
 

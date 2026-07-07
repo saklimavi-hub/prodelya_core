@@ -55,7 +55,12 @@ class GraphicModuleDataBuilder
         ];
     }
 
-    public function buildShow(OrderItemWorkForm $workForm, bool $customerApprovalEnabled = false): array
+    public function buildShow(
+        OrderItemWorkForm $workForm,
+        bool $customerApprovalEnabled = false,
+        ?int $selectedGraphicId = null,
+        ?string $selectedStep = null
+    ): array
     {
         $relations = [
             'attachments.uploader',
@@ -83,12 +88,20 @@ class GraphicModuleDataBuilder
             ->map(fn (OrderItemPrintGraphic $graphic) => $this->mapOperationCard($workForm, $graphic))
             ->values();
 
-        $selectedOperation = $operations
+        $selectedOperation = $selectedGraphicId
+            ? $operations->first(fn (OrderItemPrintGraphic $graphic) => $graphic->id === $selectedGraphicId)
+            : null;
+
+        $selectedOperation ??= $operations
             ->first(fn (OrderItemPrintGraphic $graphic) => !in_array($graphic->status, [
                 OrderItemPrintGraphic::STATUS_APPROVED,
                 OrderItemPrintGraphic::STATUS_PRODUCTION_READY,
             ], true))
             ?? $operations->first();
+
+        $selectedOperationCard = $selectedOperation ? $this->mapOperationCard($workForm, $selectedOperation) : null;
+        $activeStepKey = $this->resolveActiveStepKey($selectedOperation, $selectedStep, $customerApprovalEnabled);
+        $actionStepTabs = $this->buildActionStepTabs($activeStepKey, $customerApprovalEnabled);
 
         $workflowHistory = $this->mapWorkflowHistory($workForm);
 
@@ -104,7 +117,18 @@ class GraphicModuleDataBuilder
             'generalGraphicStatusLabel' => $this->aggregateStatusLabel($operations),
             'approvalStatusLabel' => $this->aggregateApprovalLabel($operations),
             'printOperationCards' => $operationCards,
-            'selectedOperationCard' => $selectedOperation ? $this->mapOperationCard($workForm, $selectedOperation) : null,
+            'productPreview' => $this->mapProductPreview($productSnapshot),
+            'operationTabs' => $operationCards->map(fn (array $card) => [
+                'id' => $card['id'],
+                'sequence_code' => $card['sequence_code'],
+                'title' => $card['title'],
+                'status_label' => $card['status_label'],
+                'status_badge' => $card['status_badge'],
+                'is_active' => $selectedOperation?->id === $card['id'],
+            ])->all(),
+            'selectedOperationCard' => $selectedOperationCard,
+            'activeActionStep' => $activeStepKey,
+            'actionStepTabs' => $actionStepTabs,
             'systemWorkFolder' => $this->mapWorkFolder($workForm->systemWorkFolder),
             'workflowHistory' => $workflowHistory,
             'operationSummaryLines' => $this->aggregateStatusParts($operations),
@@ -171,6 +195,8 @@ class GraphicModuleDataBuilder
             'product_code' => data_get($productSnapshot, 'product_code', '-'),
             'quantity' => $this->formatQuantity(data_get($productSnapshot, 'quantity'), data_get($productSnapshot, 'unit')),
             'image_url' => data_get($productSnapshot, 'image_url'),
+            'image_thumbnail_url' => data_get($productSnapshot, 'image_url'),
+            'image_original_url' => data_get($productSnapshot, 'image_url'),
             'print_lines' => $operations->map(fn (OrderItemPrintGraphic $graphic) => $this->operationLine($graphic))->all(),
             'print_operations' => $operations->map(fn (OrderItemPrintGraphic $graphic) => [
                 'id' => $graphic->id,
@@ -198,6 +224,8 @@ class GraphicModuleDataBuilder
             'production_ready_state_label' => $this->productionReadySummary($operations),
             'last_visual_name' => $primaryAttachment?->file_name,
             'last_visual_url' => $primaryAttachment ? $this->resolvePreviewUrl($primaryAttachment) : null,
+            'last_visual_thumbnail_url' => $primaryAttachment ? $this->resolvePreviewUrl($primaryAttachment) : null,
+            'last_visual_original_url' => $primaryAttachment ? $this->resolvePreviewUrl($primaryAttachment) : null,
             'has_graphic_visual' => (bool) $primaryAttachment,
             'has_customer_visible_visual' => $operations->contains(
                 fn (OrderItemPrintGraphic $graphic) => $graphic->latestAttachment && $graphic->latestAttachment->isCustomerVisible()
@@ -238,7 +266,9 @@ class GraphicModuleDataBuilder
             'production_ready_guidance' => $this->productionReadyGuidance($graphic),
             'attachment' => $attachment ? [
                 'file_name' => $attachment->file_name ?: basename((string) $attachment->file_path),
+                'thumbnail_url' => $attachment->isImage() ? $this->resolvePreviewUrl($attachment) : null,
                 'preview_url' => $attachment->isImage() ? $this->resolvePreviewUrl($attachment) : null,
+                'original_url' => $this->resolvePreviewUrl($attachment),
                 'open_url' => $this->resolvePreviewUrl($attachment),
                 'is_image' => $attachment->isImage(),
                 'kind_label' => $attachment->isImage() ? 'Görsel dosyası' : strtoupper(pathinfo((string) ($attachment->file_name ?: $attachment->file_path), PATHINFO_EXTENSION) ?: 'DOSYA') . ' dosyası',
@@ -340,7 +370,10 @@ class GraphicModuleDataBuilder
                 ? 'Durum güncellendi: ' . $this->statusLabel($log->new_status, ucfirst(str_replace('_', ' ', (string) $log->new_status)))
                 : 'Durum güncellendi',
             'work_form_created' => 'İş Formu oluşturuldu',
-            default => ucfirst(str_replace('_', ' ', $log->action_type)),
+            'procurement_request_created' => 'Tedarik kaydı oluşturuldu',
+            'production_operation_created' => 'Üretim operasyonu oluşturuldu',
+            'delivery_record_created' => 'Teslimat kaydı oluşturuldu',
+            default => 'İşlem kaydı oluşturuldu',
         };
     }
 
@@ -562,6 +595,85 @@ class GraphicModuleDataBuilder
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    private function mapProductPreview(array $productSnapshot): ?array
+    {
+        $imageUrl = data_get($productSnapshot, 'image_url');
+
+        if (!$imageUrl) {
+            return null;
+        }
+
+        return [
+            'thumbnail_url' => $imageUrl,
+            'preview_url' => $imageUrl,
+            'original_url' => $imageUrl,
+            'title' => data_get($productSnapshot, 'product_name', 'Ürün görseli'),
+        ];
+    }
+
+    private function resolveActiveStepKey(?OrderItemPrintGraphic $graphic, ?string $selectedStep, bool $customerApprovalEnabled): string
+    {
+        $allowedSteps = ['upload', 'summary', 'approval', 'revision', 'ready'];
+
+        if (in_array($selectedStep, $allowedSteps, true)) {
+            return $selectedStep;
+        }
+
+        if (!$graphic) {
+            return 'summary';
+        }
+
+        if (!$graphic->latestAttachment) {
+            return 'upload';
+        }
+
+        if ($graphic->status === OrderItemPrintGraphic::STATUS_REVISION_REQUESTED
+            || $graphic->customer_approval_status === OrderItemPrintGraphic::CUSTOMER_APPROVAL_REVISION_REQUESTED) {
+            return 'revision';
+        }
+
+        if ($graphic->status === OrderItemPrintGraphic::STATUS_CUSTOMER_APPROVAL_WAITING
+            || $graphic->customer_approval_status === OrderItemPrintGraphic::CUSTOMER_APPROVAL_WAITING) {
+            return 'approval';
+        }
+
+        if (
+            $customerApprovalEnabled
+            && $graphic->latestAttachment
+            && $graphic->latestAttachment->isCustomerVisible()
+            && $graphic->customer_approval_status !== OrderItemPrintGraphic::CUSTOMER_APPROVAL_APPROVED
+        ) {
+            return 'approval';
+        }
+
+        if ($graphic->status === OrderItemPrintGraphic::STATUS_APPROVED
+            || $graphic->status === OrderItemPrintGraphic::STATUS_PRODUCTION_READY
+            || $graphic->customer_approval_status === OrderItemPrintGraphic::CUSTOMER_APPROVAL_APPROVED) {
+            return 'ready';
+        }
+
+        return 'summary';
+    }
+
+    private function buildActionStepTabs(string $activeStepKey, bool $customerApprovalEnabled): array
+    {
+        $definitions = [
+            'upload' => ['label' => '1. Görsel Yükleme', 'short_label' => 'Görsel Yükleme', 'badge' => 'gg-badge-green'],
+            'summary' => ['label' => '2. Operasyon Özeti', 'short_label' => 'Operasyon Özeti', 'badge' => 'gg-badge-blue'],
+            'approval' => ['label' => $customerApprovalEnabled ? '3. Müşteri Onayı' : '3. Onay Durumu', 'short_label' => $customerApprovalEnabled ? 'Müşteri Onayı' : 'Onay Durumu', 'badge' => 'gg-badge-amber'],
+            'revision' => ['label' => '4. Revize', 'short_label' => 'Revize', 'badge' => 'gg-badge-red'],
+            'ready' => ['label' => '5. Üretime Hazır', 'short_label' => 'Üretime Hazır', 'badge' => 'gg-badge-gray'],
+        ];
+
+        return collect($definitions)
+            ->map(fn (array $definition, string $key) => $definition + [
+                'key' => $key,
+                'is_active' => $key === $activeStepKey,
+            ])
+            ->values()
+            ->all();
     }
 
     private function formatQuantity(mixed $quantity, ?string $unit = null): string

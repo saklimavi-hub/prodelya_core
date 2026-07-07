@@ -139,7 +139,7 @@ class ProductionReadinessPerPrintGraphicTest extends TestCase
             ->get()
             ->keyBy('sequence_code');
         $oneA = $this->prepareGraphicAsProductionReady($graphics['1a'], 'one-a-preview.jpg');
-        $this->prepareGraphicAsProductionReady($graphics['1b'], 'one-b-preview.jpg');
+        $oneB = $this->prepareGraphicAsProductionReady($graphics['1b'], 'one-b-preview.jpg');
 
         $readyResponse = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
@@ -163,11 +163,14 @@ class ProductionReadinessPerPrintGraphicTest extends TestCase
 
         $showResponse = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.productions.show', $production));
+            ->get(route('admin.productions.show', [
+                $production,
+                'tab' => 'genel',
+            ]));
 
         $showResponse->assertOk();
-        $showResponse->assertSee('one-a-preview.jpg');
-        $showResponse->assertDontSee('one-b-preview.jpg');
+        $showResponse->assertSee(route('admin.work-forms.attachments.preview', $oneA->latest_attachment_id), false);
+        $showResponse->assertDontSee(route('admin.work-forms.attachments.preview', $oneB->latest_attachment_id), false);
         $showResponse->assertDontSee('file_path', false);
         $showResponse->assertDontSee('physical_path', false);
         $showResponse->assertDontSee('group_code', false);

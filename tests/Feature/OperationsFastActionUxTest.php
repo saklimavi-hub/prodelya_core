@@ -66,8 +66,11 @@ class OperationsFastActionUxTest extends TestCase
         $response->assertSee('Talep Aç');
         $response->assertSee('Sipariş Verildi');
         $response->assertSee('Kısmi Geldi');
-        $response->assertSee('Geldi');
+        $response->assertSee('Tamamı Geldi');
         $response->assertSee('Toplu Talep Hazırla');
+        $response->assertSee('Birincil Aksiyonlar');
+        $response->assertSee('Diğer Aksiyonlar');
+        $response->assertSee('Sıradaki İş');
         $response->assertDontSee('Sistem Notu');
         $response->assertDontSee('group_code', false);
         $response->assertDontSee('raw_mapping', false);
@@ -81,10 +84,14 @@ class OperationsFastActionUxTest extends TestCase
 
         $detail = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.procurements.show', $procurement->fresh()));
+            ->get(route('admin.procurements.show', [
+                $procurement->fresh(),
+                'tab' => 'talep',
+            ]));
 
         $detail->assertOk();
-        $detail->assertSee('Formu Aç / Yazdır');
+        $detail->assertSee('Talep / Form');
+        $detail->assertSee('Fiyatsız Talep Formunu Aç');
         $detail->assertSee($requestRecord->request_number);
         $detail->assertDontSee('group_code', false);
         $detail->assertDontSee('raw_mapping', false);
@@ -111,12 +118,16 @@ class OperationsFastActionUxTest extends TestCase
 
         $show = $this->actingAs($this->operatorUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.productions.show', $production->fresh()));
+            ->get(route('admin.productions.show', [
+                $production->fresh(),
+                'tab' => 'genel',
+            ]));
 
         $show->assertOk();
-        $show->assertSee('Ne Basılacak?');
+        $show->assertSee('Genel Özet');
+        $show->assertSee('Üretim İlerlemesi');
         $show->assertSee('Kalan Adet');
-        $show->assertSee('Başlamaya Engel');
+        $show->assertSee('Sıradaki İşlem');
         $show->assertSee('Fotoğraf Ekle');
         $show->assertDontSee('subcontractor_cost', false);
         $show->assertDontSee('group_code', false);

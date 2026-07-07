@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Support\Str;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -194,11 +195,35 @@ class OrderItemPrintProduction extends Model
             ?? ucfirst(str_replace('_', ' ', (string) $this->qc_status));
     }
 
+    public static function formatDisplayQuantity(mixed $quantity, int $decimals = 4): string
+    {
+        $value = round((float) $quantity, $decimals);
+
+        if (abs($value) < (10 ** (-1 * $decimals))) {
+            return '0';
+        }
+
+        return rtrim(rtrim(number_format($value, $decimals, ',', ''), '0'), ',');
+    }
+
+    public static function normalizeProductionType(mixed $value): ?string
+    {
+        $normalized = trim(Str::ascii(mb_strtolower((string) $value)));
+
+        return match ($normalized) {
+            '', 'null' => null,
+            self::TYPE_INTERNAL, 'ic uretim', 'ic_uretim' => self::TYPE_INTERNAL,
+            self::TYPE_EXTERNAL, 'dis uretim', 'dis_uretim' => self::TYPE_EXTERNAL,
+            self::TYPE_OUTSOURCED, 'dis uretim / fason', 'dis uretim fason', 'fason', 'outsource', 'outsourced' => self::TYPE_OUTSOURCED,
+            default => null,
+        };
+    }
+
     public static function productionTypeLabels(): array
     {
         return [
             self::TYPE_INTERNAL => 'İç Üretim',
-            self::TYPE_EXTERNAL => 'Dış Üretim',
+            self::TYPE_EXTERNAL => 'Dış Üretim / Fason',
             self::TYPE_OUTSOURCED => 'Dış Üretim / Fason',
         ];
     }

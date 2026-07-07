@@ -61,7 +61,7 @@ class NotificationRecipientResolver
             'type' => 'customer',
             'name' => $primaryContact?->name ?: $company->legal_name ?: $company->name,
             'email' => $primaryContact?->email ?: $company->email,
-            'phone' => $primaryContact?->phone ?: $company->mobile ?: $company->phone,
+            'phone' => $primaryContact?->mobile ?: $primaryContact?->phone ?: $company->mobile ?: $company->phone,
             'user_id' => null,
             'company_id' => $company->id,
             'audience_type' => 'customer',

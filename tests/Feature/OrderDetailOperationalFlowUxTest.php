@@ -40,25 +40,16 @@ class OrderDetailOperationalFlowUxTest extends TestCase
             ->get(route('admin.orders.show', $order));
 
         $response->assertOk();
-        $response->assertSee('Sipariş Özeti');
-        $response->assertSee('Operasyon Akış Şeridi');
-        $response->assertSee('Sıradaki Aksiyon');
-        $response->assertSee('İş Formu ve Müşteri Takip Ekranı');
-        $response->assertSee('Müşteri Takip Ekranı');
-        $response->assertDontSee('Public Tracking');
-        $response->assertSee('Kalem Özeti');
-        $response->assertSee('Modül Geçişleri');
-        $response->assertSee($order->document_number);
-        $response->assertSee((string) $order->customer?->legal_name);
-        $response->assertSee((string) $order->source_quote_number);
+        $response->assertSee('Genel Özet');
+        $response->assertSee('İş Formu');
         $response->assertSee('Grafik');
         $response->assertSee('Tedarik');
         $response->assertSee('Üretim');
         $response->assertSee('Teslimat');
-        $response->assertSee('Smoke Test Kalem');
-        $response->assertSee('SMOKE-001');
-        $response->assertSee('UV Baskı');
-        $response->assertSee(route('admin.orders.tracking.open', ['order' => $order->id, 'workForm' => $workForm->id]), false);
+        $response->assertSee('Finans');
+        $response->assertSee('Geçmiş');
+        $response->assertSee($order->document_number);
+        $response->assertSee((string) $order->customer?->legal_name);
         $response->assertDontSee($workForm->public_tracking_token, false);
         $response->assertDontSee('group_code', false);
         $response->assertDontSee('file_path', false);
@@ -81,7 +72,7 @@ class OrderDetailOperationalFlowUxTest extends TestCase
             ->get(route('admin.orders.show', $order));
 
         $response->assertOk();
-        $response->assertSee('Sıradaki Aksiyon');
+        $response->assertSee('Genel Özet');
         $response->assertDontSee('Genel Toplam');
         $response->assertDontSee('Bakiye');
         $response->assertDontSee('Ödenen');

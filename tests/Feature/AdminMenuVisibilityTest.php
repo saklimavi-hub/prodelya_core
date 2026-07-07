@@ -63,13 +63,15 @@ class AdminMenuVisibilityTest extends TestCase
         $response->assertOk();
         $response->assertSee('Yönetim Paneli');
         $response->assertSee('Promosyon Teklifleri');
-        $response->assertSee('Müşteriler / Cari Kartlar');
+        $response->assertSee('Cari Kartlar');
+        $response->assertSee(route('admin.companies.index'), false);
+        $response->assertDontSee('href="' . route('admin.current-accounts.index') . '" class="pd-sidebar-item', false);
         $response->assertDontSee('Baski Teklifleri');
         $response->assertDontSee('Product Data Hub');
         $response->assertDontSee('Müşteri Portalı');
         $response->assertDontSee('Moduller');
         $response->assertDontSee('Super Ayarlar');
-        $response->assertSee('class="pd-sidebar-item active', false);
+        $response->assertDontSee('href="' . route('admin.current-accounts.index') . '" class="pd-sidebar-item active', false);
         $response->assertDontSee('group_code', false);
         $response->assertDontSee('file_path', false);
 
@@ -124,7 +126,7 @@ class AdminMenuVisibilityTest extends TestCase
         $response->assertSee('Standart Kategori Ağacı');
         $response->assertDontSee('Paket Talepleri');
         $response->assertDontSee('Promosyon Teklifleri');
-        $response->assertDontSee('Müşteriler / Cari Kartlar');
+        $response->assertDontSee('Cari Kartlar');
         $response->assertDontSee('Moduller');
         $response->assertDontSee('Super Ayarlar');
         $response->assertSee('data-sidebar-group="product-data-hub"', false);

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\OrderItemWorkFormDelivery;
 use App\Services\DeliveryWorkflowService;
+use App\Services\TenantDeliveryTypeService;
 use App\Services\TenantResolver;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -17,7 +18,8 @@ class DeliveryController extends Controller
 {
     public function __construct(
         protected TenantResolver $tenantResolver,
-        protected DeliveryWorkflowService $workflowService
+        protected DeliveryWorkflowService $workflowService,
+        protected TenantDeliveryTypeService $tenantDeliveryTypeService,
     ) {
     }
 
@@ -89,6 +91,11 @@ class DeliveryController extends Controller
                 ->filter(fn ($log) => in_array($log->action_type, $this->deliveryActionTypes(), true))
                 ->values()
             : collect();
+        $deliveryTypeState = $this->tenantDeliveryTypeService->selectionState(
+            $tenant->id,
+            $delivery->order?->delivery_type_id,
+            $delivery->order?->delivery_type
+        );
 
         return view('admin.deliveries.show', [
             'delivery' => $delivery,
@@ -96,6 +103,9 @@ class DeliveryController extends Controller
             'statusLabels' => OrderItemWorkFormDelivery::statusLabels(),
             'methodLabels' => OrderItemWorkFormDelivery::deliveryMethodLabels(),
             'packageTypeLabels' => OrderItemWorkFormDelivery::packageTypeLabels(),
+            'deliveryTypeOptions' => $deliveryTypeState['types'],
+            'selectedDeliveryTypeId' => old('delivery_type_id', $deliveryTypeState['selected_id']),
+            'legacyDeliveryTypeLabel' => $deliveryTypeState['legacy_label'],
             'nextActionLabel' => $this->nextActionLabel($delivery),
             'groupDeliveries' => $delivery->order
                 ? OrderItemWorkFormDelivery::query()
@@ -117,6 +127,7 @@ class DeliveryController extends Controller
         }
 
         $validated = $request->validate([
+            'delivery_type_id' => ['nullable', 'integer'],
             'delivery_method' => ['nullable', Rule::in(array_keys(OrderItemWorkFormDelivery::deliveryMethodLabels()))],
             'carrier_name' => ['nullable', 'string', 'max:120'],
             'tracking_number' => ['nullable', 'string', 'max:120'],
@@ -130,6 +141,20 @@ class DeliveryController extends Controller
             'package_note' => ['nullable', 'string', 'max:1000'],
             'delivery_note' => ['nullable', 'string', 'max:1000'],
         ]);
+        $deliveryTypePayload = $this->tenantDeliveryTypeService->resolveForPersistence(
+            $tenant->id,
+            isset($validated['delivery_type_id']) && $validated['delivery_type_id'] !== ''
+                ? (int) $validated['delivery_type_id']
+                : null,
+            $delivery->order?->delivery_type
+        );
+
+        if ($delivery->order) {
+            $delivery->order->forceFill([
+                'delivery_type_id' => $deliveryTypePayload['delivery_type_id'],
+                'delivery_type' => $deliveryTypePayload['delivery_type'],
+            ])->save();
+        }
 
         $this->workflowService->updateDetails(
             $delivery,

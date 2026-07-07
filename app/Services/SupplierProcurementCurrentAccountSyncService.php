@@ -204,6 +204,7 @@ class SupplierProcurementCurrentAccountSyncService
             ->where('tenant_account_id', $item->tenant_account_id)
             ->where('source_type', self::SOURCE_TYPE)
             ->where('source_id', $item->id)
+            ->where('transaction_type', CurrentAccountTransaction::TYPE_SUPPLIER_DEBIT)
             ->latest('id')
             ->first();
     }

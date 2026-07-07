@@ -238,7 +238,7 @@ class CompanyCreateEditBillingAddressUxTest extends TestCase
             ->assertSee('Fason Baskı Firması');
 
         $show = $this->actingAs($this->owner, 'web')
-            ->get($this->tenantUrl('/admin/companies/' . $company->id));
+            ->get($this->tenantUrl('/admin/companies/' . $company->id . '?tab=portal'));
 
         $show->assertOk()
             ->assertSee('data-contact-name="Portal Yetkili"', false)

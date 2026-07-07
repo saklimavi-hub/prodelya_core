@@ -165,8 +165,15 @@ class NotificationSettingsController extends Controller
         $tenant = $this->tenantResolver->getCurrentTenant($request);
         $validated = $this->validateWhatsappMessageRequest($request);
         $preview = $this->whatsappLinkService->buildPreview($tenant, $validated);
-
-        $result = $this->whatsappLinkService->createManualLink($tenant, $validated, $request->user());
+        try {
+            $result = $this->whatsappLinkService->createManualLink($tenant, $validated, $request->user());
+        } catch (\InvalidArgumentException $exception) {
+            return redirect()
+                ->route('admin.settings.notifications.whatsapp')
+                ->withInput()
+                ->withErrors(['recipient_phone' => $exception->getMessage()])
+                ->with('whatsapp_preview', $preview);
+        }
 
         return redirect()
             ->route('admin.settings.notifications.whatsapp')

@@ -2,7 +2,7 @@
 
 @section('title', 'Tedarikçi Talebi Düzenle')
 @section('page_title', 'Tedarikçi Talebi Düzenle')
-@section('page_subtitle', 'Supplier request kalemlerini gözden geçirin, iç alış fiyatlarını yönetin ve fiyatsız dış forma geçin.')
+@section('page_subtitle', 'Talep kalemlerini gözden geçirin, iç tedarik bilgilerini yönetin ve fiyatsız dış forma geçin.')
 
 @section('content')
 @php
@@ -26,6 +26,8 @@
     .spr-table input[type="text"], .spr-table input[type="number"] { width: 100%; }
     .spr-band { border: 1px solid #dbeafe; border-radius: 6px; background: #f8fbff; padding: 10px 12px; color: #475569; font-size: 12px; line-height: 1.45; }
     .spr-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .spr-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+    .spr-toolbar-group { display: flex; flex-wrap: wrap; gap: 8px; }
     .spr-product-name { font-weight: 700; color: #111827; }
     .spr-meta { margin-top: 4px; color: #6b7280; font-size: 11px; line-height: 1.45; }
     .spr-warning-list { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
@@ -75,6 +77,22 @@
 
     <section class="spr-card">
         <div class="spr-body">
+            <div class="spr-toolbar" style="margin-bottom: 14px;">
+                <div>
+                    <strong>Talep Aksiyonları</strong>
+                    <div class="spr-meta" style="margin-top:4px;">Kaydetme, fiyatsız form ve listeye dönüş işlemlerini bu alandan yönetin.</div>
+                </div>
+                <div class="spr-toolbar-group">
+                    @if($canSaveRequest)
+                        @if($requestRecord->isDraft())
+                            <button type="submit" name="submit_action" value="draft" form="supplier-request-update-form" class="pd-btn pd-btn-light">Taslak Olarak Kaydet</button>
+                        @endif
+                        <button type="submit" name="submit_action" value="request" form="supplier-request-update-form" class="pd-btn pd-btn-primary">Kaydet</button>
+                    @endif
+                    <a href="{{ route('admin.procurements.supplier-requests.print', $requestRecord) }}" class="pd-btn pd-btn-light" target="_blank" rel="noopener">Fiyatsız Talep Formunu Aç</a>
+                    <a href="{{ route('admin.procurements.index', ['supplier_id' => $requestRecord->supplier_id]) }}" class="pd-btn pd-btn-light">Tedarik Listesine Dön</a>
+                </div>
+            </div>
             <div class="spr-band" style="margin-bottom: 12px;">
                 Bu ekrandaki alış liste fiyatı, iskonto, alış birim fiyatı ve alış toplam alanları yalnız iç tedarik takibi içindir. Tedarikçiye gönderilecek talep formunda fiyat bilgileri gösterilmez.
             </div>
@@ -247,23 +265,12 @@
                     </table>
                 </div>
 
-                <div class="spr-actions" style="margin-top: 14px; justify-content: space-between;">
-                    <div class="spr-actions">
-                        <a href="{{ route('admin.procurements.index', ['supplier_id' => $requestRecord->supplier_id]) }}" class="pd-btn pd-btn-light">Listeye Dön</a>
-                        <a href="{{ route('admin.procurements.supplier-requests.print', $requestRecord) }}" class="pd-btn pd-btn-light" target="_blank" rel="noopener">Fiyatsız Talep Formunu Aç</a>
-                    </div>
-                    <div class="spr-actions">
-                        @if($canSaveRequest)
-                            @if($requestRecord->isDraft())
-                                <button type="submit" name="submit_action" value="draft" class="pd-btn pd-btn-light">Taslak Kaydet</button>
-                            @endif
-                            <button type="submit" name="submit_action" value="request" class="pd-btn pd-btn-primary">Talebi Kaydet</button>
-                        @endif
-                    </div>
-                </div>
             </form>
 
             @if($canManage)
+                <div class="spr-band" style="margin-top: 14px; margin-bottom: 10px; border-color:#e5e7eb; background:#fbfcfe;">
+                    Durum işlemleri yalnız tedarik aşamasına göre açılır. Aynı anda tüm workflow butonları gösterilmez.
+                </div>
                 <div class="spr-actions" style="margin-top: 10px;">
                     @if($requestRecord->isDraft())
                         <form method="POST" action="{{ route('admin.procurements.supplier-requests.cancel', $requestRecord) }}">
@@ -289,7 +296,7 @@
                             <button type="submit" class="pd-btn pd-btn-success">Tamamı Geldi</button>
                         </form>
                     @else
-                        <div class="spr-band">Bu talep readonly durumdadır. Yeni status aksiyonu bulunmuyor.</div>
+                        <div class="spr-band">Bu talep tamamlandı veya kapatıldı. Yeni durum işlemi bulunmuyor.</div>
                     @endif
                 </div>
             @endif

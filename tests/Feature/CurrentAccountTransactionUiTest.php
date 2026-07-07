@@ -99,6 +99,8 @@ class CurrentAccountTransactionUiTest extends TestCase
                 'amount' => 875,
                 'currency' => 'EUR',
                 'transaction_date' => '2026-06-16',
+                'status' => CurrentAccountTransaction::STATUS_OPEN,
+                'document_number' => 'TX-UI-001',
                 'description' => 'GIZLI-CARI-HAREKET-NOTU',
             ]);
 
@@ -119,6 +121,8 @@ class CurrentAccountTransactionUiTest extends TestCase
                 'direction' => CurrentAccountTransaction::DIRECTION_DEBIT,
                 'amount' => 100,
                 'currency' => 'TRY',
+                'transaction_date' => '2026-06-16',
+                'status' => CurrentAccountTransaction::STATUS_OPEN,
             ])
             ->assertForbidden();
 

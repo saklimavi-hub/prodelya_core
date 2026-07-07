@@ -17,9 +17,8 @@ class DeliveryDataBuilder
         $orderSnapshot = is_array($workForm->order_snapshot) ? $workForm->order_snapshot : [];
         $productSnapshot = is_array($workForm->product_snapshot) ? $workForm->product_snapshot : [];
         $existingSnapshot = is_array($workForm->delivery_snapshot) ? $workForm->delivery_snapshot : [];
-        $deliveryMethod = $delivery?->delivery_method ?? $this->normalizeDeliveryMethod(
-            $workForm->order?->delivery_type ?: data_get($orderSnapshot, 'delivery_type')
-        );
+        $commercialDeliveryType = $workForm->order?->delivery_type ?: data_get($orderSnapshot, 'delivery_type');
+        $deliveryMethod = $delivery?->delivery_method ?? $this->normalizeDeliveryMethod($commercialDeliveryType);
         $deliveryStatus = $delivery?->delivery_status ?? OrderItemWorkFormDelivery::STATUS_PENDING;
         $plannedQuantity = round((float) ($delivery?->planned_quantity ?? data_get($productSnapshot, 'quantity', $workForm->orderItem?->quantity ?? 0)), 4);
         $deliveredQuantity = round((float) ($delivery?->delivered_quantity ?? 0), 4);
@@ -45,7 +44,7 @@ class DeliveryDataBuilder
             'public_status_label' => $this->publicStatusLabel($deliveryStatus),
             'delivery_method' => $deliveryMethod,
             'delivery_method_label' => $this->deliveryMethodLabel($deliveryMethod),
-            'delivery_type' => $this->deliveryMethodLabel($deliveryMethod) ?: (data_get($orderSnapshot, 'delivery_type') ?: null),
+            'delivery_type' => $commercialDeliveryType ?: $this->deliveryMethodLabel($deliveryMethod),
             'planned_quantity' => $plannedQuantity,
             'delivered_quantity' => $deliveredQuantity,
             'remaining_quantity' => $remainingQuantity,
@@ -80,6 +79,7 @@ class DeliveryDataBuilder
         $snapshot = is_array($delivery->delivery_snapshot) ? $delivery->delivery_snapshot : [];
         $existing = is_array($delivery->workForm?->delivery_snapshot) ? $delivery->workForm->delivery_snapshot : [];
         $deliveryMethodLabel = $delivery->safeDeliveryMethodLabel();
+        $commercialDeliveryType = $delivery->order?->delivery_type ?: data_get($delivery->workForm?->order_snapshot, 'delivery_type');
         $packageTypeLabel = $this->packageTypeLabel($delivery->package_type);
 
         return [
@@ -91,7 +91,7 @@ class DeliveryDataBuilder
             'public_status_label' => $delivery->publicStatusLabel(),
             'delivery_method' => $delivery->delivery_method,
             'delivery_method_label' => $deliveryMethodLabel,
-            'delivery_type' => $deliveryMethodLabel,
+            'delivery_type' => $commercialDeliveryType ?: $deliveryMethodLabel,
             'planned_quantity' => (float) $delivery->planned_quantity,
             'ordered_quantity' => (float) $delivery->planned_quantity,
             'delivered_quantity' => (float) $delivery->delivered_quantity,

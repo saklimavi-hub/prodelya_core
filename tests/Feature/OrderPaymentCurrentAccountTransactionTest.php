@@ -14,6 +14,7 @@ use App\Models\TenantAccount;
 use App\Models\User;
 use App\Services\CurrentAccountTransactionService;
 use App\Services\FinanceSummaryService;
+use App\Services\OrderCurrentAccountDebitSyncService;
 use App\Services\OrderPaymentCurrentAccountSyncService;
 use App\Services\OrderPaymentService;
 use App\Services\WorkFormCreationService;
@@ -88,10 +89,19 @@ class OrderPaymentCurrentAccountTransactionTest extends TestCase
         $summary = $summaryService->summarizeOrder($order->fresh(['payments', 'deliveries.workForm.attachments', 'customer']));
         $this->assertSame(1000.0, (float) data_get($summary, 'net_paid_total'));
 
+        $orderDebit = CurrentAccountTransaction::query()
+            ->where('tenant_account_id', $this->tenant->id)
+            ->where('source_type', OrderCurrentAccountDebitSyncService::SOURCE_TYPE)
+            ->where('source_id', $order->id)
+            ->where('transaction_type', CurrentAccountTransaction::TYPE_CUSTOMER_DEBIT)
+            ->firstOrFail();
+
+        $this->assertSame('2400.00', (string) $orderDebit->amount);
+
         $accountSummary = $transactionSummaryService->getAccountSummary($account->fresh());
-        $this->assertSame(0.0, $accountSummary['currencies']['TL']['debit_total']);
+        $this->assertSame(2400.0, $accountSummary['currencies']['TL']['debit_total']);
         $this->assertSame(1000.0, $accountSummary['currencies']['TL']['credit_total']);
-        $this->assertSame(-1000.0, $accountSummary['currencies']['TL']['balance']);
+        $this->assertSame(1400.0, $accountSummary['currencies']['TL']['balance']);
 
         $refund = $paymentService->createPayment($order, [
             'payment_type' => OrderPayment::TYPE_REFUND,
@@ -121,9 +131,9 @@ class OrderPaymentCurrentAccountTransactionTest extends TestCase
             ->count());
 
         $afterCancelSummary = $transactionSummaryService->getAccountSummary($account->fresh());
-        $this->assertSame(250.0, $afterCancelSummary['currencies']['TL']['debit_total']);
+        $this->assertSame(2650.0, $afterCancelSummary['currencies']['TL']['debit_total']);
         $this->assertSame(0.0, $afterCancelSummary['currencies']['TL']['credit_total']);
-        $this->assertSame(250.0, $afterCancelSummary['currencies']['TL']['balance']);
+        $this->assertSame(2650.0, $afterCancelSummary['currencies']['TL']['balance']);
     }
 
     public function test_backfill_command_dry_run_and_real_run_work_and_public_surface_stays_safe(): void

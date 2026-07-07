@@ -66,9 +66,7 @@ class GraphicPerPrintUiTest extends TestCase
         $showResponse->assertSee('1c / Serigrafi / Gövde / 10 adet');
         $showResponse->assertSee('1d / Lazer / Kutu / 10 adet');
         $showResponse->assertSee('Görsel Yükle');
-        $showResponse->assertSee('Onaylandı İşaretle');
-        $showResponse->assertSee('Revize İstendi');
-        $showResponse->assertSee('Üretime Hazır İşaretle');
+        $showResponse->assertSee('graphic-action-step-tabs', false);
         $showResponse->assertDontSee('group_code', false);
         $showResponse->assertDontSee('file_path', false);
         $showResponse->assertDontSee('physical_path', false);
@@ -123,8 +121,16 @@ class GraphicPerPrintUiTest extends TestCase
 
         $afterUploadResponse->assertOk();
         $afterUploadResponse->assertSee('one-a.jpg');
-        $afterUploadResponse->assertSee('one-b.jpg');
-        $afterUploadResponse->assertSee('Son Görsel: yok');
+        $afterUploadResponse->assertSee('graphic-operation-tabs', false);
+        $afterUploadResponse->assertSee('1c / Serigrafi / Gövde / 10 adet');
+
+        $afterUploadSecondOperationResponse = $this->actingAs($this->adminUser)
+            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
+            ->get(route('admin.graphics.show', $workForm) . '?operation=' . $graphics['1b']->id);
+
+        $afterUploadSecondOperationResponse->assertOk();
+        $afterUploadSecondOperationResponse->assertSee('one-b.jpg');
+        $afterUploadSecondOperationResponse->assertSee('graphic-step-panel-approval', false);
 
         $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])

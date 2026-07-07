@@ -1,8 +1,8 @@
 @extends('layouts.prodelya-admin')
 
-@section('title', 'Yeni Cari / Firma')
-@section('page_title', 'Yeni Cari / Firma')
-@section('page_subtitle', 'Müşteri, tedarikçi veya fason firma kaydı oluşturun.')
+@section('title', 'Yeni Cari Oluştur')
+@section('page_title', 'Yeni Cari Oluştur')
+@section('page_subtitle', 'Aynı cari kart müşteri, tedarikçi, fasoncu veya diğer rol bilgilerini taşıyabilir.')
 @section('hide_side_summary', '1')
 
 @section('content')
@@ -211,12 +211,64 @@
     $addressReady = filled(old('billing_address')) || filled(old('billing_city')) || filled(old('billing_district')) || filled(old('billing_postal_code'));
     $taxReady = filled(old('tax_number'));
     $showSupplierMapping = in_array('supplier', $selectedRoles, true);
+    $fieldMeta = [
+        'identity_type' => ['section' => 'Temel Bilgiler', 'label' => 'Cari Tipi'],
+        'legal_name' => ['section' => 'Temel Bilgiler', 'label' => 'Cari / Firma Adı'],
+        'short_name' => ['section' => 'Temel Bilgiler', 'label' => 'Kısa Ad'],
+        'status' => ['section' => 'Temel Bilgiler', 'label' => 'Durum'],
+        'risk_status' => ['section' => 'Temel Bilgiler', 'label' => 'Risk Durumu'],
+        'phone' => ['section' => 'İletişim ve Resmi Bilgiler', 'label' => 'Normal Telefon'],
+        'mobile' => ['section' => 'İletişim ve Resmi Bilgiler', 'label' => 'WhatsApp Cep Telefonu'],
+        'email' => ['section' => 'İletişim ve Resmi Bilgiler', 'label' => 'E-posta'],
+        'website' => ['section' => 'İletişim ve Resmi Bilgiler', 'label' => 'Web Sitesi'],
+        'tax_number' => ['section' => 'İletişim ve Resmi Bilgiler', 'label' => 'VKN / TCKN'],
+        'tax_office' => ['section' => 'İletişim ve Resmi Bilgiler', 'label' => 'Vergi Dairesi'],
+        'billing_address' => ['section' => 'İletişim ve Resmi Bilgiler', 'label' => 'Açık Fatura Adresi'],
+        'billing_district' => ['section' => 'İletişim ve Resmi Bilgiler', 'label' => 'İlçe'],
+        'billing_city' => ['section' => 'İletişim ve Resmi Bilgiler', 'label' => 'İl'],
+        'billing_postal_code' => ['section' => 'İletişim ve Resmi Bilgiler', 'label' => 'Posta Kodu'],
+        'billing_country' => ['section' => 'İletişim ve Resmi Bilgiler', 'label' => 'Ülke'],
+        'notes' => ['section' => 'İletişim ve Resmi Bilgiler', 'label' => 'Resmi / İç Not'],
+        'roles' => ['section' => 'Roller', 'label' => 'Cari Rolleri'],
+        'supplier_id' => ['section' => 'Roller', 'label' => 'Hazır ürün kaynağı'],
+        'primary_contact_name' => ['section' => 'Opsiyonel Bilgiler', 'label' => 'Ad Soyad'],
+        'primary_contact_phone' => ['section' => 'Opsiyonel Bilgiler', 'label' => 'Telefon'],
+        'primary_contact_email' => ['section' => 'Opsiyonel Bilgiler', 'label' => 'E-posta'],
+        'primary_contact_note' => ['section' => 'Opsiyonel Bilgiler', 'label' => 'Görev'],
+    ];
+    $errorSummaryLines = collect($errors->getMessages())
+        ->except('error')
+        ->flatMap(function (array $messages, string $field) use ($fieldMeta) {
+            $meta = $fieldMeta[\Illuminate\Support\Str::before($field, '.')] ?? ['section' => 'Form', 'label' => 'Bu alan'];
+            $message = trim((string) ($messages[0] ?? ''));
+
+            if ($message === '') {
+                return [];
+            }
+
+            return [$meta['section'] . ': ' . $meta['label'] . ' alanı eksik veya hatalı.'];
+        })
+        ->unique()
+        ->values();
+    $summaryMissingDetails = collect([
+        ! $taxReady ? 'Vergi bilgisi: VKN / TCKN eksik' : null,
+        ! filled(old('tax_office')) && $showSupplierMapping ? 'Vergi bilgisi: Vergi Dairesi eksik' : null,
+        ! (filled(old('phone')) || filled(old('email')) || filled(old('mobile'))) ? 'İletişim durumu: E-posta veya telefon bilgisi eksik' : null,
+    ])->filter()->values();
 @endphp
 
 <div class="company-create-shell">
     @if($errors->any())
         <div class="company-create-alert" style="margin-bottom: 16px;">
-            Formu kaydetmeden önce işaretli alanları kontrol ediniz.
+            <div class="font-semibold">Lütfen aşağıdaki alanları kontrol edin:</div>
+            <ul class="mt-2 list-disc pl-5">
+                @foreach($errorSummaryLines as $line)
+                    <li>{{ $line }}</li>
+                @endforeach
+                @foreach($errors->get('error') as $message)
+                    <li>{{ $message }}</li>
+                @endforeach
+            </ul>
         </div>
     @endif
 
@@ -229,8 +281,8 @@
                     <div class="company-create-card-body">
                         <div class="company-create-section-head" style="margin-bottom: 0;">
                             <div>
-                                <h2 class="text-xl font-semibold text-slate-900">Yeni Cari / Firma</h2>
-                                <p class="mt-1 text-sm text-slate-600">Müşteri, tedarikçi veya fason firma kaydı oluşturun.</p>
+                                <h2 class="text-xl font-semibold text-slate-900">Yeni Cari Oluştur</h2>
+                                <p class="mt-1 text-sm text-slate-600">Aynı cari kart müşteri, tedarikçi, fasoncu veya diğer rol bilgilerini taşıyabilir.</p>
                             </div>
                             <div class="flex gap-2">
                                 <a href="{{ route('admin.companies.index') }}" class="pd-btn pd-btn-light">İptal</a>
@@ -298,13 +350,18 @@
 
                         <div class="company-create-grid">
                             <div class="company-create-col-4">
-                                <label for="phone" class="company-create-label">Telefon</label>
-                                <input id="phone" name="phone" type="text" value="{{ old('phone') }}" class="company-create-input">
+                                <label for="phone" class="company-create-label">Normal Telefon</label>
+                                <input id="phone" name="phone" type="text" value="{{ old('phone') }}" class="company-create-input" placeholder="0212 xxx xx xx">
+                                <div class="company-create-help">Sabit hat veya WhatsApp dışı iletişim numarası.</div>
                                 @error('phone')<div class="company-create-error">{{ $message }}</div>@enderror
                             </div>
                             <div class="company-create-col-4">
-                                <label for="mobile" class="company-create-label">Mobil / WhatsApp</label>
-                                <input id="mobile" name="mobile" type="text" value="{{ old('mobile') }}" class="company-create-input">
+                                <label for="mobile" class="company-create-label">WhatsApp Cep Telefonu</label>
+                                <div style="display:flex; align-items:center; border:1px solid #d0d5dd; border-radius:10px; overflow:hidden; background:#fff;">
+                                    <span style="display:inline-flex; align-items:center; gap:8px; padding:0 12px; min-height:44px; background:#f8fafc; border-right:1px solid #e4e7ec; color:#344054; font-size:13px; white-space:nowrap;">🇹🇷 +90</span>
+                                    <input id="mobile" name="mobile" type="text" value="{{ app(\App\Services\PhoneNumberNormalizer::class)->formatTurkishPhoneForDisplay(old('mobile')) ?: old('mobile') }}" class="company-create-input" placeholder="5xx xxx xx xx" style="border:0; border-radius:0; box-shadow:none;">
+                                </div>
+                                <div class="company-create-help">WhatsApp gönderimleri için kullanılır. Türkiye numarası 05xx veya 5xx xxx xx xx formatında girilebilir.</div>
                                 @error('mobile')<div class="company-create-error">{{ $message }}</div>@enderror
                             </div>
                             <div class="company-create-col-4">
@@ -485,6 +542,17 @@
                                 <span class="company-create-status-chip {{ $contactReady ? 'company-create-status-ok' : 'company-create-status-wait' }}">{{ $contactReady ? 'Var' : 'Yok' }}</span>
                             </div>
                         </div>
+
+                        @if($summaryMissingDetails->isNotEmpty())
+                            <div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                                <div class="font-semibold">Eksik alan özeti</div>
+                                <ul class="mt-2 list-disc pl-5">
+                                    @foreach($summaryMissingDetails as $detail)
+                                        <li>{{ $detail }}</li>
+                                    @endforeach
+                                </ul>
+                            </div>
+                        @endif
 
                         <div class="mt-4 grid gap-2">
                             <button type="submit" class="pd-btn pd-btn-primary w-full justify-center">Cari Kartı Kaydet</button>

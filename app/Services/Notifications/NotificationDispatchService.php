@@ -6,12 +6,14 @@ use App\Models\NotificationLog;
 use App\Models\NotificationTemplate;
 use App\Models\TenantAccount;
 use App\Models\User;
+use App\Services\PhoneNumberNormalizer;
 
 class NotificationDispatchService
 {
     public function __construct(
         protected TenantNotificationSettingsService $tenantNotificationSettingsService,
         protected NotificationEventCatalogService $eventCatalogService,
+        protected PhoneNumberNormalizer $phoneNumberNormalizer,
     ) {}
 
     public function logPending(array $data): NotificationLog
@@ -113,7 +115,12 @@ class NotificationDispatchService
 
     public function createWhatsappLink(TenantAccount $tenant, string $phone, string $message, array $context = [], ?User $user = null): array
     {
-        $normalized = $this->normalizeWhatsappPhone($tenant, $phone);
+        $normalized = $this->phoneNumberNormalizer->toWhatsappDialString($phone) ?: '';
+
+        if ($normalized === '') {
+            throw new \InvalidArgumentException('WhatsApp için geçerli bir cep telefonu bulunmuyor.');
+        }
+
         $link = 'https://wa.me/' . $normalized . '?text=' . rawurlencode($message);
 
         $log = $this->logWhatsappLinkCreated([
@@ -239,28 +246,4 @@ class NotificationDispatchService
         return '/(smtp_password|mail_password|api_key|token|file_path|physical_path|raw_xml|raw_json|pdh_raw|group_code|supplier_cost|subcontractor_cost|profit|storage\/app|[A-Z]:\\\\|\/var\/)/iu';
     }
 
-    private function normalizeWhatsappPhone(TenantAccount $tenant, string $phone): string
-    {
-        $normalized = preg_replace('/\D+/', '', $phone) ?: '';
-        $settings = $this->tenantNotificationSettingsService->getSettings($tenant);
-        $countryCode = preg_replace('/\D+/', '', (string) ($settings['whatsapp_default_country_code'] ?? '90')) ?: '90';
-
-        if ($normalized === '') {
-            return '';
-        }
-
-        if (str_starts_with($normalized, '00')) {
-            $normalized = substr($normalized, 2);
-        }
-
-        if (str_starts_with($normalized, $countryCode)) {
-            return $normalized;
-        }
-
-        if (str_starts_with($normalized, '0')) {
-            return $countryCode . substr($normalized, 1);
-        }
-
-        return $countryCode . $normalized;
-    }
 }

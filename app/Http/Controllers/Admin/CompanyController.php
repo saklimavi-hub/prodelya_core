@@ -8,14 +8,29 @@ use App\Models\CompanyAddress;
 use App\Models\CompanyContact;
 use App\Models\CurrentAccount;
 use App\Models\CurrentAccountLink;
+use App\Models\CurrentAccountTransaction;
 use App\Models\CompanyRole;
+use App\Models\Order;
+use App\Models\OrderItemPrintProduction;
+use App\Models\OrderPayment;
 use App\Models\Supplier;
+use App\Models\SupplierProcurementRequestItem;
 use App\Models\TenantSupplierAccess;
+use App\Services\CurrentAccountBalanceSummaryService;
+use App\Services\CurrentAccountStatementExportService;
 use App\Services\CurrentAccountSyncService;
+use App\Services\CurrentAccountTransactionService;
+use App\Services\CompanyDuplicateResolutionService;
+use App\Services\OrderPaymentCurrentAccountSyncService;
+use App\Services\OrderCurrentAccountDebitSyncService;
+use App\Services\SubcontractorProductionCurrentAccountSyncService;
+use App\Services\SupplierProcurementCurrentAccountSyncService;
+use App\Services\TenantSupplierCurrentAccountSyncService;
 use App\Services\TenantResolver;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -25,6 +40,11 @@ class CompanyController extends Controller
     public function __construct(
         protected TenantResolver $tenantResolver,
         protected CurrentAccountSyncService $currentAccountSyncService,
+        protected CurrentAccountBalanceSummaryService $balanceSummaryService,
+        protected CurrentAccountStatementExportService $statementExportService,
+        protected CurrentAccountTransactionService $currentAccountTransactionService,
+        protected TenantSupplierCurrentAccountSyncService $tenantSupplierCurrentAccountSyncService,
+        protected CompanyDuplicateResolutionService $companyDuplicateResolutionService,
     ) {}
 
     /**
@@ -33,9 +53,17 @@ class CompanyController extends Controller
     public function index(Request $request)
     {
         $tenant = $this->tenantResolver->getCurrentTenant($request);
-        
+        $canViewFinancialData = $request->user()?->canViewFinancialData($tenant->id) ?? false;
+
         $query = Company::where('tenant_account_id', $tenant->id)
-            ->with(['companyRoles', 'contacts']);
+            ->with([
+                'companyRoles',
+                'contacts',
+                'addresses' => fn ($builder) => $builder
+                    ->orderByDesc('is_default')
+                    ->orderBy('address_type')
+                    ->orderBy('title'),
+            ]);
 
         // Apply filters
         if ($request->filled('search')) {
@@ -54,7 +82,89 @@ class CompanyController extends Controller
             $query->byRiskStatus($request->risk_status);
         }
 
+        $companyIdsForDashboard = (clone $query)->pluck('companies.id');
         $companies = $query->latest()->paginate(20);
+
+        $linkedCurrentAccountIds = CurrentAccountLink::query()
+            ->where('tenant_account_id', $tenant->id)
+            ->where('link_type', CurrentAccountLink::LINK_COMPANY)
+            ->where('is_primary', true)
+            ->whereIn('link_id', $companies->getCollection()->pluck('id'))
+            ->pluck('current_account_id', 'link_id')
+            ->all();
+
+        $dashboardLinkedAccountIds = CurrentAccountLink::query()
+            ->where('tenant_account_id', $tenant->id)
+            ->where('link_type', CurrentAccountLink::LINK_COMPANY)
+            ->where('is_primary', true)
+            ->whereIn('link_id', $companyIdsForDashboard)
+            ->pluck('current_account_id', 'link_id')
+            ->all();
+
+        $pageBalanceSummaries = [];
+        $financeDashboard = null;
+        $topReceivableCompanies = [];
+        $topPayableCompanies = [];
+        $topOverdueCompanies = [];
+
+        if ($canViewFinancialData) {
+            $pageSummariesByAccount = $this->balanceSummaryService->summarizeAccounts(
+                $tenant->id,
+                array_values($linkedCurrentAccountIds)
+            );
+
+            foreach ($linkedCurrentAccountIds as $companyId => $accountId) {
+                if (isset($pageSummariesByAccount[$accountId])) {
+                    $pageBalanceSummaries[(int) $companyId] = $pageSummariesByAccount[$accountId];
+                }
+            }
+
+            $dashboardSummariesByAccount = $this->balanceSummaryService->summarizeAccounts(
+                $tenant->id,
+                array_values($dashboardLinkedAccountIds)
+            );
+
+            $companyNamesById = Company::query()
+                ->where('tenant_account_id', $tenant->id)
+                ->whereIn('id', array_keys($dashboardLinkedAccountIds))
+                ->pluck('legal_name', 'id');
+
+            $dashboardCompanySummaries = [];
+            foreach ($dashboardLinkedAccountIds as $companyId => $accountId) {
+                if (! isset($dashboardSummariesByAccount[$accountId])) {
+                    continue;
+                }
+
+                $summary = $dashboardSummariesByAccount[$accountId];
+                $summary['company_id'] = (int) $companyId;
+                $summary['company_name'] = $companyNamesById[$companyId] ?? ('Cari #' . $companyId);
+                $dashboardCompanySummaries[] = $summary;
+            }
+
+            $defaultCurrency = (string) ($tenant->default_currency ?: 'TL');
+            $financeDashboard = $this->balanceSummaryService->buildDashboard($dashboardCompanySummaries, $defaultCurrency);
+
+            $topReceivableCompanies = collect($dashboardCompanySummaries)
+                ->where('balance_direction', 'receivable')
+                ->sortByDesc('balance_amount')
+                ->take(5)
+                ->values()
+                ->all();
+
+            $topPayableCompanies = collect($dashboardCompanySummaries)
+                ->where('balance_direction', 'payable')
+                ->sortByDesc('balance_amount')
+                ->take(5)
+                ->values()
+                ->all();
+
+            $topOverdueCompanies = collect($dashboardCompanySummaries)
+                ->filter(fn (array $summary): bool => (int) ($summary['overdue_transaction_count'] ?? 0) > 0)
+                ->sortByDesc('overdue_amount')
+                ->take(5)
+                ->values()
+                ->all();
+        }
 
         // Statistics
         $stats = [
@@ -67,6 +177,18 @@ class CompanyController extends Controller
         return view('admin.companies.index', [
             'companies' => $companies,
             'stats' => $stats,
+            'linkedCurrentAccountIds' => $linkedCurrentAccountIds,
+            'balanceSummaries' => $pageBalanceSummaries,
+            'financeDashboard' => $financeDashboard,
+            'topReceivableCompanies' => $topReceivableCompanies,
+            'topPayableCompanies' => $topPayableCompanies,
+            'topOverdueCompanies' => $topOverdueCompanies,
+            'canViewFinancialData' => $canViewFinancialData,
+            'canViewCurrentAccountTransactions' => $request->user()?->hasAnyPermissionInTenant([
+                'view_current_account_transactions',
+                'manage_current_account_transactions',
+                'cancel_current_account_transactions',
+            ], $tenant->id) ?? false,
             'filters' => [
                 'search' => $request->get('search', ''),
                 'role' => $request->get('role', ''),
@@ -136,6 +258,7 @@ class CompanyController extends Controller
             $linkedAccount = $this->currentAccountSyncService->ensureForCompany($company->fresh('companyRoles'));
             $this->syncSupplierSourceLinkForCompany(
                 $tenant->id,
+                $company->id,
                 $linkedAccount,
                 $validated['roles'],
                 isset($validated['supplier_id']) ? (int) $validated['supplier_id'] : null
@@ -150,6 +273,10 @@ class CompanyController extends Controller
                 ->route('admin.companies.show', $company)
                 ->with('success', 'Cari kart başarıyla oluşturuldu.');
 
+        } catch (ValidationException $exception) {
+            DB::rollback();
+
+            throw $exception;
         } catch (\Exception $e) {
             DB::rollback();
             
@@ -203,13 +330,137 @@ class CompanyController extends Controller
         }
 
         $supplierMapping = $this->resolveSupplierMappingSummary($tenant->id, $linkedCurrentAccount);
+        $duplicateSupplierSummary = $this->companyDuplicateResolutionService->auditCompanyDuplicateStatus($company);
+        $canViewFinancialData = Auth::user()->canViewFinancialData($tenant->id);
+        $linkedCurrentAccountSummary = null;
+        $statementFilters = $this->validateCompanyStatementFilters($request);
+        $statementTransactions = collect();
+        $statementFilteredSummary = null;
+        $statementAging = null;
+        $statementRunningBalances = [];
+        $statementOpeningBalance = null;
+        $statementSourcePayments = collect();
+        $statementSourceProcurementItems = collect();
+        $statementSourceProductions = collect();
+        $manualTransactionTypeOptions = [];
+        $manualQuickActionDefaults = [];
+        $manualFormDefaults = [];
+        $manualStatusOptions = CurrentAccountTransaction::manualStatusLabels();
+        $paymentMethodOptions = CurrentAccountTransaction::paymentMethodLabels();
+        $orderOptions = collect();
+
+        if ($canViewFinancialData && $linkedCurrentAccount) {
+            $linkedCurrentAccountSummary = $this->balanceSummaryService
+                ->summarizeAccounts($tenant->id, [$linkedCurrentAccount->id])[$linkedCurrentAccount->id] ?? null;
+
+            $statementTransactions = $this->balanceSummaryService
+                ->getStatementQuery($linkedCurrentAccount->loadMissing('roles'), $statementFilters)
+                ->limit(10)
+                ->get();
+
+            $statementFilteredSummary = $this->balanceSummaryService
+                ->summarizeFilteredTransactions($linkedCurrentAccount, $statementFilters);
+
+            $statementAging = $this->balanceSummaryService
+                ->buildAgingSummary($linkedCurrentAccount);
+
+            $statementRunningBalances = $this->balanceSummaryService
+                ->getRunningBalanceMap($linkedCurrentAccount);
+
+            $statementOpeningBalance = $this->statementExportService
+                ->openingBalance($linkedCurrentAccount, $statementFilters);
+
+            $statementSourcePayments = $this->resolveSourcePayments($statementTransactions, $tenant->id);
+            $statementSourceOrders = $this->resolveSourceOrders($statementTransactions, $tenant->id);
+            $statementSourceProcurementItems = $this->resolveSourceProcurementItems($statementTransactions, $tenant->id);
+            $statementSourceProductions = $this->resolveSourceProductions($statementTransactions, $tenant->id);
+        }
+
+        if ($linkedCurrentAccount) {
+            $manualTransactionTypeOptions = $this->currentAccountTransactionService->manualTransactionTypeOptions($linkedCurrentAccount);
+            $manualQuickActionDefaults = $this->currentAccountTransactionService->manualQuickActionDefaults($linkedCurrentAccount);
+            $manualFormDefaults = $this->currentAccountTransactionService->manualFormDefaults(
+                $linkedCurrentAccount,
+                $request->query('form_type'),
+                [
+                    'transaction_type' => old('transaction_type'),
+                    'direction' => old('direction'),
+                    'status' => old('status'),
+                    'currency' => old('currency'),
+                    'transaction_date' => old('transaction_date'),
+                    'due_date' => old('due_date'),
+                    'document_number' => old('document_number'),
+                    'payment_method' => old('payment_method'),
+                    'order_id' => old('order_id'),
+                    'description' => old('description'),
+                    'internal_note' => old('internal_note'),
+                ]
+            );
+            $orderOptions = Order::query()
+                ->where('tenant_account_id', $tenant->id)
+                ->latest('id')
+                ->limit(50)
+                ->get(['id', 'document_number', 'customer_company_id', 'status']);
+        }
 
         return view('admin.companies.show', [
             'company' => $company,
-            'canViewFinancialData' => Auth::user()->canViewFinancialData($tenant->id),
+            'canViewFinancialData' => $canViewFinancialData,
+            'canViewCurrentAccountTransactions' => $request->user()?->hasAnyPermissionInTenant([
+                'view_current_account_transactions',
+                'manage_current_account_transactions',
+                'cancel_current_account_transactions',
+            ], $tenant->id) ?? false,
+            'canManageCurrentAccountTransactions' => $request->user()?->hasPermissionInTenant(
+                'manage_current_account_transactions',
+                $tenant->id
+            ) ?? false,
             'linkedCurrentAccount' => $linkedCurrentAccount,
+            'linkedCurrentAccountSummary' => $linkedCurrentAccountSummary,
+            'statementFilters' => $statementFilters,
+            'statementTransactions' => $statementTransactions,
+            'statementFilteredSummary' => $statementFilteredSummary,
+            'statementAging' => $statementAging,
+            'statementRunningBalances' => $statementRunningBalances,
+            'statementOpeningBalance' => $statementOpeningBalance,
+            'statementSourcePayments' => $statementSourcePayments,
+            'statementSourceOrders' => $statementSourceOrders ?? collect(),
+            'statementSourceProcurementItems' => $statementSourceProcurementItems,
+            'statementSourceProductions' => $statementSourceProductions,
+            'manualTransactionTypeOptions' => $manualTransactionTypeOptions,
+            'manualQuickActionDefaults' => $manualQuickActionDefaults,
+            'manualFormDefaults' => $manualFormDefaults,
+            'manualStatusOptions' => $manualStatusOptions,
+            'paymentMethodOptions' => $paymentMethodOptions,
+            'orderOptions' => $orderOptions,
             'supplierMapping' => $supplierMapping,
+            'duplicateSupplierSummary' => $duplicateSupplierSummary,
         ]);
+    }
+
+    public function archiveDuplicate(Request $request, Company $company)
+    {
+        $this->guardTenantOperatorAccess($request);
+
+        $tenant = $this->tenantResolver->getCurrentTenant($request);
+
+        if ($company->tenant_account_id !== $tenant->id) {
+            abort(403, 'Bu cari karta erişim yetkiniz yok.');
+        }
+
+        $audit = $this->companyDuplicateResolutionService->auditCompanyDuplicateStatus($company);
+
+        if (! $audit || ! ($audit['can_archive'] ?? false)) {
+            return redirect()
+                ->to(route('admin.companies.show', ['company' => $company, 'tab' => 'benzer-cari']))
+                ->with('error', 'Bu cari otomatik arşivlenemez. Lütfen kontrol listesindeki bağlantıları inceleyin.');
+        }
+
+        $this->companyDuplicateResolutionService->archiveEmptyDuplicate($company, $request->user());
+
+        return redirect()
+            ->to(route('admin.companies.show', ['company' => $company, 'tab' => 'benzer-cari']))
+            ->with('success', 'Benzer cari arşivlendi. Ana cari kart kullanılmaya devam edecek.');
     }
 
     /**
@@ -285,6 +536,7 @@ class CompanyController extends Controller
             $linkedAccount = $this->currentAccountSyncService->ensureForCompany($company->fresh('companyRoles'));
             $this->syncSupplierSourceLinkForCompany(
                 $tenant->id,
+                $company->id,
                 $linkedAccount,
                 $validated['roles'],
                 isset($validated['supplier_id']) ? (int) $validated['supplier_id'] : null
@@ -299,6 +551,10 @@ class CompanyController extends Controller
                 ->route('admin.companies.show', $company)
                 ->with('success', 'Cari kart başarıyla güncellendi.');
 
+        } catch (ValidationException $exception) {
+            DB::rollback();
+
+            throw $exception;
         } catch (\Exception $e) {
             DB::rollback();
             
@@ -383,7 +639,7 @@ class CompanyController extends Controller
                     ->exists();
 
                 if (! $hasAccess) {
-                    $fail('Seçilen hazır ürün kaynağı bu tenant için aktif değil.');
+                    $fail('Seçilen hazır ürün kaynağı bu Abone Firmada aktif değil.');
                 }
             }],
             'billing_address' => ['nullable', 'string', 'max:1000'],
@@ -529,11 +785,30 @@ class CompanyController extends Controller
             return null;
         }
 
-        return CurrentAccountLink::query()
+        $supplierId = CurrentAccountLink::query()
             ->where('tenant_account_id', $tenantId)
             ->where('current_account_id', $currentAccountId)
             ->where('link_type', CurrentAccountLink::LINK_SUPPLIER)
             ->value('link_id');
+
+        if ($supplierId) {
+            return (int) $supplierId;
+        }
+
+        $tenantSupplierAccessId = CurrentAccountLink::query()
+            ->where('tenant_account_id', $tenantId)
+            ->where('current_account_id', $currentAccountId)
+            ->where('link_type', CurrentAccountLink::LINK_TENANT_SUPPLIER_ACCESS)
+            ->value('link_id');
+
+        if (! $tenantSupplierAccessId) {
+            return null;
+        }
+
+        return TenantSupplierAccess::query()
+            ->where('tenant_account_id', $tenantId)
+            ->whereKey($tenantSupplierAccessId)
+            ->value('supplier_id');
     }
 
     private function resolveSupplierMappingSummary(int $tenantId, ?CurrentAccount $currentAccount): ?array
@@ -562,11 +837,137 @@ class CompanyController extends Controller
         ];
     }
 
-    private function syncSupplierSourceLinkForCompany(int $tenantId, CurrentAccount $currentAccount, array $companyRoles, ?int $supplierId): void
+    private function resolveDuplicateSupplierSummary(
+        \App\Models\TenantAccount $tenant,
+        Company $company,
+        ?CurrentAccount $currentAccount,
+        ?array $supplierMapping,
+    ): ?array {
+        if (! $company->hasRole('supplier')) {
+            return null;
+        }
+
+        $supplier = null;
+        $supplierId = (int) ($supplierMapping['supplier_id'] ?? $this->resolveMappedSupplierId($tenant->id, $currentAccount?->id) ?? 0);
+        if ($supplierId > 0) {
+            $supplier = Supplier::query()->find($supplierId);
+        }
+
+        if (! $supplier) {
+            $supplier = $this->resolveSupplierForDuplicateAudit($tenant->id, $company);
+        }
+
+        if (! $supplier) {
+            return [
+                'has_mapping' => false,
+                'has_similar_companies' => false,
+                'status_label' => 'Hazır ürün kaynağı eşleşmesi bulunmuyor',
+                'status_tone' => 'amber',
+                'current_company' => [
+                    'is_main_company' => false,
+                    'is_similar_company' => false,
+                    'has_financial_history' => false,
+                    'has_operational_links' => false,
+                    'is_archive_candidate' => false,
+                    'transaction_count' => 0,
+                    'linked_orders_count' => 0,
+                    'linked_procurements_count' => 0,
+                    'linked_order_payments_count' => 0,
+                    'selection_reasons' => [],
+                    'repair_warnings' => [],
+                ],
+                'main_company' => null,
+                'similar_companies' => [],
+                'warnings' => [],
+            ];
+        }
+
+        $audit = $this->tenantSupplierCurrentAccountSyncService->auditDuplicateSupplierCaris($tenant, $supplier);
+        $currentCompanyAudit = collect($audit['companies'] ?? [])
+            ->firstWhere('company.id', $company->id);
+        $mainCompany = data_get($audit, 'canonical_candidate');
+        $similarCompanies = collect($audit['duplicate_candidates'] ?? [])
+            ->reject(fn (array $candidate): bool => (int) data_get($candidate, 'company.id') === $company->id)
+            ->map(fn (array $candidate): array => [
+                'id' => (int) data_get($candidate, 'company.id'),
+                'name' => trim((string) (data_get($candidate, 'company.short_name') ?: data_get($candidate, 'company.legal_name') ?: ('Cari #' . data_get($candidate, 'company.id')))),
+                'is_archive_candidate' => (bool) ($candidate['is_safe_link_repair_candidate'] ?? false),
+                'has_financial_history' => (bool) ($candidate['has_financial_history'] ?? false),
+                'has_operational_links' => (bool) ($candidate['has_operational_links'] ?? false),
+            ])
+            ->values()
+            ->all();
+
+        $isMainCompany = (int) data_get($mainCompany, 'company.id') === $company->id;
+        $hasSimilarCompanies = count($audit['duplicate_candidates'] ?? []) > 0;
+        $statusLabel = ! $hasSimilarCompanies
+            ? 'Güvenli eşleşme var'
+            : ($isMainCompany ? 'Ana Cari Kart olarak izleniyor' : 'Benzer cari kontrolü gerekiyor');
+        $statusTone = ! $hasSimilarCompanies
+            ? 'green'
+            : ($isMainCompany ? 'blue' : 'amber');
+
+        return [
+            'has_mapping' => true,
+            'has_similar_companies' => $hasSimilarCompanies,
+            'status_label' => $statusLabel,
+            'status_tone' => $statusTone,
+            'main_company' => $mainCompany ? [
+                'id' => (int) data_get($mainCompany, 'company.id'),
+                'name' => trim((string) (data_get($mainCompany, 'company.short_name') ?: data_get($mainCompany, 'company.legal_name') ?: ('Cari #' . data_get($mainCompany, 'company.id')))),
+            ] : null,
+            'current_company' => [
+                'is_main_company' => $isMainCompany,
+                'is_similar_company' => $hasSimilarCompanies && ! $isMainCompany,
+                'has_financial_history' => (bool) ($currentCompanyAudit['has_financial_history'] ?? false),
+                'has_operational_links' => (bool) ($currentCompanyAudit['has_operational_links'] ?? false),
+                'is_archive_candidate' => (bool) ($currentCompanyAudit['is_safe_link_repair_candidate'] ?? false),
+                'transaction_count' => (int) ($currentCompanyAudit['transaction_count'] ?? 0),
+                'linked_orders_count' => (int) ($currentCompanyAudit['linked_orders_count'] ?? 0),
+                'linked_procurements_count' => (int) ($currentCompanyAudit['linked_procurements_count'] ?? 0),
+                'linked_order_payments_count' => (int) ($currentCompanyAudit['linked_order_payments_count'] ?? 0),
+                'selection_reasons' => (array) ($currentCompanyAudit['selection_reasons'] ?? []),
+                'repair_warnings' => (array) ($currentCompanyAudit['repair_warnings'] ?? []),
+            ],
+            'similar_companies' => $similarCompanies,
+            'warnings' => (array) ($audit['warnings'] ?? []),
+        ];
+    }
+
+    private function resolveSupplierForDuplicateAudit(int $tenantId, Company $company): ?Supplier
+    {
+        $normalizedCandidates = collect([
+            $company->legal_name,
+            $company->short_name,
+        ])
+            ->filter(fn ($value): bool => filled($value))
+            ->map(fn ($value): string => Str::lower(Str::squish((string) $value)))
+            ->unique()
+            ->values();
+
+        if ($normalizedCandidates->isEmpty()) {
+            return null;
+        }
+
+        return TenantSupplierAccess::query()
+            ->with('supplier')
+            ->where('tenant_account_id', $tenantId)
+            ->active()
+            ->get()
+            ->map->supplier
+            ->filter()
+            ->first(function (Supplier $supplier) use ($normalizedCandidates): bool {
+                $normalizedName = Str::lower(Str::squish((string) $supplier->name));
+
+                return $normalizedCandidates->contains($normalizedName);
+            });
+    }
+
+    private function syncSupplierSourceLinkForCompany(int $tenantId, int $companyId, CurrentAccount $currentAccount, array $companyRoles, ?int $supplierId): void
     {
         $hasSupplierRole = in_array('supplier', $companyRoles, true);
 
-        if (! $hasSupplierRole || ! $supplierId) {
+        if (! $hasSupplierRole) {
             CurrentAccountLink::query()
                 ->where('tenant_account_id', $tenantId)
                 ->where('current_account_id', $currentAccount->id)
@@ -579,24 +980,33 @@ class CompanyController extends Controller
             return;
         }
 
-        $this->guardUniqueSupplierLink($tenantId, $supplierId, $currentAccount->id);
+        if (! $supplierId) {
+            return;
+        }
+
+        $this->guardUniqueSupplierLink($tenantId, $supplierId, $currentAccount->id, $companyId);
 
         CurrentAccountLink::query()
             ->where('tenant_account_id', $tenantId)
             ->where('current_account_id', $currentAccount->id)
             ->where('link_type', CurrentAccountLink::LINK_SUPPLIER)
+            ->where('link_id', '!=', $supplierId)
             ->delete();
 
-        CurrentAccountLink::query()->create([
-            'tenant_account_id' => $tenantId,
-            'current_account_id' => $currentAccount->id,
-            'link_type' => CurrentAccountLink::LINK_SUPPLIER,
-            'link_id' => $supplierId,
-            'is_primary' => true,
-            'meta_json' => [
-                'linked_via' => 'company_form',
+        CurrentAccountLink::query()->updateOrCreate(
+            [
+                'tenant_account_id' => $tenantId,
+                'link_type' => CurrentAccountLink::LINK_SUPPLIER,
+                'link_id' => $supplierId,
             ],
-        ]);
+            [
+                'current_account_id' => $currentAccount->id,
+                'is_primary' => true,
+                'meta_json' => [
+                    'linked_via' => 'company_form',
+                ],
+            ]
+        );
 
         $tenantSupplierAccess = TenantSupplierAccess::query()
             ->where('tenant_account_id', $tenantId)
@@ -607,37 +1017,68 @@ class CompanyController extends Controller
             ->where('tenant_account_id', $tenantId)
             ->where('current_account_id', $currentAccount->id)
             ->where('link_type', CurrentAccountLink::LINK_TENANT_SUPPLIER_ACCESS)
+            ->when(
+                $tenantSupplierAccess,
+                fn ($query) => $query->where('link_id', '!=', $tenantSupplierAccess->id)
+            )
             ->delete();
 
         if ($tenantSupplierAccess) {
-            CurrentAccountLink::query()->create([
-                'tenant_account_id' => $tenantId,
-                'current_account_id' => $currentAccount->id,
-                'link_type' => CurrentAccountLink::LINK_TENANT_SUPPLIER_ACCESS,
-                'link_id' => $tenantSupplierAccess->id,
-                'is_primary' => true,
-                'meta_json' => [
-                    'supplier_id' => $supplierId,
-                    'linked_via' => 'company_form',
+            CurrentAccountLink::query()->updateOrCreate(
+                [
+                    'tenant_account_id' => $tenantId,
+                    'link_type' => CurrentAccountLink::LINK_TENANT_SUPPLIER_ACCESS,
+                    'link_id' => $tenantSupplierAccess->id,
                 ],
-            ]);
+                [
+                    'current_account_id' => $currentAccount->id,
+                    'is_primary' => true,
+                    'meta_json' => [
+                        'supplier_id' => $supplierId,
+                        'linked_via' => 'company_form',
+                    ],
+                ]
+            );
         }
     }
 
-    private function guardUniqueSupplierLink(int $tenantId, int $supplierId, int $currentAccountId): void
+    private function guardUniqueSupplierLink(int $tenantId, int $supplierId, int $currentAccountId, int $companyId): void
     {
-        $alreadyLinked = CurrentAccountLink::query()
+        $existingLink = CurrentAccountLink::query()
             ->where('tenant_account_id', $tenantId)
             ->where('link_type', CurrentAccountLink::LINK_SUPPLIER)
             ->where('link_id', $supplierId)
             ->where('current_account_id', '!=', $currentAccountId)
-            ->exists();
+            ->first();
 
-        if ($alreadyLinked) {
-            throw ValidationException::withMessages([
-                'supplier_id' => 'Bu hazır ürün kaynağı aynı tenant içinde başka bir cari karta zaten bağlı.',
-            ]);
+        if (! $existingLink) {
+            return;
         }
+
+        $linkedCompanyId = CurrentAccountLink::query()
+            ->where('tenant_account_id', $tenantId)
+            ->where('current_account_id', $existingLink->current_account_id)
+            ->where('link_type', CurrentAccountLink::LINK_COMPANY)
+            ->where('is_primary', true)
+            ->value('link_id');
+
+        if (! $linkedCompanyId || (int) $linkedCompanyId === $companyId) {
+            return;
+        }
+
+        $linkedCompany = Company::query()
+            ->where('tenant_account_id', $tenantId)
+            ->find($linkedCompanyId);
+
+        if (! $linkedCompany || $linkedCompany->status !== 'active') {
+            return;
+        }
+
+        $companyName = trim((string) ($linkedCompany->short_name ?: $linkedCompany->legal_name ?: ('Cari #' . $linkedCompany->id)));
+
+        throw ValidationException::withMessages([
+            'supplier_id' => 'Bu hazır ürün kaynağı şu Cari Kart ile eşleştirilmiş: ' . $companyName . '. Aynı hazır ürün kaynağı iki farklı Cari Kart ile eşleştirilemez. Lütfen mevcut Cari Kartı düzenleyin veya eşlemeyi kaldırın.',
+        ]);
     }
 
     private function normalizeWebsite(?string $website): ?string
@@ -678,5 +1119,112 @@ class CompanyController extends Controller
         if ($user->isPlatformAdmin() || ! $user->belongsToTenant($tenant)) {
             abort(403, 'Bu cari karta erişim yetkiniz yok.');
         }
+    }
+
+    private function validateCompanyStatementFilters(Request $request): array
+    {
+        $validated = $request->validate([
+            'statement_from' => ['nullable', 'date'],
+            'statement_to' => ['nullable', 'date'],
+            'statement_type' => ['nullable', Rule::in(array_keys(CurrentAccountTransaction::typeLabels()))],
+            'statement_status' => ['nullable', Rule::in(['all', 'open', 'closed', 'overdue'])],
+            'statement_search' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        return [
+            'statement_from' => $validated['statement_from'] ?? null,
+            'statement_to' => $validated['statement_to'] ?? null,
+            'statement_type' => $validated['statement_type'] ?? null,
+            'statement_status' => $validated['statement_status'] ?? null,
+            'statement_search' => $validated['statement_search'] ?? null,
+            'from' => $validated['statement_from'] ?? null,
+            'to' => $validated['statement_to'] ?? null,
+            'type' => $validated['statement_type'] ?? null,
+            'status' => $validated['statement_status'] ?? null,
+            'search' => $validated['statement_search'] ?? null,
+        ];
+    }
+
+    private function resolveSourcePayments(Collection $transactions, int $tenantId): Collection
+    {
+        $paymentIds = $transactions
+            ->where('source_type', OrderPaymentCurrentAccountSyncService::SOURCE_TYPE)
+            ->pluck('source_id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($paymentIds->isEmpty()) {
+            return collect();
+        }
+
+        return OrderPayment::query()
+            ->where('tenant_account_id', $tenantId)
+            ->whereIn('id', $paymentIds->all())
+            ->with('order')
+            ->get()
+            ->keyBy('id');
+    }
+
+    private function resolveSourceOrders(Collection $transactions, int $tenantId): Collection
+    {
+        $orderIds = $transactions
+            ->where('source_type', OrderCurrentAccountDebitSyncService::SOURCE_TYPE)
+            ->pluck('source_id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($orderIds->isEmpty()) {
+            return collect();
+        }
+
+        return Order::query()
+            ->where('tenant_account_id', $tenantId)
+            ->whereIn('id', $orderIds->all())
+            ->get(['id', 'document_number', 'customer_company_id', 'status'])
+            ->keyBy('id');
+    }
+
+    private function resolveSourceProcurementItems(Collection $transactions, int $tenantId): Collection
+    {
+        $itemIds = $transactions
+            ->where('source_type', SupplierProcurementCurrentAccountSyncService::SOURCE_TYPE)
+            ->pluck('source_id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($itemIds->isEmpty()) {
+            return collect();
+        }
+
+        return SupplierProcurementRequestItem::query()
+            ->where('tenant_account_id', $tenantId)
+            ->whereIn('id', $itemIds->all())
+            ->with(['request', 'order'])
+            ->get()
+            ->keyBy('id');
+    }
+
+    private function resolveSourceProductions(Collection $transactions, int $tenantId): Collection
+    {
+        $productionIds = $transactions
+            ->where('source_type', SubcontractorProductionCurrentAccountSyncService::SOURCE_TYPE)
+            ->pluck('source_id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($productionIds->isEmpty()) {
+            return collect();
+        }
+
+        return OrderItemPrintProduction::query()
+            ->where('tenant_account_id', $tenantId)
+            ->whereIn('id', $productionIds->all())
+            ->with(['order', 'orderItem', 'orderItemPrint'])
+            ->get()
+            ->keyBy('id');
     }
 }

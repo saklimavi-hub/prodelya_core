@@ -41,6 +41,8 @@ class Order extends Model
         'valid_until',
         'invoice_status',
         'delivery_type',
+        'delivery_type_id',
+        'show_print_price_details_to_customer',
         'notes',
         'currency',
         'subtotal',
@@ -67,6 +69,8 @@ class Order extends Model
         'valid_until' => 'date',
         'invoice_status' => 'string',
         'delivery_type' => 'string',
+        'delivery_type_id' => 'integer',
+        'show_print_price_details_to_customer' => 'boolean',
         'last_sent_at' => 'datetime',
         'approved_at' => 'datetime',
         'rejected_at' => 'datetime',
@@ -125,6 +129,16 @@ class Order extends Model
         return $this->hasMany(OrderItemWorkFormDelivery::class);
     }
 
+    public function deliveryPackages()
+    {
+        return $this->hasMany(OrderDeliveryPackage::class);
+    }
+
+    public function deliveryLabelBatches()
+    {
+        return $this->hasMany(OrderDeliveryLabelBatch::class);
+    }
+
     public function payments()
     {
         return $this->hasMany(OrderPayment::class);
@@ -146,6 +160,18 @@ class Order extends Model
     public function customer()
     {
         return $this->belongsTo(Company::class, 'customer_company_id');
+    }
+
+    public function deliveryTypeSetting()
+    {
+        return $this->belongsTo(TenantDeliveryType::class, 'delivery_type_id');
+    }
+
+    public function shouldShowPrintPriceDetailsToCustomer(): bool
+    {
+        return $this->show_print_price_details_to_customer === null
+            ? true
+            : (bool) $this->show_print_price_details_to_customer;
     }
 
     /**

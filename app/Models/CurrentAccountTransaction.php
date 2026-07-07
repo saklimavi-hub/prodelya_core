@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Str;
 
 class CurrentAccountTransaction extends Model
 {
@@ -31,6 +32,7 @@ class CurrentAccountTransaction extends Model
     public const STATUS_PARTIALLY_PAID = 'partially_paid';
     public const STATUS_CANCELLED = 'cancelled';
     public const STATUS_CLOSED = 'closed';
+    public const SOURCE_TYPE_MANUAL = 'manual';
 
     protected $fillable = [
         'tenant_account_id',
@@ -87,7 +89,7 @@ class CurrentAccountTransaction extends Model
 
     public function safeTypeLabel(): string
     {
-        return self::typeLabels()[$this->transaction_type] ?? ucfirst(str_replace('_', ' ', (string) $this->transaction_type));
+        return self::typeLabels()[$this->transaction_type] ?? 'Diğer Hareket';
     }
 
     public function safeDirectionLabel(): string
@@ -115,34 +117,163 @@ class CurrentAccountTransaction extends Model
         return $this->status === self::STATUS_CANCELLED || $this->cancelled_at !== null;
     }
 
+    public function isManuallyCancellableFromStatement(): bool
+    {
+        if ($this->isCancelled()) {
+            return false;
+        }
+
+        if ($this->source_type === self::SOURCE_TYPE_MANUAL) {
+            return true;
+        }
+
+        if ($this->source_type === null || trim((string) $this->source_type) === '') {
+            return !$this->source_id;
+        }
+
+        return false;
+    }
+
     public function formattedAmount(): string
     {
         return number_format((float) $this->amount, 2, ',', '.') . ' ' . ($this->currency ?: 'TRY');
     }
 
+    public function safeManualDocumentNumber(): ?string
+    {
+        return self::sanitizeMetaText(data_get($this->meta_json, 'manual.document_number'));
+    }
+
+    public function safeManualPaymentMethodLabel(): ?string
+    {
+        $method = (string) data_get($this->meta_json, 'manual.payment_method', '');
+
+        if ($method === '') {
+            return null;
+        }
+
+        return self::paymentMethodLabels()[$method] ?? 'Diğer';
+    }
+
+    public function safeManualOrderNumber(): ?string
+    {
+        return self::sanitizeMetaText(data_get($this->meta_json, 'manual.linked_order_number'));
+    }
+
+    public function safeManualOrderId(): ?int
+    {
+        $orderId = data_get($this->meta_json, 'manual.linked_order_id');
+
+        return is_numeric($orderId) ? (int) $orderId : null;
+    }
+
+    public function safeManualInternalNote(): ?string
+    {
+        return self::sanitizeMetaText(data_get($this->meta_json, 'manual.internal_note'));
+    }
+
     public static function typeLabels(): array
     {
         return [
-            self::TYPE_CUSTOMER_DEBIT => 'Müşteri Borç',
-            self::TYPE_CUSTOMER_PAYMENT => 'Müşteri Tahsilat',
+            self::TYPE_CUSTOMER_DEBIT => 'Müşteri Borcu / Satış',
+            self::TYPE_CUSTOMER_PAYMENT => 'Tahsilat',
             self::TYPE_SUPPLIER_DEBIT => 'Tedarikçi Borç',
-            self::TYPE_SUPPLIER_PAYMENT => 'Tedarikçi Ödeme',
+            self::TYPE_SUPPLIER_PAYMENT => 'Tedarikçi Ödemesi',
             self::TYPE_SUBCONTRACTOR_DEBIT => 'Fason Borç',
-            self::TYPE_SUBCONTRACTOR_PAYMENT => 'Fason Ödeme',
-            self::TYPE_CARRIER_DEBIT => 'Kargo Borç',
-            self::TYPE_CARRIER_PAYMENT => 'Kargo Ödeme',
-            self::TYPE_ADJUSTMENT => 'Düzeltme',
+            self::TYPE_SUBCONTRACTOR_PAYMENT => 'Fason Ödemesi',
+            self::TYPE_CARRIER_DEBIT => 'Kargo / Teslimat Borcu',
+            self::TYPE_CARRIER_PAYMENT => 'Kargo Ödemesi',
+            self::TYPE_ADJUSTMENT => 'Mahsup / Düzeltme',
             self::TYPE_OPENING_BALANCE => 'Açılış Bakiyesi',
-            self::TYPE_REFUND => 'İade',
-            self::TYPE_OTHER => 'Diğer',
+            self::TYPE_REFUND => 'İade / Düzeltme',
+            self::TYPE_OTHER => 'Diğer Hareket',
         ];
+    }
+
+    public static function manualEntryTypeLabels(): array
+    {
+        return [
+            self::TYPE_CUSTOMER_DEBIT => 'Müşteri Borç Fişi',
+            self::TYPE_CUSTOMER_PAYMENT => 'Tahsilat',
+            self::TYPE_REFUND => 'İade / Düzeltme',
+            self::TYPE_SUPPLIER_DEBIT => 'Tedarikçi Borç Fişi',
+            self::TYPE_SUPPLIER_PAYMENT => 'Tedarikçi Ödemesi',
+            self::TYPE_SUBCONTRACTOR_DEBIT => 'Fason Borç Fişi',
+            self::TYPE_SUBCONTRACTOR_PAYMENT => 'Fason Ödemesi',
+            self::TYPE_CARRIER_DEBIT => 'Kargo / Teslimat Borcu',
+            self::TYPE_CARRIER_PAYMENT => 'Kargo / Teslimat Ödemesi',
+            self::TYPE_ADJUSTMENT => 'Mahsup / Düzeltme',
+            self::TYPE_OPENING_BALANCE => 'Açılış Bakiyesi',
+        ];
+    }
+
+    public static function paymentMethodLabels(): array
+    {
+        return \App\Models\OrderPayment::paymentMethodLabels();
+    }
+
+    public static function manualStatusLabels(): array
+    {
+        return [
+            self::STATUS_OPEN => 'Açık',
+            self::STATUS_PAID => 'Ödendi',
+            self::STATUS_PARTIALLY_PAID => 'Kısmi Kapandı',
+            self::STATUS_CLOSED => 'Kapalı / İşlendi',
+        ];
+    }
+
+    public static function inferredDirectionForType(string $type, ?string $fallbackDirection = null): string
+    {
+        return match ($type) {
+            self::TYPE_CUSTOMER_DEBIT,
+            self::TYPE_SUPPLIER_DEBIT,
+            self::TYPE_SUBCONTRACTOR_DEBIT,
+            self::TYPE_CARRIER_DEBIT,
+            self::TYPE_CUSTOMER_PAYMENT,
+            self::TYPE_SUPPLIER_PAYMENT,
+            self::TYPE_SUBCONTRACTOR_PAYMENT,
+            self::TYPE_CARRIER_PAYMENT,
+            self::TYPE_REFUND => self::typeDirectionMap()[$type],
+            default => $fallbackDirection === self::DIRECTION_CREDIT ? self::DIRECTION_CREDIT : self::DIRECTION_DEBIT,
+        };
+    }
+
+    public static function requiresManualDirection(string $type): bool
+    {
+        return in_array($type, [
+            self::TYPE_ADJUSTMENT,
+            self::TYPE_OPENING_BALANCE,
+            self::TYPE_OTHER,
+        ], true);
+    }
+
+    public static function typeDirectionMap(): array
+    {
+        return [
+            self::TYPE_CUSTOMER_DEBIT => self::DIRECTION_DEBIT,
+            self::TYPE_CUSTOMER_PAYMENT => self::DIRECTION_CREDIT,
+            self::TYPE_SUPPLIER_DEBIT => self::DIRECTION_DEBIT,
+            self::TYPE_SUPPLIER_PAYMENT => self::DIRECTION_CREDIT,
+            self::TYPE_SUBCONTRACTOR_DEBIT => self::DIRECTION_DEBIT,
+            self::TYPE_SUBCONTRACTOR_PAYMENT => self::DIRECTION_CREDIT,
+            self::TYPE_CARRIER_DEBIT => self::DIRECTION_DEBIT,
+            self::TYPE_CARRIER_PAYMENT => self::DIRECTION_CREDIT,
+            self::TYPE_REFUND => self::DIRECTION_CREDIT,
+        ];
+    }
+
+    public static function sanitizeMetaText(mixed $value): ?string
+    {
+        $text = trim(strip_tags((string) ($value ?? '')));
+
+        return $text === '' ? null : Str::limit($text, 255, '');
     }
 
     public static function directionLabels(): array
     {
         return [
             self::DIRECTION_DEBIT => 'Borç',
-            self::DIRECTION_CREDIT => 'Alacak / Ödeme',
+            self::DIRECTION_CREDIT => 'Alacak',
         ];
     }
 

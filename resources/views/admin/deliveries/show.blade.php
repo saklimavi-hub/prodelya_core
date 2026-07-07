@@ -68,7 +68,7 @@
             <div class="dvs-head">
                 <div>
                     <div class="dvs-title">{{ $delivery->order?->document_number ?: '-' }} / {{ data_get($snapshot, 'product_name', $delivery->orderItem?->product_name ?: '-') }}</div>
-                    <div class="dvs-subtitle">{{ data_get($snapshot, 'product_code', $delivery->orderItem?->product_code ?: '-') }} · {{ rtrim(rtrim(number_format((float) $delivery->planned_quantity, 4, ',', '.'), '0'), ',') }} {{ data_get($snapshot, 'unit', $delivery->orderItem?->unit) }} · {{ $methodLabels[$delivery->delivery_method] ?? 'Teslimat tipi girilmedi' }}</div>
+                    <div class="dvs-subtitle">{{ data_get($snapshot, 'product_code', $delivery->orderItem?->product_code ?: '-') }} · {{ rtrim(rtrim(number_format((float) $delivery->planned_quantity, 4, ',', '.'), '0'), ',') }} {{ data_get($snapshot, 'unit', $delivery->orderItem?->unit) }} · {{ $delivery->order?->delivery_type ?: 'Teslimat tipi girilmedi' }}</div>
                 </div>
                 <div class="dvs-links">
                     <a href="{{ route('admin.deliveries.index') }}" class="pd-btn pd-btn-light">Listeye Dön</a>
@@ -181,6 +181,10 @@
                         <div class="dvs-box">
                             <div class="dvs-label">Kalan Adet</div>
                             <div class="dvs-value">{{ rtrim(rtrim(number_format((float) $delivery->remaining_quantity, 4, ',', '.'), '0'), ',') }}</div>
+                        </div>
+                        <div class="dvs-box">
+                            <div class="dvs-label">Ticari Teslimat Tipi</div>
+                            <div class="dvs-value" style="font-size:15px;">{{ $delivery->order?->delivery_type ?: '-' }}</div>
                         </div>
                         <div class="dvs-box">
                             <div class="dvs-label">Paket Tipi</div>
@@ -466,7 +470,19 @@
                         @method('PATCH')
                         <div class="dvs-form-grid">
                             <div class="dvs-field">
-                                <label>Teslimat Tipi</label>
+                                <label>Ticari teslimat tipi</label>
+                                <select name="delivery_type_id">
+                                    <option value="">Seçiniz</option>
+                                    @foreach(($deliveryTypeOptions ?? collect()) as $deliveryType)
+                                        <option value="{{ $deliveryType->id }}" @selected((string) old('delivery_type_id', $selectedDeliveryTypeId ?? '') === (string) $deliveryType->id)>{{ $deliveryType->name }}</option>
+                                    @endforeach
+                                    @if(filled($legacyDeliveryTypeLabel ?? null))
+                                        <option value="" selected>Mevcut değer: {{ $legacyDeliveryTypeLabel }}</option>
+                                    @endif
+                                </select>
+                            </div>
+                            <div class="dvs-field">
+                                <label>Operasyonel teslim yöntemi</label>
                                 <select name="delivery_method">
                                     <option value="">Seçiniz</option>
                                     @foreach($methodLabels as $key => $label)
@@ -560,6 +576,7 @@
     <div class="pd-card-body">
         <div class="pd-summary-title">Teslimat Planı</div>
         <div class="pd-status-list">
+            <div class="pd-status-row"><span>Teslimat Tipi</span><strong>{{ $delivery->order?->delivery_type ?: '-' }}</strong></div>
             <div class="pd-status-row"><span>Sipariş No</span><strong>{{ $delivery->order?->document_number ?: '-' }}</strong></div>
             <div class="pd-status-row"><span>İş Formu</span><strong>{{ $delivery->workForm?->work_form_number ?: '-' }}</strong></div>
             <div class="pd-status-row"><span>Ürün</span><strong>{{ data_get($snapshot, 'product_name', $delivery->orderItem?->product_name ?: '-') }}</strong></div>

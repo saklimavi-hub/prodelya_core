@@ -115,6 +115,10 @@
                 <span class="label">Firma</span>
                 <div class="value">{{ $orderDetail['header']['company_name'] }}</div>
             </div>
+            <div>
+                <span class="label">Para Birimi</span>
+                <div class="value">{{ $orderDetail['header']['currency'] }}</div>
+            </div>
         </div>
 
         @if($orderDetail['header']['note'])
@@ -122,7 +126,7 @@
         @endif
 
         <p class="muted" style="margin:16px 0 0;">{{ $orderDetail['header']['customer_message'] }}</p>
-        <p class="muted" style="margin:8px 0 0;">Sipariş takibi operasyon durumlarını gösterir. Teklif tutarları teklif detayında yer alır.</p>
+        <p class="muted" style="margin:8px 0 0;">Sipariş fiyatları ürün satırında baskı dahil gösterilir. Baskı bilgi satırı yalnız açıklama ve görünürse fiyat kırılımını içerir.</p>
     </section>
 
     <section class="section" style="margin-top:16px;">
@@ -137,17 +141,29 @@
                                 {{ $item['product_code'] ?: '-' }} · {{ $item['quantity'] }}
                             </p>
                         </div>
+                        <div>
+                            <span class="label">Birim Fiyat</span>
+                            <div class="value">{{ $item['unit_price'] ?: '-' }}</div>
+                        </div>
+                        <div>
+                            <span class="label">Satır Toplamı</span>
+                            <div class="value">{{ $item['line_total'] ?: '-' }}</div>
+                        </div>
                     </div>
 
                     @if(! empty($item['prints']))
                         <div class="print-list" style="margin-top:14px;">
                             @foreach($item['prints'] as $print)
                                 <div class="print-card">
-                                    <div class="row">
-                                        <div>
-                                            <div class="value">{{ trim($print['label']) !== '' ? $print['label'] : '-' }}</div>
-                                            <p class="muted" style="margin:8px 0 0;">{{ $print['quantity'] }}</p>
-                                        </div>
+                                    <div>
+                                        <div class="value">{{ trim($print['label']) !== '' ? $print['label'] : '-' }}</div>
+                                        <p class="muted" style="margin:8px 0 0;">
+                                            {{ $print['quantity'] }}
+                                            @if($print['show_price_details'])
+                                                · Baskı Birim: {{ $print['unit_price'] ?: '-' }}
+                                                · Baskı Toplam: {{ $print['line_total'] ?: '-' }}
+                                            @endif
+                                        </p>
                                     </div>
 
                                     @if($print['note'])
@@ -159,6 +175,24 @@
                     @endif
                 </article>
             @endforeach
+        </div>
+    </section>
+
+    <section class="section" style="margin-top:16px;">
+        <h3 style="margin:0 0 14px;">Toplamlar</h3>
+        <div class="row">
+            <div>
+                <span class="label">Ara Toplam</span>
+                <div class="value">{{ $orderDetail['totals']['subtotal'] ?: '-' }}</div>
+            </div>
+            <div>
+                <span class="label">KDV</span>
+                <div class="value">{{ $orderDetail['totals']['vat_total'] ?: '-' }}</div>
+            </div>
+            <div>
+                <span class="label">Genel Toplam</span>
+                <div class="value">{{ $orderDetail['totals']['grand_total'] ?: '-' }}</div>
+            </div>
         </div>
     </section>
 

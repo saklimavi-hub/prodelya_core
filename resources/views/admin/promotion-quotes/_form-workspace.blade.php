@@ -10,6 +10,7 @@
     $initialItems = collect($initialItems ?? [[]])->values()->all();
     $quoteStatusLabel = old('quote_status_label', isset($quote) ? $quote->quoteDisplayStatusLabel() : 'Teklif');
     $showInitialVatSummary = $invoiceStatusValue === 'fatura';
+    $quotePrintDebug = config('app.debug') && request()->boolean('quote_print_debug');
     $legacyPrintTypeOptions = ['UV Baskı', 'Serigrafi', 'Tampon Baskı', 'Lazer', 'DTF', 'Sublimasyon', 'Dijital Baskı', 'Transfer Baskı', 'Nakış', 'Etiket / Sticker', 'Sıcak Baskı', 'Diğer'];
     $printOptionMap = [
         'UV Baskı' => ['Tek taraf baskılı', 'Çift taraf baskılı', 'Tam yüzey UV', 'Logo UV', 'Çok renk UV'],
@@ -28,6 +29,547 @@
     $clicheOptions = ['Yok', 'Var', 'Yeni üretilecek', 'Mevcut kullanılacak'];
     $clicheRequiredTypes = ['Sıcak Baskı'];
 @endphp
+
+<style>
+    .pd-customer-picker {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: 1fr;
+    }
+
+    .pd-customer-select-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
+
+    .pd-customer-search-box {
+        display: grid;
+        gap: 10px;
+        padding: 12px;
+        border: 1px solid #dbe3f0;
+        border-radius: 10px;
+        background: #f8fbff;
+        position: relative;
+    }
+
+    .pd-customer-search-box.is-selected {
+        background: #ffffff;
+    }
+
+    .pd-customer-search-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: end;
+    }
+
+    .pd-customer-search-status {
+        min-height: 20px;
+        font-size: 13px;
+        color: #64748b;
+    }
+
+    .pd-customer-search-status.is-warning {
+        color: #92400e;
+    }
+
+    .pd-customer-search-status.is-danger {
+        color: #b91c1c;
+    }
+
+    .pd-customer-search-stack {
+        position: relative;
+        min-width: 0;
+    }
+
+    .pd-customer-search-dropdown {
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0;
+        right: 0;
+        z-index: 120;
+        display: grid;
+        gap: 8px;
+        padding: 6px;
+        border: 1px solid #dbe3f0;
+        border-radius: 10px;
+        background: #ffffff;
+        box-shadow: 0 16px 28px rgba(15, 23, 42, 0.12);
+    }
+
+    .pd-customer-search-results {
+        display: grid;
+        gap: 8px;
+        max-height: 220px;
+        overflow-y: auto;
+        padding-right: 2px;
+        scrollbar-width: thin;
+        scrollbar-color: #cbd5e1 transparent;
+    }
+
+    .pd-customer-search-results::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    .pd-customer-search-results::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 999px;
+    }
+
+    .pd-customer-search-results::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .pd-customer-search-result {
+        width: 100%;
+        text-align: left;
+        border: 1px solid #dbe3f0;
+        border-radius: 8px;
+        padding: 10px 12px;
+        background: #fff;
+        transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease;
+    }
+
+    .pd-customer-search-result:hover,
+    .pd-customer-search-result:focus {
+        border-color: #93c5fd;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.10);
+        outline: none;
+    }
+
+    .pd-customer-search-result-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #0f172a;
+    }
+
+    .pd-customer-search-result-meta {
+        margin-top: 4px;
+        font-size: 12px;
+        color: #64748b;
+    }
+
+    .pd-customer-empty-card,
+    .pd-customer-selected-card {
+        border: 1px solid #dbe3f0;
+        border-radius: 10px;
+        background: #fff;
+        padding: 12px 14px;
+    }
+
+    .pd-customer-empty-card {
+        background: #fffaf0;
+        border-color: #fcd34d;
+    }
+
+    .pd-customer-selected-card {
+        display: grid;
+        gap: 8px;
+        padding: 10px 12px;
+        background: #f8fafc;
+    }
+
+    .pd-customer-selected-card.hidden {
+        display: none;
+    }
+
+    .pd-customer-picker-note {
+        grid-column: 1 / -1;
+        margin-top: -4px;
+    }
+
+    .pd-customer-selected-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        font-size: 14px;
+        font-weight: 600;
+        color: #0f172a;
+    }
+
+    .pd-customer-selected-meta,
+    .pd-customer-empty-meta {
+        margin-top: 6px;
+        font-size: 12px;
+        line-height: 1.5;
+        color: #64748b;
+    }
+
+    .pd-customer-selected-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.5fr) minmax(180px, 0.9fr);
+        gap: 10px;
+        align-items: start;
+    }
+
+    .pd-customer-selected-primary {
+        min-width: 0;
+    }
+
+    .pd-customer-selected-secondary {
+        border-left: 1px solid #e2e8f0;
+        padding-left: 10px;
+        display: grid;
+        gap: 4px;
+    }
+
+    .pd-customer-selected-name {
+        font-size: 14px;
+        font-weight: 600;
+        color: #0f172a;
+    }
+
+    .pd-customer-selected-list {
+        display: grid;
+        gap: 4px;
+        font-size: 12px;
+        color: #64748b;
+    }
+
+    .pd-customer-selected-list strong {
+        color: #334155;
+        font-weight: 600;
+    }
+
+    .pd-customer-mini-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 12px;
+        color: #64748b;
+    }
+
+    .pd-customer-mini-row strong {
+        color: #334155;
+        font-weight: 600;
+    }
+
+    .pd-quote-item-group {
+        border: 1px solid #dbe3f0;
+        border-radius: 10px;
+        background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+        padding: 12px;
+    }
+
+    .pd-quote-item-group + .pd-quote-item-group {
+        margin-top: 12px;
+    }
+
+    .pd-quote-line-row {
+        align-items: start;
+        gap: 12px;
+    }
+
+    .pd-quote-line-product {
+        padding-right: 6px;
+    }
+
+    .pd-quote-line-product-meta {
+        margin-top: 10px;
+        padding: 10px 12px;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        background: #ffffff;
+    }
+
+    .pd-quote-line-subtitle-rich {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    .pd-print-operation {
+        margin-top: 10px;
+        padding: 12px;
+        border: 1px solid #dbe3f0;
+        border-radius: 8px;
+        background: #f8fbff;
+    }
+
+    .pd-print-operation + .pd-print-operation {
+        margin-top: 8px;
+    }
+
+    .pd-print-operation-grid-flat {
+        gap: 10px;
+        align-items: start;
+    }
+
+    .pd-setup-inline-summary {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+        margin-top: 8px;
+    }
+
+    .pd-setup-inline-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 8px;
+        border: 1px solid #dbe3f0;
+        border-radius: 999px;
+        background: #fff;
+        font-size: 11px;
+        line-height: 1.35;
+        color: #475569;
+        white-space: nowrap;
+    }
+
+    .pd-setup-inline-chip strong {
+        color: #334155;
+        font-weight: 600;
+    }
+
+    .pd-setup-inline-chip.is-required {
+        border-color: #fcd34d;
+        background: #fff7ed;
+        color: #92400e;
+    }
+
+    .pd-setup-inline-chip.is-ready {
+        border-color: #bfdbfe;
+        background: #eff6ff;
+        color: #1d4ed8;
+    }
+
+    .pd-setup-inline-chip.is-missing {
+        border-color: #e2e8f0;
+        background: #f8fafc;
+        color: #64748b;
+    }
+
+    .pd-quote-line-actions {
+        display: grid;
+        gap: 8px;
+        align-content: start;
+    }
+
+    .pd-customer-modal-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 1800;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        background: rgba(15, 23, 42, 0.38);
+    }
+
+    .pd-customer-modal-overlay.is-open {
+        display: flex;
+    }
+
+    .pd-customer-modal-panel {
+        width: min(720px, calc(100vw - 32px));
+        max-height: calc(100vh - 36px);
+        overflow-y: auto;
+        background: #fff;
+        border-radius: 10px;
+        box-shadow: 0 20px 45px rgba(15, 23, 42, 0.22);
+    }
+
+    .pd-customer-modal-header {
+        padding: 18px 20px;
+        border-bottom: 1px solid #e2e8f0;
+    }
+
+    .pd-customer-modal-body {
+        padding: 18px 20px;
+        display: grid;
+        gap: 14px;
+    }
+
+    .pd-customer-modal-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+    }
+
+    .pd-customer-modal-grid .full {
+        grid-column: 1 / -1;
+    }
+
+    .pd-customer-modal-field {
+        display: grid;
+        gap: 6px;
+    }
+
+    .pd-customer-modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        padding: 14px 20px;
+        border-top: 1px solid #e2e8f0;
+        background: #fff;
+    }
+
+    .pd-customer-modal-note {
+        padding: 10px 12px;
+        border-radius: 8px;
+        background: #f8fafc;
+        font-size: 12px;
+        line-height: 1.5;
+        color: #475569;
+    }
+
+    .pd-customer-form-errors {
+        display: grid;
+        gap: 6px;
+        padding: 10px 12px;
+        border: 1px solid #fecaca;
+        border-radius: 8px;
+        background: #fef2f2;
+        font-size: 12px;
+        color: #b91c1c;
+    }
+
+    .pd-quote-meta-grid {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 12px;
+        align-items: start;
+    }
+
+    .pd-quote-meta-row-customer,
+    .pd-quote-meta-row-note {
+        grid-column: 1 / -1;
+    }
+
+    .pd-quote-meta-row-toggle {
+        grid-column: span 3;
+    }
+
+    .pd-quote-meta-row-note .pd-label {
+        margin-bottom: 6px;
+        display: inline-flex;
+    }
+
+    .pd-quote-line-head {
+        margin-bottom: 12px;
+    }
+
+    .pd-quote-print-debug {
+        margin-top: 14px;
+        border: 1px dashed #cbd5e1;
+        border-radius: 8px;
+        background: #f8fafc;
+        padding: 12px;
+    }
+
+    .pd-quote-print-debug.hidden {
+        display: none;
+    }
+
+    .pd-quote-print-debug-title {
+        font-size: 13px;
+        font-weight: 700;
+        color: #0f172a;
+    }
+
+    .pd-quote-print-debug-note {
+        margin-top: 4px;
+        font-size: 12px;
+        color: #64748b;
+    }
+
+    .pd-quote-print-debug-list {
+        display: grid;
+        gap: 8px;
+        margin-top: 10px;
+    }
+
+    .pd-quote-print-debug-item {
+        border: 1px solid #dbe3f0;
+        border-radius: 8px;
+        background: #fff;
+        padding: 10px;
+    }
+
+    .pd-quote-print-debug-metrics {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 8px;
+    }
+
+    .pd-quote-print-debug-metric {
+        border: 1px solid #e2e8f0;
+        border-radius: 7px;
+        background: #f8fafc;
+        padding: 8px;
+        font-size: 11px;
+        line-height: 1.45;
+        color: #475569;
+    }
+
+    .pd-quote-print-debug-metric strong {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 11px;
+        color: #0f172a;
+    }
+
+    .pd-quote-print-debug-row-list {
+        display: grid;
+        gap: 6px;
+        margin-top: 8px;
+    }
+
+    .pd-quote-print-debug-row {
+        border: 1px solid #e2e8f0;
+        border-radius: 7px;
+        background: #fff;
+        padding: 8px;
+        font-size: 11px;
+        line-height: 1.45;
+        color: #475569;
+    }
+
+    @media (max-width: 720px) {
+        .pd-customer-search-grid,
+        .pd-customer-modal-grid,
+        .pd-customer-picker,
+        .pd-quote-meta-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .pd-customer-selected-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .pd-customer-selected-secondary {
+            border-left: 0;
+            border-top: 1px solid #e2e8f0;
+            padding-left: 0;
+            padding-top: 8px;
+        }
+
+        .pd-customer-modal-header,
+        .pd-customer-modal-body,
+        .pd-customer-modal-footer {
+            padding-left: 16px;
+            padding-right: 16px;
+        }
+
+        .pd-quote-meta-row-toggle,
+        .pd-quote-meta-row-customer,
+        .pd-quote-meta-row-note,
+        .pd-customer-picker-note {
+            grid-column: 1 / -1;
+        }
+    }
+</style>
 
 <form method="POST" action="{{ $formAction }}" id="quote-form" class="space-y-5">
     @csrf
@@ -79,17 +621,45 @@
                     <div class="pd-quote-meta-grid">
                         <div class="pd-quote-meta-row pd-quote-meta-row-customer">
                             <label class="pd-label">Müşteri</label>
-                            <div class="pd-inline-actions">
-                                <select name="customer_company_id" id="customer-select" required class="pd-select flex-1 min-w-0">
-                                    <option value="">Müşteri seçin</option>
-                                    @foreach ($customers as $customer)
-                                        <option value="{{ $customer->id }}" @selected((string) old('customer_company_id', $quote->customer_company_id ?? '') === (string) $customer->id)>
-                                            {{ $customer->legal_name }}
-                                        </option>
-                                    @endforeach
-                                </select>
+                            <div class="pd-customer-picker" data-customer-picker>
+                                <div class="pd-customer-search-box">
+                                    <select name="customer_company_id" id="customer-select" required class="pd-select pd-customer-select-hidden" aria-hidden="true" tabindex="-1">
+                                        <option value="">Müşteri seçin</option>
+                                        @foreach ($customers as $customer)
+                                            <option value="{{ $customer->id }}" @selected((string) old('customer_company_id', $quote->customer_company_id ?? '') === (string) $customer->id)>
+                                                {{ $customer->legal_name }}
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                    <div class="pd-customer-search-grid">
+                                        <div class="pd-customer-search-stack">
+                                            <label for="quote-customer-search" class="pd-label">Müşteri Ara</label>
+                                            <input
+                                                type="search"
+                                                id="quote-customer-search"
+                                                class="pd-input"
+                                                autocomplete="off"
+                                                placeholder="Firma adı, telefon, e-posta veya VKN/TCKN ile arayın"
+                                            >
+                                            <div id="quote-customer-search-status" class="pd-customer-search-status">Müşteri aramak için en az 3 karakter yazın.</div>
+                                            <div id="quote-customer-search-dropdown" class="pd-customer-search-dropdown hidden">
+                                                <div id="quote-customer-search-results" class="pd-customer-search-results hidden"></div>
+                                                <div id="quote-customer-empty-state" class="pd-customer-empty-card hidden">
+                                                    <div class="pd-customer-selected-title">Müşteri bulunamadı</div>
+                                                    <div class="pd-customer-empty-meta">Tekliften çıkmadan hızlı müşteri ekleyebilirsiniz.</div>
+                                                    <div class="mt-3">
+                                                        <button type="button" class="pd-btn pd-btn-primary pd-btn-sm" id="quick-customer-empty-button">+ Hızlı Müşteri Ekle</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="pd-inline-actions">
+                                            <button type="button" class="pd-btn pd-btn-light pd-btn-sm" id="quick-customer-open-button">+ Hızlı Müşteri Ekle</button>
+                                        </div>
+                                    </div>
+                                    <div id="quote-customer-selected-card" class="pd-customer-selected-card hidden"></div>
+                                </div>
                             </div>
-                            <p class="pd-section-subtitle mt-2">Yeni müşteri kaydı gerekiyorsa önce Cari Kart ekranından ekleyin.</p>
                         </div>
                         <div class="pd-quote-meta-row">
                             <label class="pd-label">Teklif tarihi</label>
@@ -112,7 +682,18 @@
                         </div>
                         <div class="pd-quote-meta-row">
                             <label class="pd-label">Teslimat Tipi</label>
-                            <input type="text" name="delivery_type" value="{{ old('delivery_type', $quote->delivery_type ?? '') }}" class="pd-compact-input" placeholder="Kargo, kurye, teslim...">
+                            <select name="delivery_type_id" class="pd-compact-select">
+                                <option value="">Seçiniz</option>
+                                @foreach(($deliveryTypeOptions ?? collect()) as $deliveryType)
+                                    <option value="{{ $deliveryType->id }}" @selected((string) old('delivery_type_id', $selectedDeliveryTypeId ?? '') === (string) $deliveryType->id)>
+                                        {{ $deliveryType->name }}{{ $deliveryType->is_default ? ' · Varsayılan' : '' }}{{ !$deliveryType->is_active ? ' · Pasif' : '' }}
+                                    </option>
+                                @endforeach
+                                @if(filled($legacyDeliveryTypeLabel ?? null))
+                                    <option value="" selected>Mevcut değer: {{ $legacyDeliveryTypeLabel }}</option>
+                                @endif
+                            </select>
+                            <input type="hidden" name="delivery_type" value="{{ old('delivery_type', $legacyDeliveryTypeLabel ?? ($quote->delivery_type ?? '')) }}">
                         </div>
                         <div class="pd-quote-meta-row">
                             <label class="pd-label">Para birimi</label>
@@ -121,6 +702,21 @@
                                     <option value="{{ $option }}" @selected($currency === $option)>{{ $option }}</option>
                                 @endforeach
                             </select>
+                        </div>
+                        <div class="pd-quote-meta-row pd-quote-meta-row-toggle">
+                            <label class="pd-label" for="show-print-price-details-select">Baskı fiyatı gösterimi</label>
+                            <select
+                                name="show_print_price_details_to_customer"
+                                id="show-print-price-details-select"
+                                class="pd-compact-select"
+                            >
+                                <option value="1" @selected((string) old('show_print_price_details_to_customer', isset($quote) ? ((int) $quote->shouldShowPrintPriceDetailsToCustomer()) : '1') === '1')>Baskı fiyatı gösterilsin</option>
+                                <option value="0" @selected((string) old('show_print_price_details_to_customer', isset($quote) ? ((int) $quote->shouldShowPrintPriceDetailsToCustomer()) : '1') === '0')>Baskı fiyatı gizlensin</option>
+                            </select>
+                            <p class="mt-2 text-xs leading-5 text-slate-600">
+                                Ana ürün fiyatı müşteriye baskı dahil görünür. Bu seçenek yalnız ürün altındaki baskı bilgi satırında
+                                <strong>Baskı Birim</strong> ve <strong>Baskı Toplam</strong> bilgisini kontrol eder.
+                            </p>
                         </div>
                         <div class="pd-quote-meta-row pd-quote-meta-row-note">
                             <label class="pd-label">Sipariş Notu</label>
@@ -155,6 +751,13 @@
                         <span>Sil</span>
                     </div>
                     <div id="product-items-container" class="space-y-3"></div>
+                    @if ($quotePrintDebug)
+                        <div id="quote-print-debug-panel" class="pd-quote-print-debug hidden">
+                            <div class="pd-quote-print-debug-title">Baskı Debug</div>
+                            <div class="pd-quote-print-debug-note">Bu panel yalnız debug modunda görünür. State, DOM ve add/mount akışı burada izlenir.</div>
+                            <div id="quote-print-debug-body" class="pd-quote-print-debug-list"></div>
+                        </div>
+                    @endif
                 </div>
             </div>
         </div>
@@ -208,9 +811,73 @@
     </div>
 </form>
 
+<div id="quick-customer-modal" class="pd-customer-modal-overlay hidden" aria-hidden="true">
+    <div class="pd-customer-modal-panel" role="dialog" aria-modal="true" aria-labelledby="quick-customer-modal-title">
+        <div class="pd-customer-modal-header">
+            <h3 id="quick-customer-modal-title" class="pd-section-title">Hızlı Müşteri Ekle</h3>
+            <p class="pd-section-subtitle mt-2">Tekliften çıkmadan cari/firma kaydı oluşturun. Kaydedince müşteri otomatik seçilir.</p>
+        </div>
+        <div class="pd-customer-modal-body">
+            <div id="quick-customer-form-errors" class="pd-customer-form-errors hidden"></div>
+            <div class="pd-customer-modal-grid">
+                <div class="pd-customer-modal-field full">
+                    <label for="quick-customer-legal-name" class="pd-label">Firma / Müşteri Adı</label>
+                    <input type="text" id="quick-customer-legal-name" class="pd-input" autocomplete="organization">
+                </div>
+                <div class="pd-customer-modal-field">
+                    <label for="quick-customer-tax-number" class="pd-label">Vergi No / TC No</label>
+                    <input type="text" id="quick-customer-tax-number" class="pd-input" inputmode="numeric">
+                </div>
+                <div class="pd-customer-modal-field">
+                    <label for="quick-customer-identity-type" class="pd-label">Firma Tipi</label>
+                    <select id="quick-customer-identity-type" class="pd-select">
+                        <option value="company">Tüzel Kişi</option>
+                        <option value="person">Şahıs / Bireysel</option>
+                    </select>
+                </div>
+                <div class="pd-customer-modal-field">
+                    <label for="quick-customer-email" class="pd-label">E-posta</label>
+                    <input type="email" id="quick-customer-email" class="pd-input" autocomplete="email">
+                </div>
+                <div class="pd-customer-modal-field">
+                    <label for="quick-customer-phone" class="pd-label">WhatsApp Cep Telefonu</label>
+                    <div style="display:flex; align-items:center; border:1px solid #d0d5dd; border-radius:10px; overflow:hidden; background:#fff;">
+                        <span style="display:inline-flex; align-items:center; gap:8px; padding:0 12px; min-height:42px; background:#f8fafc; border-right:1px solid #e4e7ec; color:#344054; font-size:13px; white-space:nowrap;">🇹🇷 +90</span>
+                        <input type="text" id="quick-customer-phone" class="pd-input" autocomplete="tel" placeholder="5xx xxx xx xx" style="border:0; border-radius:0; box-shadow:none;">
+                    </div>
+                </div>
+                <div class="pd-customer-modal-field">
+                    <label for="quick-customer-contact-name" class="pd-label">Yetkili Adı</label>
+                    <input type="text" id="quick-customer-contact-name" class="pd-input" autocomplete="name">
+                </div>
+                <div class="pd-customer-modal-field">
+                    <label for="quick-customer-city" class="pd-label">Şehir</label>
+                    <input type="text" id="quick-customer-city" class="pd-input" autocomplete="address-level2">
+                </div>
+                <div class="pd-customer-modal-field full">
+                    <label for="quick-customer-address-note" class="pd-label">Kısa Adres / Not</label>
+                    <textarea id="quick-customer-address-note" rows="3" class="pd-textarea"></textarea>
+                </div>
+            </div>
+            <div class="pd-customer-modal-note">
+                Minimum kayıt için firma adı yeterli olabilir; e-posta ve WhatsApp cep telefonu varsa teklif gönderiminde otomatik kullanılabilir.
+                Detaylı adres ve cari bilgiler daha sonra Müşteriler / Cari Kartlar ekranından tamamlanır.
+            </div>
+        </div>
+        <div class="pd-customer-modal-footer">
+            <button type="button" class="pd-btn pd-btn-light" id="quick-customer-cancel-button">Vazgeç / Kapat</button>
+            <button type="button" class="pd-btn pd-btn-primary" id="quick-customer-save-button">Kaydet ve Seç</button>
+        </div>
+    </div>
+</div>
+
 @php
     $workspacePayload = [
         'searchUrl' => $catalogSearchUrl,
+        'customerSearchUrl' => $customerSearchUrl ?? null,
+        'quickCustomerStoreUrl' => $quickCustomerStoreUrl ?? null,
+        'customerLookup' => $customerLookup ?? [],
+        'selectedCustomer' => $selectedCustomer ?? null,
         'currency' => $currency,
         'canViewFinancialData' => (bool) ($canViewFinancialData ?? false),
         'items' => $initialItems,
@@ -221,6 +888,7 @@
         'clicheRequiredTypes' => $clicheRequiredTypes,
         'invoiceStatus' => $invoiceStatusValue,
         'defaultPrintVatRate' => 20,
+        'printDebugEnabled' => $quotePrintDebug,
     ];
 @endphp
 
@@ -237,6 +905,18 @@ const tenantPrintSettingsById = new Map(tenantPrintSettings.map((setting) => [St
 const legacyPrintTypeOptions = Array.isArray(quoteWorkspace.legacyPrintTypeOptions) ? quoteWorkspace.legacyPrintTypeOptions : [];
 const printOptionMap = quoteWorkspace.printOptionMap || {};
 const clicheRequiredTypes = quoteWorkspace.clicheRequiredTypes || ['Sıcak Baskı'];
+const customerLookup = new Map(
+    Object.values(quoteWorkspace.customerLookup || {}).map((customer) => [String(customer.id), customer])
+);
+let customerSearchTimer = null;
+let quickCustomerModalSnapshot = null;
+const quotePrintDebugEnabled = !!quoteWorkspace.printDebugEnabled;
+const quotePrintDebugState = {
+    lastActionAt: '',
+    lastActionReason: '',
+    items: new Map(),
+    lastError: '',
+};
 
 function escapeHtml(value) {
     return String(value ?? '')
@@ -654,6 +1334,45 @@ function currentPrintSettingOrLegacyName(printRow = {}) {
     return setting?.standard_name || printRow.print_type || '';
 }
 
+function resolveSettingPrintOptions(setting = null) {
+    return Array.isArray(setting?.options) ? setting.options : [];
+}
+
+function resolveSelectedPrintOption(setting = null, printRow = {}, optionLabel = null) {
+    const options = resolveSettingPrintOptions(setting);
+    const optionId = String(printRow.tenant_print_option_id || '');
+    const targetLabel = String((optionLabel ?? printRow.print_option) || '').trim();
+
+    if (optionId) {
+        const byId = options.find((option) => String(option.id) === optionId);
+        if (byId) {
+            return byId;
+        }
+    }
+
+    if (targetLabel !== '') {
+        return options.find((option) => String(option.name || '').trim() === targetLabel) || null;
+    }
+
+    return null;
+}
+
+function buildPrintOptionChoices(setting = null, printRow = {}) {
+    const dbOptions = resolveSettingPrintOptions(setting);
+    const choices = dbOptions.map((option) => option.name);
+    const currentLabel = String(printRow.print_option || '').trim();
+
+    if (currentLabel && !choices.includes(currentLabel)) {
+        choices.push(currentLabel);
+    }
+
+    if (choices.length) {
+        return choices;
+    }
+
+    return printOptionsForType(setting?.standard_name || printRow.print_type || '');
+}
+
 function buildPrintTypeOptions(printRow = {}) {
     const options = tenantPrintSettings.map((setting) => ({
         id: `setting:${setting.id}`,
@@ -684,22 +1403,52 @@ function normalizePrint(printRow = {}, index = 0) {
     const resolvedSettingId = printRow.tenant_print_setting_id || '';
     const resolvedStandardId = printRow.standard_print_type_id || '';
     const setting = resolvedSettingId ? tenantPrintSettingsById.get(String(resolvedSettingId)) : null;
+    const selectedOption = resolveSelectedPrintOption(setting, printRow);
+    const optionRequiresSetup = !!selectedOption?.requires_setup;
+    const optionSetupType = selectedOption?.setup_type || '';
+    const resolvedSetupTypes = Array.isArray(printRow.setup_types)
+        ? printRow.setup_types
+        : (optionSetupType ? [optionSetupType] : (setting?.setup_types || []));
+    const resolvedSetupStatus = printRow.setup_status || printRow.cliche_status || selectedOption?.setup_status_default || '';
+    const resolvedSetupType = printRow.setup_type || optionSetupType || resolvedSetupTypes[0] || '';
+    const resolvedBasePrintUnitPrice = printRow.base_print_unit_price ?? printRow.print_unit_price ?? '';
+    const resolvedSetupTotalAmount = printRow.setup_total_amount ?? '';
+    const resolvedSetupDistributionQuantity = printRow.setup_distribution_quantity ?? printRow.print_quantity ?? '';
+    const resolvedSetupUnitAmount = printRow.setup_unit_amount ?? '';
+    const resolvedSetupPricingEnabled = printRow.setup_pricing_enabled === true
+        || printRow.setup_pricing_enabled === 1
+        || printRow.setup_pricing_enabled === '1'
+        || resolvedSetupStatus === 'Yeni üretilecek'
+        || Number(resolvedSetupTotalAmount || 0) > 0;
 
     return {
+        _stable_key: printRow._stable_key || printRow.stable_key || printRow.print_key || `print-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`,
         tenant_print_setting_id: resolvedSettingId,
         standard_print_type_id: resolvedStandardId || setting?.standard_print_type_id || '',
+        tenant_print_option_id: printRow.tenant_print_option_id || selectedOption?.id || '',
         print_type: resolvedType,
-        print_option: printRow.print_option || '',
+        print_option: printRow.print_option || selectedOption?.name || '',
         production_type: printRow.production_type || '',
         subcontractor_company_id: printRow.subcontractor_company_id || '',
         cliche_status: printRow.cliche_status || '',
+        setup_pricing_enabled: resolvedSetupPricingEnabled,
+        setup_type: resolvedSetupType,
+        setup_status: resolvedSetupStatus,
+        setup_total_amount: formatInputNumber(resolvedSetupTotalAmount),
+        setup_distribution_quantity: formatInputNumber(resolvedSetupDistributionQuantity),
+        setup_unit_amount: formatInputNumber(resolvedSetupUnitAmount),
+        base_print_unit_price: formatInputNumber(resolvedBasePrintUnitPrice),
         print_quantity: formatInputNumber(printRow.print_quantity ?? ''),
         print_unit_price: formatInputNumber(printRow.print_unit_price ?? ''),
         print_total: formatInputNumber(printRow.print_total ?? ''),
         note: printRow.note || '',
         print_vat_rate: printRow.print_vat_rate ?? quoteWorkspace.defaultPrintVatRate ?? 20,
-        requires_setup: printRow.requires_setup === true || printRow.requires_setup === 1 || printRow.requires_setup === '1' || !!setting?.requires_setup,
-        setup_types: Array.isArray(printRow.setup_types) ? printRow.setup_types : (setting?.setup_types || []),
+        requires_setup: printRow.requires_setup === true || printRow.requires_setup === 1 || printRow.requires_setup === '1' || optionRequiresSetup || !!setting?.requires_setup,
+        setup_types: resolvedSetupTypes,
+        option_requires_setup: optionRequiresSetup,
+        option_setup_type: optionSetupType,
+        option_setup_status_default: selectedOption?.setup_status_default || '',
+        option_default_unit_price: selectedOption?.default_unit_price ?? '',
         _manual_quantity: !!printRow._manual_quantity,
         _price_suggested: !!printRow._price_suggested,
         _index: index,
@@ -719,7 +1468,7 @@ function defaultItem() {
         line_total: '',
         description: '',
         has_print: false,
-        prints: [normalizePrint()],
+        prints: [],
         manual_unit_price: false,
         calculated_unit_price: '',
         tenant_catalog_product_id: '',
@@ -754,7 +1503,7 @@ function normalizeItem(item = {}, index = 0) {
     const hasPrint = item.has_print === true || item.has_print === 1 || item.has_print === '1';
     const prints = Array.isArray(item.prints) && item.prints.length
         ? item.prints.map((printRow, printIndex) => normalizePrint(printRow, printIndex))
-        : [normalizePrint()];
+        : (hasPrint ? [createDefaultPrintForItem(item, 0)] : []);
 
     return {
         ...defaultItem(),
@@ -850,7 +1599,141 @@ function quoteWarningMeta(item) {
 }
 
 function printRowCode(itemIndex, printIndex) {
-    return `${itemIndex + 1}${String.fromCharCode(97 + printIndex)}`;
+    let offset = Number(printIndex) || 0;
+    let suffix = '';
+
+    do {
+        suffix = String.fromCharCode(97 + (offset % 26)) + suffix;
+        offset = Math.floor(offset / 26) - 1;
+    } while (offset >= 0);
+
+    return `${itemIndex + 1}${suffix}`;
+}
+
+function debugNow() {
+    return new Date().toLocaleTimeString('tr-TR', { hour12: false });
+}
+
+function ensureQuotePrintDebugItem(itemIndex, stableKey = '') {
+    const key = String(itemIndex);
+    if (!quotePrintDebugState.items.has(key)) {
+        quotePrintDebugState.items.set(key, {
+            itemIndex,
+            stableKey,
+            lastClickAt: '',
+            lastClickReason: '',
+            lastAddBefore: null,
+            lastAddAfter: null,
+            lastMountCount: null,
+            lastCollectCount: null,
+            lastDomCount: null,
+            lastError: '',
+        });
+    }
+
+    const state = quotePrintDebugState.items.get(key);
+    if (stableKey) {
+        state.stableKey = stableKey;
+    }
+
+    return state;
+}
+
+function countDomPrintRows(itemIndex) {
+    const itemElement = document.querySelector(`.pd-quote-item[data-item-index="${itemIndex}"]`);
+    if (!itemElement) {
+        return 0;
+    }
+
+    return itemElement.querySelectorAll('[data-print-list] .pd-print-operation').length;
+}
+
+function quotePrintDebugLog(step, payload = {}) {
+    if (!quotePrintDebugEnabled) {
+        return;
+    }
+
+    console.info(`[quote-print-debug] ${step}`, payload);
+}
+
+function collectQuotePrintDebugSnapshot(reason = 'snapshot') {
+    const items = collectItems();
+
+    return items.map((item, itemIndex) => {
+        const debugItem = ensureQuotePrintDebugItem(itemIndex, item._stable_key || '');
+        const itemElement = document.querySelector(`.pd-quote-item[data-item-index="${itemIndex}"]`);
+        const domRows = itemElement ? Array.from(itemElement.querySelectorAll('[data-print-list] .pd-print-operation')) : [];
+
+        return {
+            itemIndex,
+            stableKey: item._stable_key || '',
+            hasPrint: !!item.has_print,
+            printsLength: Array.isArray(item.prints) ? item.prints.length : 0,
+            domRowCount: domRows.length,
+            lastClickAt: debugItem.lastClickAt || '',
+            lastClickReason: debugItem.lastClickReason || '',
+            lastAddBefore: debugItem.lastAddBefore,
+            lastAddAfter: debugItem.lastAddAfter,
+            lastMountCount: debugItem.lastMountCount,
+            lastCollectCount: debugItem.lastCollectCount,
+            lastDomCount: debugItem.lastDomCount,
+            lastError: debugItem.lastError || '',
+            reason,
+            rows: (Array.isArray(item.prints) ? item.prints : []).map((printRow, printIndex) => {
+                const rowElement = domRows[printIndex] || null;
+                const rowStyle = rowElement ? window.getComputedStyle(rowElement) : null;
+                return {
+                    printIndex,
+                    label: printRowCode(itemIndex, printIndex),
+                    stableKey: printRow._stable_key || rowElement?.dataset.printKey || '',
+                    tenantPrintSettingId: printRow.tenant_print_setting_id || '',
+                    tenantPrintOptionId: printRow.tenant_print_option_id || '',
+                    printOption: printRow.print_option || '',
+                    setupPricingEnabled: !!printRow.setup_pricing_enabled,
+                    setupType: printRow.setup_type || '',
+                    setupStatus: printRow.setup_status || printRow.cliche_status || '',
+                    domPresent: !!rowElement,
+                    domVisible: !!(rowElement && rowStyle && rowStyle.display !== 'none' && rowStyle.visibility !== 'hidden'),
+                };
+            }),
+        };
+    });
+}
+
+function renderQuotePrintDebugPanel(reason = 'refresh') {
+    if (!quotePrintDebugEnabled) {
+        return;
+    }
+
+    const panel = document.getElementById('quote-print-debug-panel');
+    const body = document.getElementById('quote-print-debug-body');
+    if (!panel || !body) {
+        return;
+    }
+
+    const snapshot = collectQuotePrintDebugSnapshot(reason);
+    panel.classList.remove('hidden');
+    body.innerHTML = snapshot.map((item) => `
+        <div class="pd-quote-print-debug-item">
+            <div class="text-xs font-semibold text-slate-900">Item ${item.itemIndex} · ${escapeHtml(item.stableKey || '-')}</div>
+            <div class="pd-quote-print-debug-metrics">
+                <div class="pd-quote-print-debug-metric"><strong>Durum</strong>has_print: ${escapeHtml(String(item.hasPrint))}<br>prints.length: ${escapeHtml(String(item.printsLength))}<br>DOM rows: ${escapeHtml(String(item.domRowCount))}</div>
+                <div class="pd-quote-print-debug-metric"><strong>Son Add</strong>saat: ${escapeHtml(item.lastClickAt || '-')}<br>önce: ${escapeHtml(String(item.lastAddBefore ?? '-'))}<br>sonra: ${escapeHtml(String(item.lastAddAfter ?? '-'))}</div>
+                <div class="pd-quote-print-debug-metric"><strong>Mount / Collect</strong>mount: ${escapeHtml(String(item.lastMountCount ?? '-'))}<br>collect: ${escapeHtml(String(item.lastCollectCount ?? '-'))}<br>DOM sayım: ${escapeHtml(String(item.lastDomCount ?? '-'))}</div>
+            </div>
+            ${item.lastError ? `<div class="mt-2 text-xs font-medium text-red-700">${escapeHtml(item.lastError)}</div>` : ''}
+            <div class="pd-quote-print-debug-row-list">
+                ${item.rows.map((row) => `
+                    <div class="pd-quote-print-debug-row">
+                        <strong>${escapeHtml(row.label)}</strong><br>
+                        key: ${escapeHtml(row.stableKey || '-')} · setting: ${escapeHtml(String(row.tenantPrintSettingId || '-'))} · optionId: ${escapeHtml(String(row.tenantPrintOptionId || '-'))}<br>
+                        option: ${escapeHtml(row.printOption || '-')} · setup: ${escapeHtml(String(row.setupPricingEnabled))} · type: ${escapeHtml(row.setupType || '-')} · status: ${escapeHtml(row.setupStatus || '-')}<br>
+                        dom: ${escapeHtml(String(row.domPresent))} · visible: ${escapeHtml(String(row.domVisible))}
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `).join('');
 }
 
 function printRequiresCliche(printType, requiresSetup = false, setupTypes = []) {
@@ -859,6 +1742,146 @@ function printRequiresCliche(printType, requiresSetup = false, setupTypes = []) 
     }
 
     return clicheRequiredTypes.includes(printType || '');
+}
+
+function setupStatusRequiresAmount(status = '') {
+    return String(status || '') === 'Yeni üretilecek';
+}
+
+function setupTypeLabel(printRow = {}) {
+    return printRow.setup_type || (Array.isArray(printRow.setup_types) && printRow.setup_types.length ? printRow.setup_types[0] : 'Ara Eleman');
+}
+
+function setupTypeTitle(printRow = {}) {
+    const type = String(setupTypeLabel(printRow) || '').trim();
+
+    if (!type) {
+        return 'Ara Eleman';
+    }
+
+    const normalized = type
+        .replaceAll('_', ' ')
+        .toLowerCase()
+        .trim();
+
+    const explicitLabels = {
+        cliche: 'Klişe',
+        'klişe': 'Klişe',
+        mold: 'Kalıp',
+        kalip: 'Kalıp',
+        'kalıp': 'Kalıp',
+        film: 'Film',
+        apparatus: 'Aparat',
+        aparat: 'Aparat',
+        bicak: 'Bıçak',
+        sablon: 'Şablon',
+        'varak kalibi': 'Varak kalıbı',
+        'lazer sablonu': 'Lazer şablonu',
+    };
+
+    if (explicitLabels[normalized]) {
+        return explicitLabels[normalized];
+    }
+
+    return 'Ara Eleman';
+}
+
+function shouldShowSetupPricingBox(printRow = {}) {
+    return setupStatusRequiresAmount(printRow.setup_status || printRow.cliche_status || '')
+        || Number(printRow.setup_total_amount || 0) > 0
+        || Number(printRow.setup_unit_amount || 0) > 0;
+}
+
+function printRowHasMeaningfulData(printRow = {}) {
+    if (!printRow || typeof printRow !== 'object') {
+        return false;
+    }
+
+    return [
+        printRow.tenant_print_setting_id,
+        printRow.tenant_print_option_id,
+        printRow.print_type,
+        printRow.print_option,
+        printRow.print_quantity,
+        printRow.print_unit_price,
+        printRow.print_total,
+        printRow.note,
+        printRow.cliche_status,
+        printRow.setup_status,
+        printRow.setup_total_amount,
+        printRow.setup_unit_amount,
+        printRow.base_print_unit_price,
+    ].some((value) => String(value ?? '').trim() !== '' && String(value ?? '').trim() !== '0' && String(value ?? '').trim() !== '0.00');
+}
+
+function itemHasMeaningfulPrintData(item = {}) {
+    return Array.isArray(item?.prints) && item.prints.some((printRow) => printRowHasMeaningfulData(printRow));
+}
+
+function defaultPrintQuantityForItem(item = {}) {
+    return item?.quantity || '';
+}
+
+function createDefaultPrintForItem(item = {}, index = 0, printRow = {}) {
+    return normalizePrint({
+        print_quantity: defaultPrintQuantityForItem(item),
+        ...printRow,
+    }, index);
+}
+
+function ensureItemHasFirstPrintRow(item = {}) {
+    if (!item) {
+        return item;
+    }
+
+    item.prints = Array.isArray(item.prints) ? item.prints : [];
+    item.has_print = true;
+
+    if (!item.prints.length) {
+        item.prints.push(createDefaultPrintForItem(item, 0));
+    }
+
+    return item;
+}
+
+function setupSummaryAmountLabel(printRow = {}) {
+    if (!shouldShowSetupPricingBox(printRow)) {
+        return '';
+    }
+
+    return formatMoney(Number(printRow.setup_total_amount || 0), currentQuoteCurrency()) || '';
+}
+
+function calculateSetupDistribution(basePrintUnitPrice, setupTotalAmount, printQuantity) {
+    const safeBase = Number(basePrintUnitPrice || 0);
+    const safeSetupTotal = Number(setupTotalAmount || 0);
+    const safeQuantity = Number(printQuantity || 0);
+    const setupUnitAmount = safeQuantity > 0
+        ? Number((safeSetupTotal / safeQuantity).toFixed(4))
+        : 0;
+    const finalPrintUnitPrice = Number((safeBase + setupUnitAmount).toFixed(4));
+    const finalPrintTotal = Number((finalPrintUnitPrice * safeQuantity).toFixed(4));
+
+    return {
+        setupUnitAmount,
+        finalPrintUnitPrice,
+        finalPrintTotal,
+    };
+}
+
+function setSetupModalDisplayValue(elements, value) {
+    Array.from(elements || []).forEach((element) => {
+        if (!element) {
+            return;
+        }
+
+        if (['INPUT', 'SELECT', 'TEXTAREA'].includes(element.tagName)) {
+            element.value = value;
+            return;
+        }
+
+        element.textContent = value;
+    });
 }
 
 function printOptionsForType(printType) {
@@ -933,6 +1956,7 @@ function applyTenantPrintSettingPriceSuggestion(printOperation, setting = null) 
     }
 
     const unitPriceInput = printOperation.querySelector('input[name*="[print_unit_price]"]');
+    const basePriceInput = printOperation.querySelector('input[name*="[base_print_unit_price]"]');
     if (!unitPriceInput) {
         return;
     }
@@ -955,8 +1979,435 @@ function applyTenantPrintSettingPriceSuggestion(printOperation, setting = null) 
         return;
     }
 
-    unitPriceInput.value = Number(setting.default_unit_price).toFixed(2);
+    const defaultValue = Number(setting.default_unit_price).toFixed(2);
+
+    if (basePriceInput) {
+        const hasSuggestedBase = basePriceInput.dataset.priceSuggested === '1';
+        const baseIsEmpty = !basePriceInput.value;
+
+        if (baseIsEmpty || hasSuggestedBase) {
+            basePriceInput.value = defaultValue;
+            basePriceInput.dataset.priceSuggested = '1';
+        }
+    }
+
+    unitPriceInput.value = defaultValue;
     unitPriceInput.dataset.priceSuggested = '1';
+}
+
+function applyTenantPrintOptionPriceSuggestion(printOperation, option = null) {
+    if (!quoteWorkspace.canViewFinancialData || !printOperation || !option) {
+        return;
+    }
+
+    const hasDefaultPrice = option.default_unit_price !== undefined
+        && option.default_unit_price !== null
+        && option.default_unit_price !== '';
+
+    if (!hasDefaultPrice) {
+        return;
+    }
+
+    const unitPriceInput = printOperation.querySelector('input[name*="[print_unit_price]"]');
+    const basePriceInput = printOperation.querySelector('input[name*="[base_print_unit_price]"]');
+    const defaultValue = Number(option.default_unit_price).toFixed(2);
+
+    if (basePriceInput) {
+        const hasSuggestedBase = basePriceInput.dataset.priceSuggested === '1';
+        const baseIsEmpty = !basePriceInput.value;
+
+        if (baseIsEmpty || hasSuggestedBase) {
+            basePriceInput.value = defaultValue;
+            basePriceInput.dataset.priceSuggested = '1';
+        }
+    }
+
+    if (unitPriceInput) {
+        const hasSuggestedPrice = unitPriceInput.dataset.priceSuggested === '1';
+        const isEmpty = !unitPriceInput.value;
+
+        if (isEmpty || hasSuggestedPrice) {
+            unitPriceInput.value = defaultValue;
+            unitPriceInput.dataset.priceSuggested = '1';
+        }
+    }
+}
+
+function syncPrintOptionState(printOperation, setting = null, preferDefault = false) {
+    if (!printOperation) {
+        return;
+    }
+
+    const optionSelect = printOperation.querySelector('.print-option-select');
+    const optionIdInput = printOperation.querySelector('[data-print-option-id]');
+    const printTypeInput = printOperation.querySelector('[data-print-type-input]');
+    const clicheWrap = printOperation.querySelector('[data-cliche-wrap]');
+    const clicheSelect = printOperation.querySelector('select[name*="[cliche_status]"]');
+    const setupTypeInput = printOperation.querySelector('input[name*="[setup_type]"]');
+    const setupStatusInput = printOperation.querySelector('input[name*="[setup_status]"]');
+    const setupTotalInput = printOperation.querySelector('input[name*="[setup_total_amount]"]');
+
+    if (!optionSelect) {
+        return;
+    }
+
+    const effectiveSetting = setting || resolveTenantPrintSetting({
+        tenant_print_setting_id: printOperation.querySelector('[data-print-setting-id]')?.value || '',
+    });
+    const currentOptionLabel = optionSelect.value || '';
+    const optionChoices = buildPrintOptionChoices(effectiveSetting, {
+        tenant_print_option_id: optionIdInput?.value || '',
+        print_option: currentOptionLabel,
+        print_type: printTypeInput?.value || '',
+    });
+    const dbOptions = resolveSettingPrintOptions(effectiveSetting);
+    const defaultOption = dbOptions.find((option) => option.is_default) || null;
+    const hasCurrentLabel = optionChoices.includes(currentOptionLabel);
+    const nextValue = hasCurrentLabel
+        ? currentOptionLabel
+        : (preferDefault && defaultOption ? defaultOption.name : '');
+
+    optionSelect.innerHTML = optionsHtml(optionChoices, nextValue, 'Baskı seçeneği seç');
+
+    const selectedOption = resolveSelectedPrintOption(effectiveSetting, {
+        tenant_print_option_id: optionIdInput?.value || '',
+        print_option: optionSelect.value || nextValue,
+    }, optionSelect.value || nextValue);
+
+    if (optionIdInput) {
+        optionIdInput.value = selectedOption ? String(selectedOption.id) : '';
+    }
+
+    if (selectedOption) {
+        if (setupTypeInput && selectedOption.setup_type) {
+            setupTypeInput.value = selectedOption.setup_type;
+        }
+
+        if (clicheSelect && !clicheSelect.value && selectedOption.setup_status_default) {
+            clicheSelect.value = selectedOption.setup_status_default;
+        }
+
+        applyTenantPrintOptionPriceSuggestion(printOperation, selectedOption);
+    }
+
+    const requiresSetup = !!(selectedOption?.requires_setup || effectiveSetting?.requires_setup);
+    const setupTypes = selectedOption?.setup_type
+        ? [selectedOption.setup_type]
+        : (Array.isArray(effectiveSetting?.setup_types) ? effectiveSetting.setup_types : []);
+    const shouldShowCliche = printRequiresCliche(printTypeInput?.value || effectiveSetting?.display_name || '', requiresSetup, setupTypes);
+
+    clicheWrap?.classList.toggle('hidden', !shouldShowCliche);
+    if (clicheWrap) {
+        clicheWrap.dataset.visible = shouldShowCliche ? '1' : '0';
+    }
+
+    if (!shouldShowCliche) {
+        if (clicheSelect) {
+            clicheSelect.value = '';
+        }
+        if (setupStatusInput) {
+            setupStatusInput.value = '';
+        }
+        if (setupTotalInput) {
+            setupTotalInput.value = '';
+        }
+    } else if (setupStatusInput && clicheSelect?.value) {
+        setupStatusInput.value = clicheSelect.value;
+    }
+}
+
+function refreshPrintSetupPricing(printOperation) {
+    if (!printOperation) {
+        return;
+    }
+
+    const modal = resolveSetupModalElement(printOperation);
+    const clicheWrap = printOperation.querySelector('[data-cliche-wrap]');
+    const clicheStatusSelect = modal?.querySelector('select[name*="[cliche_status]"]') || null;
+    const setupStatusInput = printOperation.querySelector('input[name*="[setup_status]"]');
+    const setupPricingEnabledInput = printOperation.querySelector('input[name*="[setup_pricing_enabled]"]');
+    const setupTotalAmountInput = modal?.querySelector('input[name*="[setup_total_amount]"]') || null;
+    const setupDistributionQuantityInput = printOperation.querySelector('input[name*="[setup_distribution_quantity]"]');
+    const setupUnitAmountInput = printOperation.querySelector('input[name*="[setup_unit_amount]"]');
+    const basePrintUnitPriceInput = modal?.querySelector('input[name*="[base_print_unit_price]"]') || null;
+    const finalPrintUnitPriceInput = printOperation.querySelector('input[name*="[print_unit_price]"]');
+    const printQuantityInput = printOperation.querySelector('input[name*="[print_quantity]"]');
+    const printTotalInput = printOperation.querySelector('input[name*="[print_total]"]');
+    const setupSummaryCard = printOperation.querySelector('[data-setup-summary-card]');
+    const setupSummaryMetrics = printOperation.querySelector('[data-setup-summary-metrics]');
+    const setupSummaryAmount = printOperation.querySelector('[data-setup-summary-amount]');
+    const setupSummaryTitle = printOperation.querySelector('[data-setup-summary-title]');
+    const setupSummaryAction = printOperation.querySelector('[data-setup-summary-action]');
+    const setupStatusLabels = printOperation.querySelectorAll('[data-setup-status-label]');
+    const setupUnitEffectLabels = printOperation.querySelectorAll('[data-setup-unit-effect]');
+    const finalUnitPriceLabels = printOperation.querySelectorAll('[data-final-print-unit-price]');
+    const modalQuantityInputs = modal?.querySelectorAll('[data-setup-modal-quantity]') || [];
+    const modalUnitEffectInputs = modal?.querySelectorAll('[data-setup-modal-unit-effect]') || [];
+    const modalFinalUnitInputs = modal?.querySelectorAll('[data-setup-modal-final-unit]') || [];
+    const modalFinalTotalInputs = modal?.querySelectorAll('[data-setup-modal-final-total]') || [];
+    const statusValue = clicheStatusSelect?.value || '';
+    const quantityValue = Number(printQuantityInput?.value || 0);
+    const setupTotalValue = Number(setupTotalAmountInput?.value || 0);
+    const baseUnitPriceValue = Number(basePrintUnitPriceInput?.value || finalPrintUnitPriceInput?.value || 0);
+    const usesSetupPricing = setupStatusRequiresAmount(statusValue);
+    const setupSummaryAmountValue = formatMoney(setupTotalValue, currentQuoteCurrency());
+    const setupTypeDisplay = setupTypeTitle({
+        setup_type: printOperation.querySelector('input[name*="[setup_type]"]')?.value || '',
+    });
+
+    if (setupStatusInput) {
+        setupStatusInput.value = statusValue;
+    }
+
+    if (setupPricingEnabledInput) {
+        setupPricingEnabledInput.value = usesSetupPricing ? '1' : '0';
+    }
+
+    setupStatusLabels.forEach((label) => {
+        label.textContent = statusValue || 'Seçilmedi';
+    });
+    if (setupSummaryTitle) {
+        setupSummaryTitle.textContent = setupTypeDisplay;
+    }
+
+    if (clicheWrap) {
+        clicheWrap.classList.toggle('hidden', clicheWrap.dataset.visible !== '1');
+    }
+
+    if (setupSummaryCard) {
+        setupSummaryCard.classList.toggle('hidden', clicheWrap?.dataset.visible !== '1');
+    }
+
+    if (setupSummaryAction) {
+        setupSummaryAction.textContent = usesSetupPricing ? 'Düzenle' : 'Ara Eleman Ayarla';
+    }
+
+    if (!usesSetupPricing) {
+        if (setupDistributionQuantityInput) {
+            setupDistributionQuantityInput.value = quantityValue ? quantityValue.toFixed(2) : '';
+        }
+        if (setupUnitAmountInput) {
+            setupUnitAmountInput.value = '';
+        }
+        setupUnitEffectLabels.forEach((label) => {
+            label.textContent = formatMoney(0, currentQuoteCurrency());
+        });
+        finalUnitPriceLabels.forEach((label) => {
+            label.textContent = formatMoney(baseUnitPriceValue, currentQuoteCurrency());
+        });
+        if (setupSummaryMetrics) {
+            setupSummaryMetrics.classList.add('hidden');
+        }
+        if (setupSummaryAmount) {
+            setupSummaryAmount.textContent = '';
+            setupSummaryAmount.classList.add('hidden');
+        }
+        if (finalPrintUnitPriceInput) {
+            finalPrintUnitPriceInput.readOnly = !quoteWorkspace.canViewFinancialData;
+            if (basePrintUnitPriceInput?.value) {
+                finalPrintUnitPriceInput.value = basePrintUnitPriceInput.value;
+            }
+        }
+        if (setupTotalAmountInput) {
+            setupTotalAmountInput.value = '';
+        }
+        setSetupModalDisplayValue(modalQuantityInputs, quantityValue ? quantityValue.toFixed(2) : '');
+        setSetupModalDisplayValue(modalUnitEffectInputs, formatMoney(0, currentQuoteCurrency()) || '');
+        setSetupModalDisplayValue(modalFinalUnitInputs, formatMoney(baseUnitPriceValue, currentQuoteCurrency()) || '');
+        setSetupModalDisplayValue(modalFinalTotalInputs, formatMoney(Number(printTotalInput?.value || 0), currentQuoteCurrency()) || '');
+        return;
+    }
+
+    if (basePrintUnitPriceInput && !basePrintUnitPriceInput.value && finalPrintUnitPriceInput?.value) {
+        basePrintUnitPriceInput.value = finalPrintUnitPriceInput.value;
+    }
+
+    const distribution = calculateSetupDistribution(baseUnitPriceValue, setupTotalValue, quantityValue);
+
+    if (setupDistributionQuantityInput) {
+        setupDistributionQuantityInput.value = quantityValue ? quantityValue.toFixed(2) : '';
+    }
+    if (setupUnitAmountInput) {
+        setupUnitAmountInput.value = distribution.setupUnitAmount ? distribution.setupUnitAmount.toFixed(4) : '0.0000';
+    }
+    setupUnitEffectLabels.forEach((label) => {
+        label.textContent = formatMoney(distribution.setupUnitAmount, currentQuoteCurrency());
+    });
+    finalUnitPriceLabels.forEach((label) => {
+        label.textContent = formatMoney(distribution.finalPrintUnitPrice, currentQuoteCurrency());
+    });
+    if (setupSummaryMetrics) {
+        setupSummaryMetrics.classList.remove('hidden');
+    }
+    if (setupSummaryAmount) {
+        setupSummaryAmount.textContent = setupSummaryAmountValue || '';
+        setupSummaryAmount.classList.toggle('hidden', !setupSummaryAmountValue);
+    }
+    if (finalPrintUnitPriceInput) {
+        finalPrintUnitPriceInput.readOnly = true;
+        finalPrintUnitPriceInput.value = distribution.finalPrintUnitPrice.toFixed(2);
+    }
+    if (printTotalInput) {
+        printTotalInput.value = distribution.finalPrintTotal.toFixed(2);
+    }
+    setSetupModalDisplayValue(modalQuantityInputs, quantityValue ? quantityValue.toFixed(2) : '');
+    setSetupModalDisplayValue(modalUnitEffectInputs, formatMoney(distribution.setupUnitAmount, currentQuoteCurrency()) || '');
+    setSetupModalDisplayValue(modalFinalUnitInputs, formatMoney(distribution.finalPrintUnitPrice, currentQuoteCurrency()) || '');
+    setSetupModalDisplayValue(modalFinalTotalInputs, formatMoney(distribution.finalPrintTotal, currentQuoteCurrency()) || '');
+}
+
+function captureSetupModalSnapshot(printOperation) {
+    if (!printOperation) {
+        return null;
+    }
+
+    const modal = resolveSetupModalElement(printOperation);
+
+    return JSON.stringify({
+        cliche_status: modal?.querySelector('select[name*="[cliche_status]"]')?.value || '',
+        setup_total_amount: modal?.querySelector('input[name*="[setup_total_amount]"]')?.value || '',
+        base_print_unit_price: modal?.querySelector('input[name*="[base_print_unit_price]"]')?.value || '',
+        print_unit_price: printOperation.querySelector('input[name*="[print_unit_price]"]')?.value || '',
+        print_total: printOperation.querySelector('input[name*="[print_total]"]')?.value || '',
+        setup_pricing_enabled: printOperation.querySelector('input[name*="[setup_pricing_enabled]"]')?.value || '0',
+        setup_status: printOperation.querySelector('input[name*="[setup_status]"]')?.value || '',
+        setup_distribution_quantity: printOperation.querySelector('input[name*="[setup_distribution_quantity]"]')?.value || '',
+        setup_unit_amount: printOperation.querySelector('input[name*="[setup_unit_amount]"]')?.value || '',
+    });
+}
+
+function restoreSetupModalSnapshot(printOperation, snapshotJson) {
+    if (!printOperation || !snapshotJson) {
+        return;
+    }
+
+    const modal = resolveSetupModalElement(printOperation);
+    let snapshot = null;
+
+    try {
+        snapshot = JSON.parse(snapshotJson);
+    } catch (error) {
+        snapshot = null;
+    }
+
+    if (!snapshot) {
+        return;
+    }
+
+    const setters = {
+        cliche_status: modal?.querySelector('select[name*="[cliche_status]"]') || null,
+        setup_total_amount: modal?.querySelector('input[name*="[setup_total_amount]"]') || null,
+        base_print_unit_price: modal?.querySelector('input[name*="[base_print_unit_price]"]') || null,
+        print_unit_price: 'input[name*="[print_unit_price]"]',
+        print_total: 'input[name*="[print_total]"]',
+        setup_pricing_enabled: 'input[name*="[setup_pricing_enabled]"]',
+        setup_status: 'input[name*="[setup_status]"]',
+        setup_distribution_quantity: 'input[name*="[setup_distribution_quantity]"]',
+        setup_unit_amount: 'input[name*="[setup_unit_amount]"]',
+    };
+
+    Object.entries(setters).forEach(([key, selectorOrElement]) => {
+        const element = typeof selectorOrElement === 'string'
+            ? printOperation.querySelector(selectorOrElement)
+            : selectorOrElement;
+        if (element) {
+            element.value = snapshot[key] ?? '';
+        }
+    });
+}
+
+function resolveSetupModalElement(printOperation) {
+    if (!printOperation) {
+        return null;
+    }
+
+    const itemElement = printOperation.closest('.pd-quote-item');
+    const printKey = printOperation.dataset.printKey || '';
+    if (!itemElement || !printKey) {
+        return null;
+    }
+
+    return itemElement.querySelector(`[data-setup-modal-for="${printKey}"]`);
+}
+
+function resolvePrintOperationForModal(modal) {
+    if (!modal) {
+        return null;
+    }
+
+    const itemElement = modal.closest('.pd-quote-item');
+    const printKey = modal.dataset.setupModalFor || '';
+    if (!itemElement || !printKey) {
+        return null;
+    }
+
+    return itemElement.querySelector(`.pd-print-operation[data-print-key="${printKey}"]`);
+}
+
+function setSetupModalBodyLock(locked) {
+    if (!document?.body) {
+        return;
+    }
+
+    if (locked) {
+        document.body.dataset.setupModalScrollLock = document.body.style.overflow || '';
+        document.body.style.overflow = 'hidden';
+        return;
+    }
+
+    const previousOverflow = document.body.dataset.setupModalScrollLock ?? '';
+    document.body.style.overflow = previousOverflow;
+    delete document.body.dataset.setupModalScrollLock;
+}
+
+function toggleSetupModal(printOperation, show, { revert = false } = {}) {
+    if (!printOperation) {
+        return;
+    }
+
+    const modal = resolveSetupModalElement(printOperation);
+    if (!modal) {
+        return;
+    }
+
+    if (show) {
+        quotePrintDebugLog('setup-modal-open', {
+            itemIndex: printOperation.closest('.pd-quote-item')?.dataset.itemIndex || '',
+            printIndex: printOperation.dataset.printIndex || '',
+            printKey: printOperation.dataset.printKey || '',
+        });
+        modal.dataset.snapshot = captureSetupModalSnapshot(printOperation) || '';
+        modal.classList.remove('hidden');
+        modal.style.display = 'flex';
+        setSetupModalBodyLock(true);
+        return;
+    }
+
+    if (revert && modal.dataset.snapshot) {
+        restoreSetupModalSnapshot(printOperation, modal.dataset.snapshot);
+        refreshPrintSetupPricing(printOperation);
+        recalculateTotals();
+    }
+
+    modal.classList.add('hidden');
+    modal.style.display = 'none';
+    setSetupModalBodyLock(false);
+    renderQuotePrintDebugPanel(revert ? 'setup-modal-close-revert' : 'setup-modal-close');
+}
+
+function applySetupModal(printOperation) {
+    if (!printOperation) {
+        return;
+    }
+
+    quotePrintDebugLog('setup-modal-save', {
+        itemIndex: printOperation.closest('.pd-quote-item')?.dataset.itemIndex || '',
+        printIndex: printOperation.dataset.printIndex || '',
+        printKey: printOperation.dataset.printKey || '',
+    });
+    refreshPrintSetupPricing(printOperation);
+    recalculateTotals();
+    toggleSetupModal(printOperation, false, { revert: false });
 }
 
 function renderPrintRows(item) {
@@ -964,13 +2415,20 @@ function renderPrintRows(item) {
         const printSetting = resolveTenantPrintSetting(printRow);
         const printType = currentPrintSettingOrLegacyName(printRow);
         const printSelectorOptions = buildPrintTypeOptions(printRow);
-        const printOptionOptions = printOptionsForType(printSetting?.standard_name || printType);
-        const showCliche = printRequiresCliche(printType, printRow.requires_setup, printRow.setup_types);
+        const selectedOption = resolveSelectedPrintOption(printSetting, printRow);
+        const printOptionOptions = buildPrintOptionChoices(printSetting, printRow);
+        const showCliche = printRequiresCliche(
+            printType,
+            !!(selectedOption?.requires_setup || printRow.requires_setup),
+            selectedOption?.setup_type ? [selectedOption.setup_type] : printRow.setup_types
+        );
         const selectorValue = printSelectorValue(printRow);
-        const showSetupBadge = !!(printSetting?.requires_setup || printRow.requires_setup);
+        const showSetupBadge = !!(selectedOption?.requires_setup || printSetting?.requires_setup || printRow.requires_setup);
         const currencyWarning = printCurrencyWarningMessage(printSetting);
+        const setupPricingVisible = shouldShowSetupPricingBox(printRow);
+        const setupTypeText = setupTypeTitle(printRow);
         return `
-            <div class="pd-print-operation" data-print-index="${printIndex}">
+            <div class="pd-print-operation" data-print-index="${printIndex}" data-print-key="${escapeHtml(printRow._stable_key || '')}">
                 <div class="pd-print-operation-grid pd-print-operation-grid-flat">
                     <div class="pd-print-operation-index">${escapeHtml(printRowCode(item._index, printIndex))}</div>
                     <div>
@@ -979,6 +2437,7 @@ function renderPrintRows(item) {
                         </select>
                         <input type="hidden" name="items[${item._index}][prints][${printIndex}][tenant_print_setting_id]" value="${escapeHtml(printRow.tenant_print_setting_id || '')}" data-print-setting-id>
                         <input type="hidden" name="items[${item._index}][prints][${printIndex}][standard_print_type_id]" value="${escapeHtml(printRow.standard_print_type_id || '')}" data-standard-print-type-id>
+                        <input type="hidden" name="items[${item._index}][prints][${printIndex}][tenant_print_option_id]" value="${escapeHtml(printRow.tenant_print_option_id || '')}" data-print-option-id>
                         <input type="hidden" name="items[${item._index}][prints][${printIndex}][print_type]" value="${escapeHtml(printType)}" data-print-type-input>
                         <input type="hidden" name="items[${item._index}][prints][${printIndex}][production_type]" value="${escapeHtml(printRow.production_type || '')}" data-production-type-input>
                         <input type="hidden" name="items[${item._index}][prints][${printIndex}][subcontractor_company_id]" value="${escapeHtml(printRow.subcontractor_company_id || '')}" data-subcontractor-company-id>
@@ -988,13 +2447,13 @@ function renderPrintRows(item) {
                         <select name="items[${item._index}][prints][${printIndex}][print_option]" class="pd-compact-select print-option-select">
                             ${optionsHtml(printOptionOptions, printRow.print_option, 'Baskı seçeneği seç')}
                         </select>
-                        ${showCliche ? `<div class="pd-print-inline-meta mt-1"><span>Klişe / kalıp:</span> ${escapeHtml(printRow.cliche_status || 'Seçilmedi')}</div>` : ''}
+                        ${showCliche ? `<div class="pd-print-inline-meta mt-1"><span>${escapeHtml(setupTypeText)}:</span> ${escapeHtml(printRow.cliche_status || 'Seçilmedi')}</div>` : ''}
                     </div>
                     <div>
                         <input type="number" name="items[${item._index}][prints][${printIndex}][print_quantity]" value="${escapeHtml(printRow.print_quantity)}" step="0.01" min="0" class="pd-compact-input print-quantity-input" data-manual-quantity="${printRow._manual_quantity ? '1' : '0'}" placeholder="0">
                     </div>
                     <div>
-                        <input type="number" name="items[${item._index}][prints][${printIndex}][print_unit_price]" value="${escapeHtml(printRow.print_unit_price)}" step="0.01" min="0" class="pd-compact-input" placeholder="${quoteWorkspace.canViewFinancialData ? '0.00' : 'Gizli'}" data-price-suggested="${printRow._price_suggested ? '1' : '0'}" ${quoteWorkspace.canViewFinancialData ? '' : 'readonly'}>
+                        <input type="number" name="items[${item._index}][prints][${printIndex}][print_unit_price]" value="${escapeHtml(printRow.print_unit_price)}" step="0.01" min="0" class="pd-compact-input" placeholder="${quoteWorkspace.canViewFinancialData ? '0.00' : 'Gizli'}" data-price-suggested="${printRow._price_suggested ? '1' : '0'}" ${quoteWorkspace.canViewFinancialData && !setupPricingVisible ? '' : 'readonly'}>
                         <div class="pd-print-inline-meta mt-1 ${currencyWarning ? '' : 'hidden'}" data-print-price-currency-warning>${escapeHtml(currencyWarning)}</div>
                     </div>
                     <div>
@@ -1002,15 +2461,114 @@ function renderPrintRows(item) {
                     </div>
                     <div>
                         <input type="text" name="items[${item._index}][prints][${printIndex}][note]" value="${escapeHtml(printRow.note || '')}" class="pd-compact-input" placeholder="Baskı adı">
-                        <div class="${showCliche ? '' : 'hidden'}" data-cliche-wrap>
-                            <select name="items[${item._index}][prints][${printIndex}][cliche_status]" class="pd-compact-select mt-1">
-                                ${optionsHtml(quoteWorkspace.clicheOptions, printRow.cliche_status, 'Klişe / kalıp seç')}
-                            </select>
+                        ${showCliche ? `
+                        <div data-cliche-wrap data-visible="1">
+                            <div class="pd-setup-inline-summary" data-setup-summary-card>
+                                <span class="pd-setup-inline-chip is-required">Ara Eleman Gerekli</span>
+                                <span class="pd-setup-inline-chip">
+                                    <strong data-setup-summary-title>${escapeHtml(setupTypeText)}</strong>:
+                                    <span data-setup-status-label>${escapeHtml(printRow.cliche_status || 'Seçilmedi')}</span>
+                                </span>
+                                <span class="pd-setup-inline-chip ${setupPricingVisible ? 'is-ready' : 'is-missing'}">
+                                    ${setupPricingVisible ? 'Ayarlandı' : 'Eksik'}
+                                </span>
+                                <span class="pd-setup-inline-chip ${setupPricingVisible ? 'is-ready' : 'hidden'}" data-setup-summary-metrics>
+                                    Birim etki:
+                                    <strong data-setup-unit-effect>${escapeHtml(formatMoney(Number(printRow.setup_unit_amount || 0), currentQuoteCurrency()))}</strong>
+                                </span>
+                                <span class="pd-setup-inline-chip ${setupSummaryAmountLabel(printRow) ? 'is-ready' : 'hidden'}" data-setup-summary-amount>
+                                    ${escapeHtml(setupSummaryAmountLabel(printRow))}
+                                </span>
+                                <button type="button" class="pd-btn pd-btn-light pd-btn-xs" data-action="open-setup-modal" data-setup-summary-action>${setupPricingVisible ? 'Düzenle' : 'Ara Eleman Ayarla'}</button>
+                                <span class="hidden" data-final-print-unit-price>${escapeHtml(formatMoney(Number(printRow.print_unit_price || 0), currentQuoteCurrency()))}</span>
+                            </div>
+                            <input type="hidden" name="items[${item._index}][prints][${printIndex}][setup_status]" value="${escapeHtml(printRow.setup_status || printRow.cliche_status || '')}">
+                            <input type="hidden" name="items[${item._index}][prints][${printIndex}][setup_pricing_enabled]" value="${printRow.setup_pricing_enabled ? '1' : '0'}">
+                            <input type="hidden" name="items[${item._index}][prints][${printIndex}][setup_type]" value="${escapeHtml(printRow.setup_type || '')}">
+                            <input type="hidden" name="items[${item._index}][prints][${printIndex}][setup_distribution_quantity]" value="${escapeHtml(printRow.setup_distribution_quantity || '')}">
+                            <input type="hidden" name="items[${item._index}][prints][${printIndex}][setup_unit_amount]" value="${escapeHtml(printRow.setup_unit_amount || '')}">
                         </div>
+                        ` : ''}
                     </div>
                     <div class="pd-print-row-actions">
                         <input type="hidden" name="items[${item._index}][prints][${printIndex}][print_vat_rate]" value="${escapeHtml(printRow.print_vat_rate ?? quoteWorkspace.defaultPrintVatRate ?? 20)}">
                         <button type="button" class="pd-btn pd-btn-danger-soft pd-btn-xs" data-action="remove-print">Sil</button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderPrintSetupModals(item) {
+    return item.prints.map((printRow, printIndex) => {
+        const printSetting = resolveTenantPrintSetting(printRow);
+        const selectedOption = resolveSelectedPrintOption(printSetting, printRow);
+        const showCliche = printRequiresCliche(
+            currentPrintSettingOrLegacyName(printRow),
+            !!(selectedOption?.requires_setup || printRow.requires_setup),
+            selectedOption?.setup_type ? [selectedOption.setup_type] : printRow.setup_types
+        );
+
+        if (!showCliche) {
+            return '';
+        }
+
+        return `
+            <div class="hidden" data-setup-modal data-setup-modal-for="${escapeHtml(printRow._stable_key || '')}" style="display:none; position:fixed; inset:0; z-index:1300; align-items:center; justify-content:center; padding:16px; background:rgba(15, 23, 42, 0.28);">
+                <div data-action="close-setup-modal" style="position:absolute; inset:0;"></div>
+                <div style="position:relative; z-index:1; width:min(700px, calc(100vw - 32px)); max-height:calc(100vh - 48px); overflow-y:auto; background:#fff; border:1px solid #e2e8f0; border-radius:18px; box-shadow:0 24px 60px rgba(15, 23, 42, 0.24);">
+                    <div class="border-b border-slate-200 px-6 py-5">
+                        <div class="text-base font-semibold text-slate-900">Ara Eleman Hesaplama</div>
+                        <div class="mt-1 text-sm text-slate-600">Ara eleman toplam tutarı baskı miktarına dağıtılır ve baskı birim fiyatına eklenir. Müşteriye ayrı ara eleman satırı gösterilmez.</div>
+                    </div>
+                    <div class="setup-modal-body px-6 py-5" style="display:grid; gap:18px;">
+                        <div class="setup-modal-field full" style="display:grid; gap:6px;">
+                            <label class="pd-label text-xs">Klişe / Kalıp durumu</label>
+                            <select name="items[${item._index}][prints][${printIndex}][cliche_status]" class="pd-compact-select mt-1">
+                                ${optionsHtml(quoteWorkspace.clicheOptions, printRow.cliche_status, 'Klişe / kalıp seç')}
+                            </select>
+                        </div>
+                        <div class="setup-modal-grid" style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:14px;">
+                            <label class="setup-modal-field" style="display:grid; gap:6px;">
+                                <span class="pd-label text-xs">Ara eleman toplam tutarı</span>
+                                <input type="number" name="items[${item._index}][prints][${printIndex}][setup_total_amount]" value="${escapeHtml(printRow.setup_total_amount || '')}" step="0.01" min="0" class="pd-compact-input" placeholder="${quoteWorkspace.canViewFinancialData ? '0.00' : 'Gizli'}" ${quoteWorkspace.canViewFinancialData ? '' : 'readonly'} style="width:100%;">
+                            </label>
+                            <label class="setup-modal-field" style="display:grid; gap:6px;">
+                                <span class="pd-label text-xs">Baz baskı birim fiyatı</span>
+                                <input type="number" name="items[${item._index}][prints][${printIndex}][base_print_unit_price]" value="${escapeHtml(printRow.base_print_unit_price || printRow.print_unit_price || '')}" step="0.01" min="0" class="pd-compact-input" placeholder="${quoteWorkspace.canViewFinancialData ? '0.00' : 'Gizli'}" ${quoteWorkspace.canViewFinancialData ? '' : 'readonly'} style="width:100%;">
+                            </label>
+                            <label class="setup-modal-field" style="display:grid; gap:6px;">
+                                <span class="pd-label text-xs">Baskı miktarı</span>
+                                <input type="number" value="${escapeHtml(printRow.print_quantity)}" step="0.01" min="0" class="pd-compact-input bg-slate-50" data-setup-modal-quantity readonly style="width:100%; color:#334155; background:#f8fafc;">
+                            </label>
+                            <label class="setup-modal-field" style="display:grid; gap:6px;">
+                                <span class="pd-label text-xs">Birim etki</span>
+                                <input type="text" value="${escapeHtml(formatMoney(Number(printRow.setup_unit_amount || 0), currentQuoteCurrency()) || '0,00 ' + currentQuoteCurrency())}" class="pd-compact-input bg-slate-50" data-setup-modal-unit-effect readonly style="width:100%; color:#334155; background:#f8fafc;">
+                            </label>
+                        </div>
+                        <div class="setup-modal-result-wrap" style="border:1px solid #e2e8f0; border-radius:14px; background:#f8fafc; padding:16px 18px;">
+                            <div class="text-sm font-semibold text-slate-900" style="margin-bottom:12px;">Hesap Özeti</div>
+                            <div class="setup-modal-result-grid" style="display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px;">
+                                <div class="setup-modal-result-card" style="border:1px solid #dbe4ee; border-radius:12px; background:#fff; padding:10px 12px;">
+                                    <div class="text-[11px] uppercase tracking-[0.02em] text-slate-500">Birim etki</div>
+                                    <div class="mt-1 text-sm font-semibold text-slate-900" data-setup-modal-unit-effect>${escapeHtml(formatMoney(Number(printRow.setup_unit_amount || 0), currentQuoteCurrency()) || '0,00 ' + currentQuoteCurrency())}</div>
+                                </div>
+                                <div class="setup-modal-result-card" style="border:1px solid #dbe4ee; border-radius:12px; background:#fff; padding:10px 12px;">
+                                    <div class="text-[11px] uppercase tracking-[0.02em] text-slate-500">Nihai baskı birim fiyatı</div>
+                                    <div class="mt-1 text-sm font-semibold text-slate-900" data-setup-modal-final-unit>${escapeHtml(formatMoney(Number(printRow.print_unit_price || 0), currentQuoteCurrency()) || '0,00 ' + currentQuoteCurrency())}</div>
+                                </div>
+                                <div class="setup-modal-result-card" style="border:1px solid #dbe4ee; border-radius:12px; background:#fff; padding:10px 12px;">
+                                    <div class="text-[11px] uppercase tracking-[0.02em] text-slate-500">Nihai baskı toplamı</div>
+                                    <div class="mt-1 text-sm font-semibold text-slate-900" data-setup-modal-final-total>${escapeHtml(formatMoney(Number(printRow.print_total || 0), currentQuoteCurrency()) || '0,00 ' + currentQuoteCurrency())}</div>
+                                </div>
+                            </div>
+                            <div class="hidden" data-setup-modal-quantity>${escapeHtml(printRow.print_quantity)}</div>
+                        </div>
+                    </div>
+                    <div class="setup-modal-actions" style="display:flex; align-items:center; justify-content:flex-end; gap:10px; border-top:1px solid #e2e8f0; padding:14px 24px 16px; background:#fff;">
+                        <button type="button" class="pd-btn pd-btn-light" data-action="cancel-setup-modal">Vazgeç / Kapat</button>
+                        <button type="button" class="pd-btn pd-btn-primary" data-action="apply-setup-modal">Uygula</button>
                     </div>
                 </div>
             </div>
@@ -1076,7 +2634,7 @@ function renderItem(item) {
                     <label class="pd-checkbox">
                         <input type="hidden" name="items[${item._index}][has_print]" value="0">
                         <input type="checkbox" class="quote-has-print" name="items[${item._index}][has_print]" value="1" ${item.has_print ? 'checked' : ''}>
-                        <span>Var</span>
+                        <span>Baskı Var</span>
                     </label>
                     <button type="button" class="pd-btn pd-btn-light pd-btn-xs pd-print-add-button" data-action="add-print">Baskı Ekle</button>
                 </div>
@@ -1099,6 +2657,7 @@ function renderItem(item) {
                 <div class="space-y-2" data-print-list>
                     ${renderPrintRows(item)}
                 </div>
+                ${renderPrintSetupModals(item)}
             </div>
 
             <input type="hidden" name="items[${item._index}][product_code]" value="${escapeHtml(item.product_code || '')}">
@@ -1131,13 +2690,22 @@ function mountItems(items) {
     items.forEach((item, index) => {
         try {
             const normalized = normalizeItem(item, index);
+            const debugItem = ensureQuotePrintDebugItem(index, normalized._stable_key || '');
+            debugItem.lastMountCount = Array.isArray(normalized.prints) ? normalized.prints.length : 0;
             container.insertAdjacentHTML('beforeend', renderItem(normalized));
+            quotePrintDebugLog('mount-item', {
+                itemIndex: index,
+                stableKey: normalized._stable_key,
+                printsLength: Array.isArray(normalized.prints) ? normalized.prints.length : 0,
+            });
         } catch (error) {
             const fallbackItem = normalizeItem({
                 ...defaultItem(),
                 ...safeObject(item),
                 _row_error: 'Bu satir tam yuklenemedi. Lütfen ürünü katalogdan yeniden seçin.',
             }, index);
+            const debugItem = ensureQuotePrintDebugItem(index, fallbackItem._stable_key || '');
+            debugItem.lastError = error?.message || 'mount-error';
             container.insertAdjacentHTML('beforeend', renderItem(fallbackItem));
             setClientFormError('Teklif satırlarından biri güvenli şekilde yeniden yüklendi. Lütfen hatalı satırı kontrol edin.');
         }
@@ -1147,13 +2715,22 @@ function mountItems(items) {
     if (activeItemIndex >= productItemCount) {
         activeItemIndex = Math.max(0, productItemCount - 1);
     }
+    document.querySelectorAll('.pd-print-operation').forEach((printOperation) => {
+        syncPrintOptionState(printOperation, null, true);
+        refreshPrintSetupPricing(printOperation);
+    });
+    collectItems().forEach((item, itemIndex) => {
+        const debugItem = ensureQuotePrintDebugItem(itemIndex, item._stable_key || '');
+        debugItem.lastDomCount = countDomPrintRows(itemIndex);
+    });
     recalculateTotals();
     refreshAllPrintCurrencyWarnings();
     refreshCustomerSummary();
+    renderQuotePrintDebugPanel('mount');
 }
 
 function collectItems() {
-    return Array.from(document.querySelectorAll('.pd-quote-item')).map((element, index) => {
+    const items = Array.from(document.querySelectorAll('.pd-quote-item')).map((element, index) => {
         const productSnapshot = parseJsonValue(element.querySelector('input[name$="[product_snapshot]"]')?.value);
         const priceSnapshot = parseJsonValue(element.querySelector('input[name$="[price_snapshot]"]')?.value);
         const stockSnapshot = parseJsonValue(element.querySelector('input[name$="[stock_snapshot]"]')?.value);
@@ -1188,24 +2765,44 @@ function collectItems() {
             selected_catalog_identity: selectedCatalogIdentity,
             _row_error: element.dataset.rowErrorMessage || '',
             print_vat_rate: priceSnapshot?.print_vat_rate || quoteWorkspace.defaultPrintVatRate || 20,
-            prints: Array.from(element.querySelectorAll('[data-print-list] .pd-print-operation')).map((row, printIndex) => normalizePrint({
-                tenant_print_setting_id: row.querySelector('[data-print-setting-id]')?.value || '',
-                standard_print_type_id: row.querySelector('[data-standard-print-type-id]')?.value || '',
-                print_type: row.querySelector('[data-print-type-input]')?.value || '',
-                print_option: row.querySelector('select[name*="[print_option]"]')?.value || '',
-                production_type: row.querySelector('[data-production-type-input]')?.value || '',
-                subcontractor_company_id: row.querySelector('[data-subcontractor-company-id]')?.value || '',
-                cliche_status: row.querySelector('select[name*="[cliche_status]"]')?.value || '',
-                print_quantity: row.querySelector('input[name*="[print_quantity]"]')?.value || '',
-                print_unit_price: row.querySelector('input[name*="[print_unit_price]"]')?.value || '',
-                print_total: row.querySelector('input[name*="[print_total]"]')?.value || '',
-                note: row.querySelector('input[name*="[note]"]')?.value || '',
-                print_vat_rate: row.querySelector('input[name*="[print_vat_rate]"]')?.value || quoteWorkspace.defaultPrintVatRate || 20,
-                _manual_quantity: row.querySelector('input[name*="[print_quantity]"]')?.dataset.manualQuantity === '1',
-                _price_suggested: row.querySelector('input[name*="[print_unit_price]"]')?.dataset.priceSuggested === '1',
-            }, printIndex)),
+            prints: Array.from(element.querySelectorAll('[data-print-list] .pd-print-operation')).map((row, printIndex) => {
+                const setupModal = resolveSetupModalElement(row);
+
+                return normalizePrint({
+                    stable_key: row.dataset.printKey || '',
+                    tenant_print_setting_id: row.querySelector('[data-print-setting-id]')?.value || '',
+                    standard_print_type_id: row.querySelector('[data-standard-print-type-id]')?.value || '',
+                    tenant_print_option_id: row.querySelector('[data-print-option-id]')?.value || '',
+                    print_type: row.querySelector('[data-print-type-input]')?.value || '',
+                    print_option: row.querySelector('select[name*="[print_option]"]')?.value || '',
+                    production_type: row.querySelector('[data-production-type-input]')?.value || '',
+                    subcontractor_company_id: row.querySelector('[data-subcontractor-company-id]')?.value || '',
+                    cliche_status: setupModal?.querySelector('select[name*="[cliche_status]"]')?.value || '',
+                    setup_pricing_enabled: row.querySelector('input[name*="[setup_pricing_enabled]"]')?.value || '0',
+                    setup_type: row.querySelector('input[name*="[setup_type]"]')?.value || '',
+                    setup_status: row.querySelector('input[name*="[setup_status]"]')?.value || '',
+                    setup_total_amount: setupModal?.querySelector('input[name*="[setup_total_amount]"]')?.value || '',
+                    setup_distribution_quantity: row.querySelector('input[name*="[setup_distribution_quantity]"]')?.value || '',
+                    setup_unit_amount: row.querySelector('input[name*="[setup_unit_amount]"]')?.value || '',
+                    base_print_unit_price: setupModal?.querySelector('input[name*="[base_print_unit_price]"]')?.value || '',
+                    print_quantity: row.querySelector('input[name*="[print_quantity]"]')?.value || '',
+                    print_unit_price: row.querySelector('input[name*="[print_unit_price]"]')?.value || '',
+                    print_total: row.querySelector('input[name*="[print_total]"]')?.value || '',
+                    note: row.querySelector('input[name*="[note]"]')?.value || '',
+                    print_vat_rate: row.querySelector('input[name*="[print_vat_rate]"]')?.value || quoteWorkspace.defaultPrintVatRate || 20,
+                    _manual_quantity: row.querySelector('input[name*="[print_quantity]"]')?.dataset.manualQuantity === '1',
+                    _price_suggested: row.querySelector('input[name*="[print_unit_price]"]')?.dataset.priceSuggested === '1',
+                }, printIndex);
+            }),
         }, index);
     });
+
+    items.forEach((item, itemIndex) => {
+        const debugItem = ensureQuotePrintDebugItem(itemIndex, item._stable_key || '');
+        debugItem.lastCollectCount = Array.isArray(item.prints) ? item.prints.length : 0;
+    });
+
+    return items;
 }
 
 function addProductItem() {
@@ -1228,13 +2825,48 @@ function addPrintRow(itemIndex, printRow = null) {
     if (!target) {
         return;
     }
+    const debugItem = ensureQuotePrintDebugItem(itemIndex, target._stable_key || '');
+    debugItem.lastClickAt = debugNow();
+    debugItem.lastClickReason = 'add-print';
+    debugItem.lastAddBefore = Array.isArray(target.prints) ? target.prints.length : 0;
+    target.prints = Array.isArray(target.prints) ? target.prints : [];
     target.has_print = true;
-    target.prints.push(normalizePrint({
-        print_quantity: target.quantity || '',
-        ...printRow,
-    }, target.prints.length));
+    target.prints.push(createDefaultPrintForItem(target, target.prints.length, printRow || {}));
+    debugItem.lastAddAfter = target.prints.length;
+    quotePrintDebugLog('add-print-row', {
+        itemIndex,
+        before: debugItem.lastAddBefore,
+        after: debugItem.lastAddAfter,
+        generatedLabel: printRowCode(itemIndex, target.prints.length - 1),
+        generatedKey: target.prints[target.prints.length - 1]?._stable_key || '',
+    });
     activeItemIndex = itemIndex;
     mountItems(items);
+}
+
+function handleHasPrintToggle(itemIndex, enabled) {
+    const items = collectItems();
+    const target = items[itemIndex];
+    if (!target) {
+        return false;
+    }
+
+    if (enabled) {
+        ensureItemHasFirstPrintRow(target);
+        activeItemIndex = itemIndex;
+        mountItems(items);
+        return true;
+    }
+
+    if (itemHasMeaningfulPrintData(target) && !window.confirm('Bu üründeki baskı satırları kaldırılacak. Devam edilsin mi?')) {
+        return false;
+    }
+
+    target.has_print = false;
+    target.prints = [];
+    activeItemIndex = itemIndex;
+    mountItems(items);
+    return true;
 }
 
 function removePrintRow(itemIndex, printIndex) {
@@ -1243,11 +2875,20 @@ function removePrintRow(itemIndex, printIndex) {
     if (!target) {
         return;
     }
+    const debugItem = ensureQuotePrintDebugItem(itemIndex, target._stable_key || '');
+    debugItem.lastClickAt = debugNow();
+    debugItem.lastClickReason = 'remove-print';
     target.prints = target.prints.filter((_, index) => index !== printIndex);
     if (!target.prints.length) {
-        target.prints = [normalizePrint()];
+        target.prints = [];
         target.has_print = false;
     }
+    debugItem.lastAddAfter = target.prints.length;
+    quotePrintDebugLog('remove-print-row', {
+        itemIndex,
+        removedIndex: printIndex,
+        after: target.prints.length,
+    });
     activeItemIndex = itemIndex;
     mountItems(items);
 }
@@ -1682,7 +3323,399 @@ function recalculateTotals() {
 }
 
 function refreshCustomerSummary() {
-    return;
+    const selectedCard = document.getElementById('quote-customer-selected-card');
+    const emptyState = document.getElementById('quote-customer-empty-state');
+    const searchInput = document.getElementById('quote-customer-search');
+    const searchBox = document.querySelector('.pd-customer-search-box');
+    const selectedOption = getCustomerSelect()?.selectedOptions?.[0];
+    const customerId = getCustomerSelect()?.value ? String(getCustomerSelect().value) : '';
+
+    if (!selectedCard || !searchInput || !searchBox) {
+        return;
+    }
+
+    const customer = customerId ? customerLookup.get(customerId) : null;
+
+    if (!customer && selectedOption && selectedOption.value) {
+        const fallbackCustomer = {
+            id: selectedOption.value,
+            display_name: selectedOption.textContent.trim(),
+            legal_name: selectedOption.textContent.trim(),
+            email: '',
+            phone: '',
+            tax_number: '',
+            contact_name: '',
+            current_account_id: null,
+            label: selectedOption.textContent.trim(),
+            summary: selectedOption.textContent.trim(),
+        };
+        customerLookup.set(String(fallbackCustomer.id), fallbackCustomer);
+    }
+
+    const resolvedCustomer = customerId ? customerLookup.get(customerId) : null;
+
+    if (!resolvedCustomer) {
+        selectedCard.classList.add('hidden');
+        selectedCard.innerHTML = '';
+        searchBox.classList.remove('is-selected');
+        emptyState?.classList.add('hidden');
+        if (!searchInput.value.trim()) {
+            setCustomerSearchStatus('Müşteri aramak için en az 3 karakter yazın.');
+        }
+        refreshCustomerSearchDropdown();
+        return;
+    }
+
+    searchInput.value = resolvedCustomer.display_name || resolvedCustomer.legal_name || '';
+    const customerName = resolvedCustomer.legal_name || resolvedCustomer.display_name || resolvedCustomer.label || '';
+    const contactName = resolvedCustomer.contact_name || '';
+    const phone = resolvedCustomer.phone || '';
+    const email = resolvedCustomer.email || '';
+    const taxNumber = resolvedCustomer.tax_number || '';
+    const currentAccountLabel = resolvedCustomer.current_account_id ? 'Hazır' : 'Bilgi yok';
+    const portalLabel = resolvedCustomer.portal_status_label || 'Bilgi yok';
+    const deliveryLabel = resolvedCustomer.default_delivery_type_name || 'Bilgi yok';
+    selectedCard.innerHTML = `
+        <div class="pd-customer-selected-title">
+            <span>Seçili Müşteri</span>
+            <div class="flex items-center gap-2">
+                <span class="pd-badge pd-badge-green">Seçili</span>
+                <button type="button" class="pd-btn pd-btn-light pd-btn-xs" data-action="reset-selected-customer">Değiştir</button>
+            </div>
+        </div>
+        <div class="pd-customer-selected-grid">
+            <div class="pd-customer-selected-primary">
+                <div class="pd-customer-selected-name">${escapeHtml(customerName)}</div>
+                <div class="pd-customer-selected-list">
+                    ${contactName ? `<div><strong>Yetkili:</strong> ${escapeHtml(contactName)}</div>` : ''}
+                    ${phone ? `<div><strong>WhatsApp:</strong> ${escapeHtml(phone)}</div>` : ''}
+                    ${email ? `<div><strong>E-posta:</strong> ${escapeHtml(email)}</div>` : ''}
+                    ${taxNumber ? `<div><strong>VKN/TCKN:</strong> ${escapeHtml(taxNumber)}</div>` : ''}
+                    ${!contactName && !phone && !email && !taxNumber ? `<div>${escapeHtml(resolvedCustomer.summary || customerName)}</div>` : ''}
+                </div>
+            </div>
+            <div class="pd-customer-selected-secondary">
+                <div class="pd-customer-mini-row"><span>Cari durumu</span><strong>${escapeHtml(currentAccountLabel)}</strong></div>
+                <div class="pd-customer-mini-row"><span>Varsayılan teslimat</span><strong>${escapeHtml(deliveryLabel)}</strong></div>
+                <div class="pd-customer-mini-row"><span>Portal durumu</span><strong>${escapeHtml(portalLabel)}</strong></div>
+            </div>
+        </div>
+    `;
+    selectedCard.classList.remove('hidden');
+    searchBox.classList.add('is-selected');
+    emptyState?.classList.add('hidden');
+    clearCustomerSearchResults();
+    setCustomerSearchStatus('');
+    refreshCustomerSearchDropdown();
+}
+
+function resetSelectedCustomer() {
+    const select = getCustomerSelect();
+    const searchInput = document.getElementById('quote-customer-search');
+
+    if (!select || !searchInput) {
+        return;
+    }
+
+    select.value = '';
+    searchInput.value = '';
+    refreshCustomerSummary();
+    searchInput.focus();
+}
+
+function getCustomerSelect() {
+    return document.getElementById('customer-select');
+}
+
+function setCustomerSearchStatus(message = '', tone = '') {
+    const status = document.getElementById('quote-customer-search-status');
+    if (!status) {
+        return;
+    }
+
+    status.textContent = message;
+    status.classList.remove('is-warning', 'is-danger');
+
+    if (tone === 'warning') {
+        status.classList.add('is-warning');
+    } else if (tone === 'danger') {
+        status.classList.add('is-danger');
+    }
+}
+
+function clearCustomerSearchResults() {
+    const results = document.getElementById('quote-customer-search-results');
+    if (!results) {
+        return;
+    }
+
+    results.innerHTML = '';
+    results.classList.add('hidden');
+    refreshCustomerSearchDropdown();
+}
+
+function setCustomerNotFoundState(visible) {
+    document.getElementById('quote-customer-empty-state')?.classList.toggle('hidden', !visible);
+    refreshCustomerSearchDropdown();
+}
+
+function refreshCustomerSearchDropdown() {
+    const dropdown = document.getElementById('quote-customer-search-dropdown');
+    const results = document.getElementById('quote-customer-search-results');
+    const emptyState = document.getElementById('quote-customer-empty-state');
+
+    if (!dropdown) {
+        return;
+    }
+
+    const hasVisibleResults = !!results && !results.classList.contains('hidden');
+    const hasVisibleEmptyState = !!emptyState && !emptyState.classList.contains('hidden');
+
+    dropdown.classList.toggle('hidden', !(hasVisibleResults || hasVisibleEmptyState));
+}
+
+function closeCustomerSearchDropdown() {
+    clearCustomerSearchResults();
+    setCustomerNotFoundState(false);
+}
+
+function registerCustomerOption(customer) {
+    if (!customer || !customer.id) {
+        return null;
+    }
+
+    customerLookup.set(String(customer.id), customer);
+
+    const select = getCustomerSelect();
+    if (!select) {
+        return null;
+    }
+
+    let option = Array.from(select.options).find((item) => String(item.value) === String(customer.id));
+
+    if (!option) {
+        option = new Option(customer.legal_name || customer.display_name || customer.label || `Müşteri #${customer.id}`, String(customer.id));
+        select.add(option);
+    } else {
+        option.text = customer.legal_name || customer.display_name || customer.label || option.text;
+    }
+
+    return option;
+}
+
+function selectCustomer(customer) {
+    const select = getCustomerSelect();
+    if (!select || !customer?.id) {
+        return;
+    }
+
+    registerCustomerOption(customer);
+    select.value = String(customer.id);
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+function renderCustomerSearchResults(customers = []) {
+    const results = document.getElementById('quote-customer-search-results');
+    if (!results) {
+        return;
+    }
+
+    if (!customers.length) {
+        clearCustomerSearchResults();
+        return;
+    }
+
+    results.innerHTML = customers.map((customer) => `
+        <button type="button" class="pd-customer-search-result" data-customer-result="${escapeHtml(customer.id)}">
+            <div class="pd-customer-search-result-title">${escapeHtml(customer.legal_name || customer.display_name || customer.label || '')}</div>
+            <div class="pd-customer-search-result-meta">${escapeHtml(customer.summary || '')}</div>
+        </button>
+    `).join('');
+    results.classList.remove('hidden');
+    refreshCustomerSearchDropdown();
+}
+
+async function performCustomerSearch(term) {
+    const query = String(term || '').trim();
+
+    if (query.length < 3) {
+        clearCustomerSearchResults();
+        setCustomerNotFoundState(false);
+        setCustomerSearchStatus('Müşteri aramak için en az 3 karakter yazın.');
+        return;
+    }
+
+    if (!quoteWorkspace.customerSearchUrl) {
+        setCustomerSearchStatus('Müşteri arama servisi şu anda kullanılamıyor.', 'danger');
+        return;
+    }
+
+    try {
+        setCustomerSearchStatus('Müşteri aranıyor...');
+        const response = await fetch(`${quoteWorkspace.customerSearchUrl}?q=${encodeURIComponent(query)}`, {
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json',
+            },
+        });
+
+        const payload = await response.json();
+        const customers = Array.isArray(payload.data) ? payload.data : [];
+        customers.forEach((customer) => customerLookup.set(String(customer.id), customer));
+
+        if (!response.ok) {
+            throw new Error(payload?.message || 'customer-search-failed');
+        }
+
+        renderCustomerSearchResults(customers);
+
+        if (customers.length) {
+            setCustomerNotFoundState(false);
+            setCustomerSearchStatus(`${customers.length} müşteri bulundu.`);
+            return;
+        }
+
+        clearCustomerSearchResults();
+        setCustomerNotFoundState(true);
+        setCustomerSearchStatus(payload?.meta?.message || 'Müşteri bulunamadı. Hızlı müşteri ekleyebilirsiniz.', 'warning');
+    } catch (error) {
+        clearCustomerSearchResults();
+        setCustomerNotFoundState(false);
+        setCustomerSearchStatus('Müşteri araması şu anda tamamlanamadı. Tekrar deneyin.', 'danger');
+    }
+}
+
+function openQuickCustomerModal() {
+    const modal = document.getElementById('quick-customer-modal');
+    if (!modal) {
+        return;
+    }
+
+    quickCustomerModalSnapshot = {
+        legal_name: document.getElementById('quick-customer-legal-name')?.value || '',
+        tax_number: document.getElementById('quick-customer-tax-number')?.value || '',
+        identity_type: document.getElementById('quick-customer-identity-type')?.value || 'company',
+        email: document.getElementById('quick-customer-email')?.value || '',
+        phone: document.getElementById('quick-customer-phone')?.value || '',
+        contact_name: document.getElementById('quick-customer-contact-name')?.value || '',
+        city: document.getElementById('quick-customer-city')?.value || '',
+        address_note: document.getElementById('quick-customer-address-note')?.value || '',
+    };
+
+    const searchValue = document.getElementById('quote-customer-search')?.value?.trim() || '';
+    if (!document.getElementById('quick-customer-legal-name')?.value && searchValue.length >= 3) {
+        document.getElementById('quick-customer-legal-name').value = searchValue;
+    }
+
+    renderQuickCustomerErrors({});
+    modal.classList.remove('hidden');
+    modal.classList.add('is-open');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeQuickCustomerModal({ restore = false } = {}) {
+    const modal = document.getElementById('quick-customer-modal');
+    if (!modal) {
+        return;
+    }
+
+    if (restore && quickCustomerModalSnapshot) {
+        document.getElementById('quick-customer-legal-name').value = quickCustomerModalSnapshot.legal_name || '';
+        document.getElementById('quick-customer-tax-number').value = quickCustomerModalSnapshot.tax_number || '';
+        document.getElementById('quick-customer-identity-type').value = quickCustomerModalSnapshot.identity_type || 'company';
+        document.getElementById('quick-customer-email').value = quickCustomerModalSnapshot.email || '';
+        document.getElementById('quick-customer-phone').value = quickCustomerModalSnapshot.phone || '';
+        document.getElementById('quick-customer-contact-name').value = quickCustomerModalSnapshot.contact_name || '';
+        document.getElementById('quick-customer-city').value = quickCustomerModalSnapshot.city || '';
+        document.getElementById('quick-customer-address-note').value = quickCustomerModalSnapshot.address_note || '';
+    }
+
+    modal.classList.add('hidden');
+    modal.classList.remove('is-open');
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+}
+
+function renderQuickCustomerErrors(errors = {}) {
+    const box = document.getElementById('quick-customer-form-errors');
+    if (!box) {
+        return;
+    }
+
+    const messages = Object.values(errors).flat().filter(Boolean);
+    if (!messages.length) {
+        box.classList.add('hidden');
+        box.innerHTML = '';
+        return;
+    }
+
+    box.innerHTML = messages.map((message) => `<div>${escapeHtml(message)}</div>`).join('');
+    box.classList.remove('hidden');
+}
+
+async function submitQuickCustomerForm() {
+    if (!quoteWorkspace.quickCustomerStoreUrl) {
+        renderQuickCustomerErrors({
+            general: ['Hızlı müşteri ekleme servisi şu anda kullanılamıyor.'],
+        });
+        return;
+    }
+
+    const submitButton = document.getElementById('quick-customer-save-button');
+    const payload = {
+        legal_name: document.getElementById('quick-customer-legal-name')?.value?.trim() || '',
+        tax_number: document.getElementById('quick-customer-tax-number')?.value?.trim() || '',
+        identity_type: document.getElementById('quick-customer-identity-type')?.value || 'company',
+        email: document.getElementById('quick-customer-email')?.value?.trim() || '',
+        phone: document.getElementById('quick-customer-phone')?.value?.trim() || '',
+        contact_name: document.getElementById('quick-customer-contact-name')?.value?.trim() || '',
+        city: document.getElementById('quick-customer-city')?.value?.trim() || '',
+        address_note: document.getElementById('quick-customer-address-note')?.value?.trim() || '',
+    };
+
+    try {
+        if (submitButton) {
+            submitButton.disabled = true;
+        }
+
+        renderQuickCustomerErrors({});
+
+        const response = await fetch(quoteWorkspace.quickCustomerStoreUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+            },
+            body: JSON.stringify(payload),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            renderQuickCustomerErrors(result.errors || { general: [result.message || 'Müşteri kaydedilemedi.'] });
+            return;
+        }
+
+        if (result.data) {
+            registerCustomerOption(result.data);
+            selectCustomer(result.data);
+            document.getElementById('quote-customer-search').value = result.data.display_name || result.data.legal_name || '';
+        }
+
+        setCustomerSearchStatus(result.message || 'Müşteri kaydedildi ve teklif formuna seçildi.');
+        closeQuickCustomerModal();
+    } catch (error) {
+        renderQuickCustomerErrors({
+            general: ['Müşteri kaydedilemedi. Alanları kontrol edip tekrar deneyin.'],
+        });
+    } finally {
+        if (submitButton) {
+            submitButton.disabled = false;
+        }
+    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -1691,6 +3724,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('add-product-item')?.addEventListener('click', addProductItem);
     document.getElementById('customer-select')?.addEventListener('change', refreshCustomerSummary);
+    document.getElementById('quote-customer-search')?.addEventListener('input', (event) => {
+        clearTimeout(customerSearchTimer);
+        customerSearchTimer = setTimeout(() => performCustomerSearch(event.target.value), 250);
+    });
+    document.getElementById('quote-customer-search-results')?.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-customer-result]');
+        if (!button) {
+            return;
+        }
+
+        const customer = customerLookup.get(String(button.dataset.customerResult));
+        if (customer) {
+            selectCustomer(customer);
+        }
+    });
+    document.getElementById('quick-customer-open-button')?.addEventListener('click', openQuickCustomerModal);
+    document.getElementById('quick-customer-empty-button')?.addEventListener('click', openQuickCustomerModal);
+    document.getElementById('quick-customer-cancel-button')?.addEventListener('click', () => closeQuickCustomerModal({ restore: true }));
+    document.getElementById('quick-customer-save-button')?.addEventListener('click', submitQuickCustomerForm);
+    document.getElementById('quick-customer-modal')?.addEventListener('click', (event) => {
+        if (event.target.id === 'quick-customer-modal') {
+            closeQuickCustomerModal({ restore: true });
+        }
+    });
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && document.getElementById('quick-customer-modal')?.classList.contains('is-open')) {
+            closeQuickCustomerModal({ restore: true });
+            return;
+        }
+
+        if (event.key === 'Escape') {
+            closeCustomerSearchDropdown();
+        }
+    });
     document.getElementById('invoice-status-select')?.addEventListener('change', () => {
         mountItems(collectItems());
     });
@@ -1748,16 +3815,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (
             event.target.name?.includes('[print_quantity]') ||
+            event.target.name?.includes('[setup_total_amount]') ||
+            event.target.name?.includes('[base_print_unit_price]') ||
             event.target.name?.includes('[print_unit_price]') ||
             event.target.name?.includes('[quantity]') ||
             event.target.name?.includes('[list_price]') ||
             event.target.name?.includes('[discount_rate]') ||
             event.target.name?.includes('[vat_rate]')
         ) {
+            const printOperation = event.target.closest('.pd-print-operation');
+            if (printOperation) {
+                refreshPrintSetupPricing(printOperation);
+            }
             recalculateTotals();
         }
 
-        if (event.target.name?.includes('[print_unit_price]')) {
+        if (event.target.name?.includes('[print_unit_price]') || event.target.name?.includes('[base_print_unit_price]')) {
             event.target.dataset.priceSuggested = '0';
         }
 
@@ -1774,25 +3847,23 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('change', (event) => {
         if (event.target.classList.contains('quote-has-print')) {
             const itemElement = event.target.closest('.pd-quote-item');
-            const wrapper = itemElement?.querySelector('[data-print-wrapper]');
-            wrapper?.classList.toggle('hidden', !event.target.checked);
-            recalculateTotals();
+            const itemIndex = Number(itemElement?.dataset.itemIndex ?? -1);
+            const changed = handleHasPrintToggle(itemIndex, !!event.target.checked);
+            if (!changed) {
+                event.target.checked = true;
+            }
             return;
         }
 
         if (event.target.classList.contains('print-type-select')) {
             const printOperation = event.target.closest('.pd-print-operation');
-            const clicheWrap = printOperation?.querySelector('[data-cliche-wrap]');
-            const optionSelect = printOperation?.querySelector('.print-option-select');
             const settingIdInput = printOperation?.querySelector('[data-print-setting-id]');
             const standardTypeInput = printOperation?.querySelector('[data-standard-print-type-id]');
             const printTypeInput = printOperation?.querySelector('[data-print-type-input]');
             const subcontractorCompanyInput = printOperation?.querySelector('[data-subcontractor-company-id]');
             const selectedValue = event.target.value || '';
             let effectivePrintType = '';
-            let effectiveStandardName = '';
-            let requiresSetup = false;
-            let setupTypes = [];
+            let currentSetting = null;
 
             if (selectedValue.startsWith('setting:')) {
                 const settingId = selectedValue.replace('setting:', '');
@@ -1808,27 +3879,36 @@ document.addEventListener('DOMContentLoaded', () => {
                     refreshPrintCurrencyWarning(printOperation, setting);
 
                     effectivePrintType = setting.display_name || '';
-                    effectiveStandardName = setting.standard_name || effectivePrintType;
-                    requiresSetup = !!setting.requires_setup;
-                    setupTypes = Array.isArray(setting.setup_types) ? setting.setup_types : [];
+                    currentSetting = setting;
                 }
             } else {
                 const legacyType = selectedValue.replace('legacy:', '');
                 if (settingIdInput) settingIdInput.value = '';
                 if (standardTypeInput) standardTypeInput.value = '';
+                const optionIdInput = printOperation?.querySelector('[data-print-option-id]');
+                if (optionIdInput) optionIdInput.value = '';
                 if (printTypeInput) printTypeInput.value = legacyType;
                 effectivePrintType = legacyType;
-                effectiveStandardName = legacyType;
                 refreshPrintCurrencyWarning(printOperation, null);
             }
 
-            const nextOptions = printOptionsForType(effectiveStandardName || effectivePrintType);
-            if (optionSelect) {
-                const currentValue = optionSelect.value;
-                optionSelect.innerHTML = optionsHtml(nextOptions, nextOptions.includes(currentValue) ? currentValue : '', 'Baskı seçeneği seç');
-            }
-            clicheWrap?.classList.toggle('hidden', !printRequiresCliche(effectivePrintType, requiresSetup, setupTypes));
+            syncPrintOptionState(printOperation, currentSetting, true);
+            mountItems(collectItems());
+            return;
+        }
+
+        if (event.target.classList.contains('print-option-select')) {
+            const printOperation = event.target.closest('.pd-print-operation');
+            syncPrintOptionState(printOperation);
+            mountItems(collectItems());
+            return;
+        }
+
+        if (event.target.name?.includes('[cliche_status]')) {
+            const printOperation = event.target.closest('.pd-print-operation');
+            refreshPrintSetupPricing(printOperation);
             recalculateTotals();
+            return;
         }
 
         if (event.target.name === 'currency' || event.target.name === 'invoice_status') {
@@ -1838,6 +3918,28 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.addEventListener('click', (event) => {
+        if (event.target.matches('[data-action="reset-selected-customer"]')) {
+            resetSelectedCustomer();
+            return;
+        }
+
+        if (!event.target.closest('[data-customer-picker]')) {
+            closeCustomerSearchDropdown();
+        }
+
+        const setupModal = event.target.closest('[data-setup-modal]');
+        if (setupModal) {
+            const modalPrintRow = resolvePrintOperationForModal(setupModal);
+            if (event.target.matches('[data-action="cancel-setup-modal"]') || event.target.matches('[data-action="close-setup-modal"]')) {
+                toggleSetupModal(modalPrintRow, false, { revert: true });
+                return;
+            }
+            if (event.target.matches('[data-action="apply-setup-modal"]')) {
+                applySetupModal(modalPrintRow);
+                return;
+            }
+        }
+
         const resultButton = event.target.closest('.pd-catalog-result[data-entry-key]');
         if (resultButton) {
             const itemElement = resultButton.closest('.pd-quote-item');
@@ -1877,6 +3979,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 const printIndex = Number(printRow.dataset.printIndex);
                 if (event.target.matches('[data-action="remove-print"]')) {
                     removePrintRow(itemIndex, printIndex);
+                    return;
+                }
+                if (event.target.matches('[data-action="open-setup-modal"]')) {
+                    toggleSetupModal(printRow, true);
                     return;
                 }
             }
@@ -1951,5 +4057,80 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('scroll', () => {
         document.querySelectorAll('.pd-quote-item.is-search-open').forEach((itemElement) => positionCatalogResults(itemElement));
     }, true);
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') {
+            return;
+        }
+
+        const visibleModal = document.querySelector('[data-setup-modal]:not(.hidden)');
+        if (!visibleModal) {
+            return;
+        }
+
+        const printOperation = resolvePrintOperationForModal(visibleModal);
+        toggleSetupModal(printOperation, false, { revert: true });
+    });
+
+    if (quotePrintDebugEnabled) {
+        window.__quotePrintDebug = {
+            dump() {
+                const snapshot = collectQuotePrintDebugSnapshot('dump');
+                console.table(snapshot.map((item) => ({
+                    itemIndex: item.itemIndex,
+                    stableKey: item.stableKey,
+                    hasPrint: item.hasPrint,
+                    printsLength: item.printsLength,
+                    domRowCount: item.domRowCount,
+                    lastAddBefore: item.lastAddBefore,
+                    lastAddAfter: item.lastAddAfter,
+                    lastMountCount: item.lastMountCount,
+                    lastCollectCount: item.lastCollectCount,
+                    lastDomCount: item.lastDomCount,
+                })));
+                snapshot.forEach((item) => console.table(item.rows));
+                return snapshot;
+            },
+            dumpItem(itemIndex) {
+                const snapshot = collectQuotePrintDebugSnapshot('dump-item').find((item) => item.itemIndex === Number(itemIndex)) || null;
+                if (snapshot) {
+                    console.table([{
+                        itemIndex: snapshot.itemIndex,
+                        stableKey: snapshot.stableKey,
+                        hasPrint: snapshot.hasPrint,
+                        printsLength: snapshot.printsLength,
+                        domRowCount: snapshot.domRowCount,
+                    }]);
+                    console.table(snapshot.rows);
+                }
+                return snapshot;
+            },
+            addPrint(itemIndex) {
+                addPrintRow(Number(itemIndex));
+                return this.dumpItem(Number(itemIndex));
+            },
+            forceAddPrints(itemIndex, count = 1) {
+                const iterations = Math.max(0, Number(count) || 0);
+                for (let index = 0; index < iterations; index += 1) {
+                    addPrintRow(Number(itemIndex));
+                }
+                return this.dumpItem(Number(itemIndex));
+            },
+            countDomRows(itemIndex) {
+                return countDomPrintRows(Number(itemIndex));
+            },
+            collectSnapshot() {
+                const snapshot = collectItems();
+                console.log('[quote-print-debug] collect-snapshot', snapshot);
+                return snapshot;
+            },
+        };
+    }
+
+    if (quoteWorkspace.selectedCustomer?.id) {
+        registerCustomerOption(quoteWorkspace.selectedCustomer);
+    }
+    refreshCustomerSummary();
+    renderQuotePrintDebugPanel('ready');
 });
 </script>

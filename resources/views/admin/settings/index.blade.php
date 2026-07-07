@@ -572,7 +572,7 @@
 
             <div class="setup-tabs-root">
                 <section class="setup-tab-panel {{ $activeSettingsTab === 'company-profile' ? 'is-active' : '' }}" data-settings-tab-panel="company-profile">
-                    <div class="setup-card-grid-3">
+                    <div class="setup-card-grid-2">
                         <div class="setup-module-block">
                             <div class="setup-module-head">
                                 <div>
@@ -634,6 +634,25 @@
                                 @endforeach
                             </div>
                             <div class="setup-note-box">{{ $companyProfileCards['note'] }}</div>
+                        </div>
+                        <div class="setup-module-block">
+                            <div class="setup-module-head">
+                                <div>
+                                    <h4 class="setup-module-title">Teslimat Tipleri</h4>
+                                    <div class="setup-module-desc">Teklif, sipariş ve teslimat süreçlerinde kullanılacak teslimat tipleri.</div>
+                                </div>
+                                <span class="badge {{ ($deliveryTypeSummary['active_count'] ?? 0) > 0 ? 'badge-green' : 'badge-amber' }}">{{ ($deliveryTypeSummary['active_count'] ?? 0) > 0 ? 'Hazır' : 'Kontrol Gerekir' }}</span>
+                            </div>
+                            <div class="setup-info-list">
+                                <div class="setup-info-row"><div class="setup-info-key">Aktif tip sayısı</div><div class="setup-info-val">{{ $deliveryTypeSummary['active_count'] ?? 0 }}</div></div>
+                                <div class="setup-info-row"><div class="setup-info-key">Varsayılan</div><div class="setup-info-val">{{ $deliveryTypeSummary['default_label'] ?? 'Henüz seçilmedi' }}</div></div>
+                                <div class="setup-info-row"><div class="setup-info-key">Kullanım alanı</div><div class="setup-info-val">Teklif, sipariş ve teslimat ekranları</div></div>
+                            </div>
+                            <div class="setup-link-list">
+                                @if($deliveryTypeSummary['route'])
+                                    <a class="setup-action-link primary" href="{{ $deliveryTypeSummary['route'] }}">Teslimat Tiplerini Yönet <span>Yönet</span></a>
+                                @endif
+                            </div>
                         </div>
                     </div>
                 </section>

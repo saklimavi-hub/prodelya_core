@@ -121,8 +121,8 @@ class SupplierProcurementRequestEditFixTest extends TestCase
             ->get(route('admin.procurements.supplier-requests.edit', $requestRecord));
 
         $show->assertOk();
-        $show->assertSee('Talebi Kaydet');
-        $show->assertSee('Taslak Kaydet');
+        $show->assertSee('Kaydet');
+        $show->assertSee('Taslak Olarak Kaydet');
         $show->assertDontSee('Talep Edildi İşaretle');
         $show->assertSee('Fiyatsız Talep Formunu Aç');
 

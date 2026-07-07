@@ -56,7 +56,7 @@ class CompanyCreateUltraCompactTemplateUxTest extends TestCase
             ->get($this->tenantUrl('/admin/companies/create'));
 
         $response->assertOk()
-            ->assertSee('Yeni Cari / Firma')
+            ->assertSee('Yeni Cari Oluştur')
             ->assertSee('Temel Bilgiler')
             ->assertSee('İletişim ve Resmi Bilgiler')
             ->assertSee('Roller')
@@ -152,7 +152,7 @@ class CompanyCreateUltraCompactTemplateUxTest extends TestCase
         ]);
 
         $show = $this->actingAs($this->owner, 'web')
-            ->get($this->tenantUrl('/admin/companies/' . $company->id));
+            ->get($this->tenantUrl('/admin/companies/' . $company->id . '?tab=portal'));
 
         $show->assertOk()
             ->assertSee('data-contact-name="Portal Yetkili"', false)

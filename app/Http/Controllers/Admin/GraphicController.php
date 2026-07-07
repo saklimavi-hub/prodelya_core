@@ -69,6 +69,11 @@ class GraphicController extends Controller
             abort(403);
         }
 
+        $validated = $request->validate([
+            'operation' => ['nullable', 'integer'],
+            'step' => ['nullable', 'string', Rule::in(['upload', 'summary', 'approval', 'revision', 'ready'])],
+        ]);
+
         $relations = [
             'attachments.uploader',
             'activityLogs.attachment',
@@ -88,7 +93,9 @@ class GraphicController extends Controller
             $workForm,
             Schema::hasTable('graphic_approval_requests')
                 && $this->tenantAccessService->canAccessModule($tenant, 'graphic_customer_approval')
-                && $this->tenantAccessService->canAccessFeature($tenant, 'public_graphic_approval', 'graphic_customer_approval')
+                && $this->tenantAccessService->canAccessFeature($tenant, 'public_graphic_approval', 'graphic_customer_approval'),
+            isset($validated['operation']) ? (int) $validated['operation'] : null,
+            $validated['step'] ?? null
         ));
     }
 

@@ -94,6 +94,11 @@ class TenantAccount extends Model
         return $this->hasMany(TenantPrintSetting::class);
     }
 
+    public function deliveryTypes()
+    {
+        return $this->hasMany(TenantDeliveryType::class);
+    }
+
     /**
      * Get all orders for this tenant
      */

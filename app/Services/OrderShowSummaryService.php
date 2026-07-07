@@ -15,7 +15,8 @@ class OrderShowSummaryService
 {
     public function __construct(
         protected OrderListSummaryService $orderListSummaryService,
-        protected FinanceSummaryService $financeSummaryService
+        protected FinanceSummaryService $financeSummaryService,
+        protected OrderFinanceSummaryService $orderFinanceSummaryService,
     ) {
     }
 
@@ -23,10 +24,19 @@ class OrderShowSummaryService
     {
         $overview = $this->orderListSummaryService->buildRow($order, $canViewFinancialData);
         $finance = $canViewFinancialData ? $this->financeSummaryService->summarizeOrder($order) : null;
+        $financeOverview = $canViewFinancialData
+            ? $this->orderFinanceSummaryService->summarize($order->fresh([
+                'customer.companyRoles',
+                'payments',
+                'procurements',
+                'printProductions',
+            ]))
+            : null;
 
         return [
             'overview' => $overview,
             'finance' => $finance,
+            'finance_overview' => $financeOverview,
             'module_cards' => $this->buildModuleCards($order, $overview, $canViewFinancialData, $finance),
             'item_rows' => $this->buildItemRows($order, $canViewFinancialData),
         ];

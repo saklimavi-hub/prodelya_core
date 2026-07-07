@@ -1,0 +1,49 @@
+@extends('layouts.prodelya-admin')
+
+@section('title', 'Üretim Detayı')
+@section('page_title', 'Üretim Detayı')
+@section('page_subtitle', 'Üretim kaydı sekmeli görünümde yönetilir.')
+
+@section('content')
+<style>
+    .pd-production-tabs { display: flex; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid #e8ecf1; padding-bottom: 10px; margin-bottom: 16px; }
+    .pd-production-tabs a { color: #697586; text-decoration: none; padding: 10px 14px; border-radius: 6px; font-weight: 600; font-size: 14px; }
+    .pd-production-tabs a:hover { color: #2563eb; }
+    .pd-production-tabs a.pd-active { color: #2563eb; background: #edf2ff; border: 1px solid #c7d7ff; }
+</style>
+
+<div class="pd-card">
+    <div class="pd-card-body pd-space-y-4">
+        @if(session('success'))
+            <div class="pd-alert pd-alert-success">{{ session('success') }}</div>
+        @endif
+
+        @if($errors->any())
+            <div class="pd-alert pd-alert-warning">{{ $errors->first() }}</div>
+        @endif
+
+        <div class="pd-production-tabs" role="tablist">
+            <a href="{{ $tabUrl('genel') }}" class="{{ $activeTab === 'genel' ? 'pd-active' : '' }}">Genel</a>
+            <a href="{{ $tabUrl('ic-uretim') }}" class="{{ $activeTab === 'ic-uretim' ? 'pd-active' : '' }}">İç Üretim</a>
+            <a href="{{ $tabUrl('dis-uretim') }}" class="{{ $activeTab === 'dis-uretim' ? 'pd-active' : '' }}">Dış Üretim / Fason</a>
+            <a href="{{ $tabUrl('islemler') }}" class="{{ $activeTab === 'islemler' ? 'pd-active' : '' }}">İşlemler</a>
+            <a href="{{ $tabUrl('fotograflar') }}" class="{{ $activeTab === 'fotograflar' ? 'pd-active' : '' }}">Fotoğraflar</a>
+            <a href="{{ $tabUrl('gecmis') }}" class="{{ $activeTab === 'gecmis' ? 'pd-active' : '' }}">Geçmiş</a>
+        </div>
+
+        @if($activeTab === 'genel')
+            @include('admin.productions.partials._production_summary')
+        @elseif($activeTab === 'ic-uretim')
+            @include('admin.productions.partials._production_internal')
+        @elseif($activeTab === 'dis-uretim')
+            @include('admin.productions.partials._production_external')
+        @elseif($activeTab === 'islemler')
+            @include('admin.productions.partials._production_actions')
+        @elseif($activeTab === 'fotograflar')
+            @include('admin.productions.partials._production_photos')
+        @elseif($activeTab === 'gecmis')
+            @include('admin.productions.partials._production_history')
+        @endif
+    </div>
+</div>
+@endsection

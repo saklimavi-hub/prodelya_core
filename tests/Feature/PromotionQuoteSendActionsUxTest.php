@@ -54,6 +54,7 @@ class PromotionQuoteSendActionsUxTest extends TestCase
         $response->assertOk();
         $response->assertSee('Gönderim Aksiyonları');
         $response->assertSee('Müşteriye Gönder');
+        $response->assertSee(route('admin.promotion-quotes.send-to-customer', $quote), false);
         $response->assertSee('PDF Teklif');
         $response->assertSee(route('admin.promotion-quotes.pdf', $quote), false);
         $response->assertDontSee('Onay Linkini Aç');
@@ -103,6 +104,32 @@ class PromotionQuoteSendActionsUxTest extends TestCase
 
         $this->assertNotNull($log);
         $this->assertSame(NotificationLog::STATUS_LINK_CREATED, $log->status);
+    }
+
+    public function test_send_action_redirects_back_with_visible_runtime_summary_and_success_flash(): void
+    {
+        $this->enableQuoteApprovalFeatures();
+        $this->enableWhatsappFeatures();
+
+        $quote = $this->createQuote('TK-SEND-7002A');
+
+        $response = $this->actingAs($this->adminUser)
+            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
+            ->followingRedirects()
+            ->post(route('admin.promotion-quotes.send-to-customer', $quote), [
+                'contact_name' => 'Ayşe Müşteri',
+                'contact_email' => 'ayse@example.test',
+                'contact_phone' => '05320000000',
+                'sent_channel' => 'manual',
+            ]);
+
+        $response->assertOk();
+        $response->assertSee('Gönderim kaydı oluşturuldu.');
+        $response->assertSee('Son Oluşturulan Kayıtlar');
+        $response->assertSee('E-posta: Atlandı');
+        $response->assertSee('WhatsApp: Link Oluşturuldu');
+        $response->assertSee('İç Kayıt: Gönderildi');
+        $response->assertSee('Kanal veya hedef kitle ayarları nedeniyle bildirim atlandı.');
     }
 
     public function test_detail_shows_safe_whatsapp_disabled_state_when_phone_is_missing(): void

@@ -272,7 +272,10 @@ class PrintSetupRequirementCoreTest extends TestCase
 
         $this->actingAs($this->productionUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.productions.show', $setupProduction))
+            ->get(route('admin.productions.show', [
+                $setupProduction,
+                'tab' => 'genel',
+            ]))
             ->assertOk()
             ->assertSee('Hazırlık / Ara Eleman')
             ->assertSee('Klişe')
@@ -286,7 +289,10 @@ class PrintSetupRequirementCoreTest extends TestCase
 
         $this->actingAs($this->productionUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.productions.show', $plainProduction))
+            ->get(route('admin.productions.show', [
+                $plainProduction,
+                'tab' => 'genel',
+            ]))
             ->assertOk()
             ->assertDontSee('Hazırlık / Ara Eleman')
             ->assertDontSee('Gerekli değil');

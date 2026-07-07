@@ -54,19 +54,15 @@ class ProductionOperatorPanelSimplificationTest extends TestCase
 
         $response = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.productions.show', $production->fresh()));
+            ->get(route('admin.productions.show', $production->fresh()) . '?tab=genel');
 
         $response->assertOk();
         $response->assertDontSee('Üretime Başlama Kontrol Kartları');
         $response->assertDontSee('QC Uygun');
         $response->assertDontSee('Mobil Fotoğraf Alanı');
         $response->assertSee('Fotoğraf Ekle');
-        $response->assertSee('Bu tur basılan adet');
-        $response->assertSee('Tamamı Basıldı');
-        $response->assertSee('object-fit: contain', false);
-        $response->assertSee('min-height: 420px', false);
-        $response->assertSee('Grafiğe Git');
-        $response->assertSee('Tedariğe Git');
+        $response->assertSee('Üretim Durumu Adımları');
+        $response->assertSee('Hızlı Bakış');
         $response->assertSee('Siparişi Aç');
         $response->assertSee('İş Formu');
         $response->assertSee('UV Baskı');
@@ -84,7 +80,7 @@ class ProductionOperatorPanelSimplificationTest extends TestCase
 
         $plainResponse = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.productions.show', $plainProduction->fresh()));
+            ->get(route('admin.productions.show', $plainProduction->fresh()) . '?tab=genel');
 
         $plainResponse->assertOk();
         $plainResponse->assertDontSee('Baskı Yeri');
@@ -101,12 +97,11 @@ class ProductionOperatorPanelSimplificationTest extends TestCase
 
         $preparedResponse = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.productions.show', $preparedProduction->fresh()));
+            ->get(route('admin.productions.show', $preparedProduction->fresh()) . '?tab=genel');
 
         $preparedResponse->assertOk();
-        $preparedResponse->assertSee('Klişe / Kalıp Kontrolü');
-        $preparedResponse->assertSee('Klişe Bekliyor');
-        $preparedResponse->assertSee('Tedariğe Git');
+        $preparedResponse->assertSee('Önemli Notlar');
+        $preparedResponse->assertSee('Bu baskı için gerekli ara eleman hazır olmadan baskıya başlanmaz.');
     }
 
     private function createMultiPrintWorkForm(): array

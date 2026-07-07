@@ -161,24 +161,29 @@
 
     .gm-thumb,
     .graphic-index-product-thumb,
-    .gm-thumb-placeholder {
-        width: 84px;
-        height: 84px;
+    .gm-thumb-placeholder,
+    .gg-list-thumb-frame {
+        width: 64px;
+        height: 64px;
         border-radius: 6px;
-        border: 1px solid #e5e7eb;
+        border: 1px solid #e5eaf2;
         overflow: hidden;
         flex-shrink: 0;
         background: #f8fafc;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
 
     .gm-thumb img,
     .graphic-index-product-image {
-        width: 100%;
-        height: 100%;
+        width: 100% !important;
+        height: 100% !important;
         object-fit: contain;
         display: block;
         background: #fff;
-        padding: 8px;
+        max-width: 100% !important;
+        max-height: 100% !important;
     }
 
     .gm-thumb-placeholder {
@@ -252,19 +257,23 @@
         width: 64px;
         height: 64px;
         border-radius: 6px;
-        border: 1px solid #e5e7eb;
+        border: 1px solid #e5eaf2;
         overflow: hidden;
         background: #f8fafc;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
 
     .gm-last-visual-thumb img,
     .graphic-index-preview-image {
-        width: 100%;
-        height: 100%;
+        width: 100% !important;
+        height: 100% !important;
         object-fit: contain;
         display: block;
         background: #fff;
-        padding: 6px;
+        max-width: 100% !important;
+        max-height: 100% !important;
     }
 
     .gm-last-visual-empty {
@@ -436,10 +445,10 @@
                             </td>
                             <td data-label="Ürün / Görsel">
                                 <div class="gm-product">
-                                    @if($row['image_url'])
-                                        <div class="gm-thumb graphic-index-product-thumb"><img class="graphic-index-product-image" src="{{ $row['image_url'] }}" alt="{{ $row['product_name'] }}"></div>
+                                    @if($row['image_thumbnail_url'] ?? $row['image_url'])
+                                        <div class="gm-thumb graphic-index-product-thumb gg-list-thumb-frame"><img class="graphic-index-product-image pd-allow-large" src="{{ $row['image_thumbnail_url'] ?? $row['image_url'] }}" alt="{{ $row['product_name'] }}"></div>
                                     @else
-                                        <div class="gm-thumb-placeholder graphic-index-product-thumb">Ürün<br>Görseli</div>
+                                        <div class="gm-thumb-placeholder graphic-index-product-thumb gg-list-thumb-frame">Ürün<br>Görseli</div>
                                     @endif
                                     <div>
                                         <div class="gm-title">{{ $row['product_name'] }}</div>
@@ -471,10 +480,10 @@
                             </td>
                             <td data-label="Son Görsel">
                                     <div class="gm-last-visual">
-                                        @if($row['last_visual_url'])
-                                        <div class="gm-last-visual-thumb graphic-index-preview-thumb"><img class="graphic-index-preview-image" src="{{ $row['last_visual_url'] }}" alt="{{ $row['last_visual_name'] }}"></div>
+                                        @if($row['last_visual_thumbnail_url'] ?? $row['last_visual_url'])
+                                        <div class="gm-last-visual-thumb graphic-index-preview-thumb gg-list-thumb-frame"><img class="graphic-index-preview-image pd-allow-large" src="{{ $row['last_visual_thumbnail_url'] ?? $row['last_visual_url'] }}" alt="{{ $row['last_visual_name'] }}"></div>
                                         @else
-                                        <div class="gm-last-visual-empty graphic-index-preview-thumb">Görsel Yok</div>
+                                        <div class="gm-last-visual-empty graphic-index-preview-thumb gg-list-thumb-frame">Görsel Yok</div>
                                         @endif
                                     <div class="gm-sub">{{ $row['last_visual_name'] ?: '-' }}</div>
                                 </div>

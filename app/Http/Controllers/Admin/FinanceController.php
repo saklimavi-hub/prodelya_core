@@ -7,6 +7,8 @@ use App\Models\Order;
 use App\Models\OrderItemWorkFormDelivery;
 use App\Models\OrderPayment;
 use App\Services\FinanceSummaryService;
+use App\Services\OrderFinanceSummaryService;
+use App\Services\OrderCurrentAccountDebitSyncService;
 use App\Services\TenantResolver;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -24,7 +26,9 @@ class FinanceController extends Controller
 
     public function __construct(
         protected TenantResolver $tenantResolver,
-        protected FinanceSummaryService $financeSummaryService
+        protected FinanceSummaryService $financeSummaryService,
+        protected OrderFinanceSummaryService $orderFinanceSummaryService,
+        protected OrderCurrentAccountDebitSyncService $orderCurrentAccountDebitSyncService,
     ) {
     }
 
@@ -86,13 +90,27 @@ class FinanceController extends Controller
             'deliveries.workForm',
         ]);
 
+        $this->orderCurrentAccountDebitSyncService->syncOrder(
+            $order->fresh(['customer.companyRoles', 'payments']),
+            $request->user()
+        );
+
         $summary = $this->financeSummaryService->summarizeOrder($order);
+        $financeOverview = $this->orderFinanceSummaryService->summarize($order->fresh([
+            'customer.companyRoles',
+            'payments',
+            'procurements',
+            'printProductions',
+        ]));
         $workForm = $order->workForms->sortBy('id')->first();
         $delivery = $order->deliveries->sortBy('id')->first();
+        $receivableDebitTransaction = $this->orderCurrentAccountDebitSyncService->findExistingTransactionForOrder($order);
+        $customerCurrentAccount = $this->orderCurrentAccountDebitSyncService->resolveCurrentAccountForOrder($order);
 
         return view('admin.finance.show', [
             'order' => $order,
             'summary' => $summary,
+            'financeOverview' => $financeOverview,
             'payments' => $order->payments->sortByDesc(function (OrderPayment $payment): int {
                 return optional($payment->paid_at ?? $payment->created_at)?->getTimestamp() ?? 0;
             })->values(),
@@ -102,6 +120,8 @@ class FinanceController extends Controller
             'paymentMethodLabels' => OrderPayment::paymentMethodLabels(),
             'canManagePayments' => $request->user()?->hasPermissionInTenant('manage_payments', $tenant->id) ?? false,
             'canMarkPaymentsReceived' => $request->user()?->hasPermissionInTenant('mark_payments_received', $tenant->id) ?? false,
+            'receivableDebitTransaction' => $receivableDebitTransaction,
+            'customerCurrentAccount' => $customerCurrentAccount,
         ]);
     }
 

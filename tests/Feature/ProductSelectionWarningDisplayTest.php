@@ -400,7 +400,9 @@ class ProductSelectionWarningDisplayTest extends TestCase
         $response->assertDontSee('Aktif Tenant');
         $response->assertDontSee('Sistem Notu');
         $response->assertDontSee('KDV ürün satırında yönetilir');
-        $response->assertDontSee('Hesapla');
+        $response->assertSee('Ara Eleman Ayarla');
+        $response->assertSee('Ara Eleman Gerekli');
+        $response->assertSee('Ara Eleman Hesaplama');
         $response->assertDontSee('>Oto<', false);
         $response->assertDontSee('Hesaplanan:');
         $response->assertDontSee('Kopyala');

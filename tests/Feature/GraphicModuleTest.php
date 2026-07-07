@@ -88,7 +88,7 @@ class GraphicModuleTest extends TestCase
         $response->assertSee('Grafik Operasyonları');
         $response->assertSee('Görsel Yükle');
         $response->assertSee('admin.graphics.show');
-        $response->assertSee('Sıradaki İş');
+        $response->assertSee('İş Özeti');
         $response->assertSee(route('admin.work-forms.show', $workForm), false);
         $response->assertSee(route('public.work-forms.track', $workForm->public_tracking_token), false);
         $response->assertDontSee('grand_total', false);

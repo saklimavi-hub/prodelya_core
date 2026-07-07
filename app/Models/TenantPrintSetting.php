@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class TenantPrintSetting extends Model
 {
@@ -61,6 +62,11 @@ class TenantPrintSetting extends Model
     public function defaultSubcontractorCurrentAccount(): BelongsTo
     {
         return $this->belongsTo(CurrentAccount::class, 'default_subcontractor_current_account_id');
+    }
+
+    public function printOptions(): HasMany
+    {
+        return $this->hasMany(TenantPrintOption::class, 'tenant_print_setting_id');
     }
 
     public function displayName(): string

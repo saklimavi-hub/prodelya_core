@@ -108,9 +108,9 @@ class CompanySubcontractorPrintRoleUxTest extends TestCase
             ->get($this->tenantUrl('/admin/companies/' . $company->id));
 
         $response->assertOk()
-            ->assertSee('Fason Bilgisi')
+            ->assertSee('Üretim ve Fason Bilgisi')
             ->assertSee('Fason Baskı Firması')
-            ->assertSee('Bu cari üretim / baskı-fason aşamalarında seçilebilir.');
+            ->assertSee('Bu cari üretim ve baskı akışlarında seçilebilir.');
     }
 
     public function test_production_assignment_lists_only_active_tenant_fason_companies(): void
@@ -148,10 +148,10 @@ class CompanySubcontractorPrintRoleUxTest extends TestCase
         $production = $this->createProduction('SP-FASON-UX-001');
 
         $show = $this->actingAs($this->owner, 'web')
-            ->get($this->tenantUrl('/admin/productions/' . $production->id));
+            ->get($this->tenantUrl('/admin/productions/' . $production->id . '?tab=islemler'));
 
         $show->assertOk()
-            ->assertSee('Üretim / Fason Ataması')
+            ->assertSee('Atama / Sorumluluk')
             ->assertSee('Fason Firma')
             ->assertSee($allowedPrintCompany->legal_name)
             ->assertSee($allowedProductionCompany->legal_name)

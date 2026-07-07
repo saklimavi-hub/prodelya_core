@@ -76,7 +76,7 @@ class CurrentAccountLinkManagementTest extends TestCase
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->get(route('admin.current-accounts.show', $supplierAccount))
             ->assertOk()
-            ->assertSee('Ürün/Data Kaynağı Bağlantısı')
+            ->assertSee('Ürün Kaynağı Bağlantısı')
             ->assertSee('Supplier Bağla');
 
         $this->actingAs($this->adminUser)
@@ -209,7 +209,10 @@ class CurrentAccountLinkManagementTest extends TestCase
 
         $response = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.current-accounts.index', ['status' => CurrentAccount::STATUS_ARCHIVED]));
+            ->get(route('admin.current-accounts.index', [
+                'tab' => 'arsiv',
+                'status' => CurrentAccount::STATUS_ARCHIVED,
+            ]));
 
         $response->assertOk();
         $response->assertSee('Durumlu Cari');

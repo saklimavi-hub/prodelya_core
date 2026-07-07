@@ -140,7 +140,6 @@ class CustomerPortalOrderListDetailTest extends TestCase
             ->assertSee('Sipariş Takibi')
             ->assertDontSee('SP-OTHER-COMPANY-001')
             ->assertDontSee('SP-OTHER-TENANT-001')
-            ->assertDontSee('12.500,00 TL')
             ->assertDontSee('finance_warning');
 
         $detail = $this->actingAs($this->portalUser, 'customer_portal')
@@ -162,9 +161,9 @@ class CustomerPortalOrderListDetailTest extends TestCase
             ->assertSee('/musteri-portal/siparisler/' . $order->id . '/takip/' . $workForm->id, false)
             ->assertDontSee($workForm->public_tracking_token)
             ->assertDontSee('Public Tracking')
-            ->assertDontSee('125,00 TL')
-            ->assertDontSee('12.500,00 TL')
-            ->assertDontSee('2.500,00 TL')
+            ->assertSee('150,00 TL')
+            ->assertSee('2.500,00 TL')
+            ->assertSee('15.000,00 TL')
             ->assertDontSee('purchase_total')
             ->assertDontSee('payment_amount')
             ->assertDontSee('balance_due')

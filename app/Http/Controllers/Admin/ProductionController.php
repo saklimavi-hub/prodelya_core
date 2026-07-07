@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Company;
+use App\Models\CurrentAccountLink;
+use App\Models\CurrentAccountTransaction;
 use App\Models\OrderItemPrintProduction;
 use App\Models\TenantAccount;
 use App\Models\User;
@@ -11,6 +13,7 @@ use App\Services\ModuleFeatureCatalogService;
 use App\Services\ProductionDataBuilder;
 use App\Services\ProductionReadinessResolver;
 use App\Services\ProductionWorkflowService;
+use App\Services\SubcontractorProductionCurrentAccountSyncService;
 use App\Services\TenantResolver;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -92,6 +95,13 @@ class ProductionController extends Controller
             abort(403);
         }
 
+        $allowedTabs = ['genel', 'ic-uretim', 'dis-uretim', 'islemler', 'fotograflar', 'gecmis'];
+        if ($request->has('tab')) {
+            $activeTab = in_array($request->get('tab'), $allowedTabs, true) ? $request->get('tab') : 'genel';
+        } else {
+            $activeTab = $this->defaultShowTab($production);
+        }
+
         $production->loadMissing([
             'order.customer',
             'orderItem',
@@ -99,10 +109,11 @@ class ProductionController extends Controller
             'orderItemPrint.setupRequirements.assignedCompany',
             'orderItemPrint.graphicOperation.latestAttachment',
             'graphicOperation.latestAttachment',
-            'workForm.attachments',
+            'workForm.attachments.uploader',
             'workForm.orderItem.prints.production',
             'workForm.procurement',
-            'workForm.activityLogs.attachment',
+            'workForm.activityLogs',
+            'workForm.activityLogs.creator',
             'workForm.systemWorkFolder',
             'productionCompany.companyRoles',
             'assignedUser',
@@ -125,6 +136,39 @@ class ProductionController extends Controller
             ->get();
         $qcUiEnabled = $this->productionQcUiEnabled($tenant);
         $canViewFinancialData = $request->user()?->canViewFinancialData($tenant->id) ?? false;
+        $resolvedProductionType = $production->production_type
+            ?: OrderItemPrintProduction::normalizeProductionType($production->orderItemPrint?->production_type);
+        $matchedCurrentAccount = null;
+        if ($production->production_company_id) {
+            $matchedCurrentAccount = CurrentAccountLink::query()
+                ->where('tenant_account_id', $tenant->id)
+                ->where('link_type', CurrentAccountLink::LINK_COMPANY)
+                ->where('link_id', $production->production_company_id)
+                ->with('currentAccount')
+                ->first()?->currentAccount;
+        }
+        $subcontractorTransaction = CurrentAccountTransaction::query()
+            ->where('tenant_account_id', $production->tenant_account_id)
+            ->where('source_type', SubcontractorProductionCurrentAccountSyncService::SOURCE_TYPE)
+            ->where('source_id', $production->id)
+            ->where('transaction_type', CurrentAccountTransaction::TYPE_SUBCONTRACTOR_DEBIT)
+            ->latest('id')
+            ->first();
+
+        // Tab metadata for navigation
+        $tabMetadata = [
+            'genel' => ['label' => 'Genel Özet', 'icon' => 'dashboard'],
+            'ic-uretim' => ['label' => 'İç Üretim', 'icon' => 'settings'],
+            'dis-uretim' => ['label' => 'Dış Üretim / Fason', 'icon' => 'truck'],
+            'islemler' => ['label' => 'İşlemler', 'icon' => 'tools'],
+            'fotograflar' => ['label' => 'Fotoğraflar', 'icon' => 'camera'],
+            'gecmis' => ['label' => 'Geçmiş', 'icon' => 'history'],
+        ];
+
+        // Helper function for tab URLs
+        $tabUrl = function (string $tab) use ($production): string {
+            return route('admin.productions.show', $production) . '?tab=' . $tab;
+        };
 
         return view('admin.productions.show', [
             'production' => $production,
@@ -138,6 +182,15 @@ class ProductionController extends Controller
             'nextActionLabel' => $this->nextActionLabel($production),
             'qcUiEnabled' => $qcUiEnabled,
             'canViewFinancialData' => $canViewFinancialData,
+            'matchedCurrentAccount' => $matchedCurrentAccount,
+            'subcontractorTransaction' => $subcontractorTransaction,
+            'activeTab' => $activeTab,
+            'allowedTabs' => $allowedTabs,
+            'tabMetadata' => $tabMetadata,
+            'tabUrl' => $tabUrl,
+            'isInternalProduction' => $resolvedProductionType === OrderItemPrintProduction::TYPE_INTERNAL,
+            'isExternalProduction' => $resolvedProductionType === OrderItemPrintProduction::TYPE_EXTERNAL,
+            'isSubcontractedProduction' => $resolvedProductionType === OrderItemPrintProduction::TYPE_OUTSOURCED,
         ]);
     }
 
@@ -458,6 +511,19 @@ class ProductionController extends Controller
             'production_cancelled',
             'production_photo_added',
         ];
+    }
+
+    private function defaultShowTab(OrderItemPrintProduction $production): string
+    {
+        $resolvedType = $production->production_type
+            ?: OrderItemPrintProduction::normalizeProductionType($production->orderItemPrint()->value('production_type'));
+
+        return match ($resolvedType) {
+            OrderItemPrintProduction::TYPE_INTERNAL => 'ic-uretim',
+            OrderItemPrintProduction::TYPE_EXTERNAL,
+            OrderItemPrintProduction::TYPE_OUTSOURCED => 'dis-uretim',
+            default => 'genel',
+        };
     }
 
     private function hydrateRuntimeSnapshot(OrderItemPrintProduction $production): void
