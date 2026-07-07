@@ -49,8 +49,8 @@ class AdminMenuServiceTest extends TestCase
 
         $this->assertNotEmpty(config('admin_menu.tenant'));
         $this->assertNotEmpty(config('admin_menu.super_admin'));
-        $this->assertContains('Yönetim Paneli', $flatBefore);
-        $this->assertContains('Promosyon Teklifleri', $flatBefore);
+        $this->assertContains('Gösterge Paneli', $flatBefore);
+        $this->assertContains('Teklifler', $flatBefore);
         $this->assertNotContains('Baskı Teklifleri', $flatBefore);
         $this->assertNotContains('İş Formları', $flatBefore);
         $this->assertNotContains('Product Data Hub', $flatBefore);
@@ -110,8 +110,10 @@ class AdminMenuServiceTest extends TestCase
         $this->assertNotContains('Tedarikçi Ürünleri', $flatAfter);
         $this->assertNotContains('Katalog Görünürlüğü', $flatAfter);
         $this->assertNotContains('Uyarılı Ürünler', $flatAfter);
-        $this->assertContains('Müşteri Portalı', $flatAfter);
+        $this->assertContains('Baskı / Matbaa Tanımları', $flatAfter);
         $this->assertContains('Kurulum Merkezi', $flatAfter);
+        $this->assertContains('Sistem Ayarları', $flatAfter);
+        $this->assertNotContains('Müşteri Portalı', $flatAfter);
         $this->assertNotContains('Raporlar', $flatAfter);
         $this->assertNotContains('Kalite Kontrol', $flatAfter);
 

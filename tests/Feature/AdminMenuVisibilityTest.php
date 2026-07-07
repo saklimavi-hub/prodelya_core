@@ -61,17 +61,15 @@ class AdminMenuVisibilityTest extends TestCase
             ->get(route('admin.current-accounts.index'));
 
         $response->assertOk();
-        $response->assertSee('Yönetim Paneli');
-        $response->assertSee('Promosyon Teklifleri');
+        $response->assertSee('Gösterge Paneli');
+        $response->assertSee('Teklifler');
         $response->assertSee('Cari Kartlar');
         $response->assertSee(route('admin.companies.index'), false);
-        $response->assertDontSee('href="' . route('admin.current-accounts.index') . '" class="pd-sidebar-item', false);
         $response->assertDontSee('Baski Teklifleri');
         $response->assertDontSee('Product Data Hub');
         $response->assertDontSee('Müşteri Portalı');
         $response->assertDontSee('Moduller');
         $response->assertDontSee('Super Ayarlar');
-        $response->assertDontSee('href="' . route('admin.current-accounts.index') . '" class="pd-sidebar-item active', false);
         $response->assertDontSee('group_code', false);
         $response->assertDontSee('file_path', false);
 
@@ -107,8 +105,9 @@ class AdminMenuVisibilityTest extends TestCase
 
         $response->assertOk();
         $response->assertDontSee('Product Data Hub');
-        $response->assertSee('Müşteri Portalı');
         $response->assertSee('Kurulum Merkezi');
+        $response->assertSee('Sistem Ayarları');
+        $response->assertDontSee('Müşteri Portalı');
     }
 
     public function test_super_admin_layout_shows_only_super_admin_menu_items(): void
