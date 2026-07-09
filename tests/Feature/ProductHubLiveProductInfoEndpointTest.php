@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 namespace Tests\Feature;
 
@@ -58,7 +58,7 @@ class ProductHubLiveProductInfoEndpointTest extends TestCase
                 'quote_visible' => true,
                 'price_changed_since_snapshot' => false,
                 'stock_changed_since_snapshot' => false,
-                'public_safe_message' => 'Urun guncel ve teklif icin uygun.',
+                'public_safe_message' => 'Ürün güncel ve teklif için uygun.',
             ]);
 
         $response->assertJsonMissing(['public_safe_message' => 'Urun guncel ve teklif icin uygun.']);
@@ -94,7 +94,7 @@ class ProductHubLiveProductInfoEndpointTest extends TestCase
         $response->assertNotFound()
             ->assertJson([
                 'ok' => false,
-                'public_safe_message' => 'Bu urun bilgisi guvenli sekilde okunamadi.',
+                'public_safe_message' => 'Bu ürün bilgisi güvenli şekilde okunamadı.',
             ]);
     }
 
@@ -111,9 +111,9 @@ class ProductHubLiveProductInfoEndpointTest extends TestCase
             ->assertJson([
                 'ok' => false,
                 'supplier_access_active' => false,
-                'public_safe_message' => 'Bu urun su anda teklif icin uygun degil.',
+                'public_safe_message' => 'Bu ürün şu anda teklif için uygun değil.',
             ])
-            ->assertJsonFragment(['Abone Firma bu tedarikciye erisemiyor.']);
+            ->assertJsonFragment(['Abone Firma bu tedarikçiye erişemiyor.']);
     }
 
     public function test_quote_visible_false_product_is_not_sellable(): void
@@ -131,7 +131,7 @@ class ProductHubLiveProductInfoEndpointTest extends TestCase
                 'ok' => false,
                 'quote_visible' => false,
             ])
-            ->assertJsonFragment(['Bu urun teklifte kullanima kapali.']);
+            ->assertJsonFragment(['Ürün teklifte kullanıma kapalı.']);
     }
 
     public function test_category_pending_product_stays_sellable_when_search_visibility_is_open(): void
@@ -148,15 +148,15 @@ class ProductHubLiveProductInfoEndpointTest extends TestCase
                 'ok' => true,
                 'tenant_catalog_active' => true,
                 'quote_visible' => true,
-                'public_safe_message' => 'Urun guncel ve teklif icin uygun.',
+                'public_safe_message' => 'Ürün güncel ve teklif için uygun.',
             ])
-            ->assertJsonFragment(['Kategori eÅŸleÅŸmemiÅŸ.'])
-            ->assertJsonFragment(['Genel kategori henÃ¼z baÄŸlanmadÄ±.'])
+            ->assertJsonFragment(['Kategori eşleşmemiş.'])
+            ->assertJsonFragment(['Genel kategori henüz bağlanmadı.'])
             ->assertJsonMissing([
-                'product_inactive_warning' => 'Bu urun su anda aktif degil.',
+                'product_inactive_warning' => 'Bu ürün şu anda aktif değil.',
             ])
             ->assertJsonMissing([
-                'warnings' => ['Bu urun su anda aktif degil.'],
+                'warnings' => ['Bu ürün şu anda aktif değil.'],
             ]);
     }
 
@@ -171,7 +171,7 @@ class ProductHubLiveProductInfoEndpointTest extends TestCase
             ->assertJson([
                 'price_changed_since_snapshot' => true,
             ])
-            ->assertJsonFragment(['Bu urunun guncel fiyati teklif satirindaki fiyattan farkli.']);
+            ->assertJsonFragment(['Bu ürünün güncel fiyatı teklif satırındaki fiyattan farklı.']);
     }
 
     public function test_snapshot_stock_difference_is_reported(): void
@@ -185,7 +185,7 @@ class ProductHubLiveProductInfoEndpointTest extends TestCase
             ->assertJson([
                 'stock_changed_since_snapshot' => true,
             ])
-            ->assertJsonFragment(['Stok bilgisi degismis olabilir.']);
+            ->assertJsonFragment(['Stok bilgisi değişmiş olabilir.']);
     }
 
     public function test_quote_item_snapshot_comparison_uses_same_tenant_item_only(): void
@@ -285,7 +285,7 @@ class ProductHubLiveProductInfoEndpointTest extends TestCase
         $missing->assertStatus(422)
             ->assertJson([
                 'ok' => false,
-                'public_safe_message' => 'Urun secimi eksik.',
+                'public_safe_message' => 'Ürün seçimi eksik.',
             ]);
 
         $invalid = $this->actingAs($fixture['user'], 'web')
@@ -294,7 +294,7 @@ class ProductHubLiveProductInfoEndpointTest extends TestCase
         $invalid->assertStatus(422)
             ->assertJson([
                 'ok' => false,
-                'public_safe_message' => 'Gonderilen urun bilgisi dogrulanamadi.',
+                'public_safe_message' => 'Gönderilen ürün bilgisi doğrulanamadı.',
             ]);
 
         $this->assertStringNotContainsString('Urun guncel', json_encode($invalid->json(), JSON_UNESCAPED_UNICODE));
@@ -502,4 +502,3 @@ class ProductHubLiveProductInfoEndpointTest extends TestCase
         return 'http://' . $tenant->panel_subdomain . '.' . self::CENTRAL_HOST . $path;
     }
 }
-

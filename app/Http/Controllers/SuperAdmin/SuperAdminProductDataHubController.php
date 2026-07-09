@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 namespace App\Http\Controllers\SuperAdmin;
 
@@ -172,7 +172,7 @@ class SuperAdminProductDataHubController extends Controller
             'Tedarikçi seç: Etkin / Akdeniz / İlpen / Yeni Nesil',
             'Kaynak tipi seç: XML / JSON / CSV / API',
             'Kaynak URL / dosya yolu gir',
-            'Ürün node path gir: Akdeniz → RECORD, Yeni Nesil → urunler, İlpen → Urun',
+            'Ürün node path gir: Akdeniz → RECORD, Yeni Nesil → urunler, İlpen → Ürün',
             'Prefix belirle: ET / AK / IL / YN',
             'Kaynak test et',
             'Preview al',
@@ -345,15 +345,15 @@ class SuperAdminProductDataHubController extends Controller
                         'key' => 'review_queue',
                         'title' => 'İnceleme Gerekenler',
                         'count' => 0,
-                        'tone' => 'blue',
+                        'tone' => 'amber',
                         'copy' => 'Yeni ürün, kategori ve freshness istisnaları burada toplanır.',
                         'href' => route('admin.super.product-data-hub.product-panel', ['flow_mode' => 'review_queue']),
                     ],
                     [
                         'key' => 'category_waiting',
-                        'title' => 'Kategori UyarÄ±larÄ±',
+                        'title' => 'Kategori Bekleyenler',
                         'count' => 0,
-                        'tone' => 'blue',
+                        'tone' => 'amber',
                         'copy' => 'Kategori kararı bekleyen satırlar hedefli taramada görünür.',
                         'href' => route('admin.super.product-data-hub.product-panel', ['flow_mode' => 'category_waiting']),
                     ],
@@ -385,9 +385,9 @@ class SuperAdminProductDataHubController extends Controller
                 ],
                 'reviewQueueCards' => [
                     ['key' => 'new_items', 'title' => 'Yeni Ürünler', 'count' => 0, 'tone' => 'blue', 'copy' => 'İlk kez görülen ürün ve varyantlar burada toplanır.', 'href' => route('admin.super.product-data-hub.product-panel', ['review_bucket' => 'new_items'])],
-                    ['key' => 'category_waiting', 'title' => 'Kategori UyarÄ±larÄ±', 'count' => 0, 'tone' => 'blue', 'copy' => 'Kategori kararı bekleyenler burada görünür.', 'href' => route('admin.super.product-data-hub.product-panel', ['review_bucket' => 'category_waiting'])],
+                    ['key' => 'category_waiting', 'title' => 'Kategori Bekleyenler', 'count' => 0, 'tone' => 'amber', 'copy' => 'Kategori kararı bekleyenler burada görünür.', 'href' => route('admin.super.product-data-hub.product-panel', ['review_bucket' => 'category_waiting'])],
                     ['key' => 'identity_issues', 'title' => 'Kimlik / Variant Sorunları', 'count' => 0, 'tone' => 'red', 'copy' => 'Eksik ürün, eksik varyant ve yapı kırıkları burada toplanır.', 'href' => route('admin.super.product-data-hub.product-panel', ['review_bucket' => 'identity_issues'])],
-                    ['key' => 'anomaly_flags', 'title' => 'Anomali / Freshness', 'count' => 0, 'tone' => 'blue', 'copy' => 'Fiyat, stok ve quote uyumsuzlukları burada görünür.', 'href' => route('admin.super.product-data-hub.product-panel', ['review_bucket' => 'anomaly_flags'])],
+                    ['key' => 'anomaly_flags', 'title' => 'Anomali / Freshness', 'count' => 0, 'tone' => 'amber', 'copy' => 'Fiyat, stok ve quote uyumsuzlukları burada görünür.', 'href' => route('admin.super.product-data-hub.product-panel', ['review_bucket' => 'anomaly_flags'])],
                     ['key' => 'projection_issues', 'title' => 'Projection Sorunları', 'count' => 0, 'tone' => 'red', 'copy' => 'Katalog yansıması geri kalan satırlar burada izlenir.', 'href' => route('admin.super.product-data-hub.product-panel', ['review_bucket' => 'projection_issues'])],
                     ['key' => 'tenant_output_blocks', 'title' => 'Tenant Çıkışı Blokajları', 'count' => 0, 'tone' => 'purple', 'copy' => 'Erişim ve görünürlük blokları burada filtrelenir.', 'href' => route('admin.super.product-data-hub.product-panel', ['review_bucket' => 'tenant_output_blocks'])],
                 ],
@@ -605,16 +605,16 @@ class SuperAdminProductDataHubController extends Controller
                 'key' => 'review_queue',
                 'title' => 'İnceleme Gerekenler',
                 'count' => ($summary['review_required'] ?? 0) + ($summary['projection_lagging'] ?? 0) + ($summary['tenant_output_closed'] ?? 0),
-                'tone' => 'blue',
+                'tone' => 'amber',
                 'copy' => 'Yalnız manuel karar gerektiren satırları tek kuyruğa indirir.',
                 'href' => route('admin.super.product-data-hub.product-panel', array_merge($request->except('page'), ['flow_mode' => 'review_queue'])),
             ],
             [
                 'key' => 'category_waiting',
-                'title' => 'Kategori UyarÄ±larÄ±',
+                'title' => 'Kategori Uyarıları',
                 'count' => $summary['category_waiting'] ?? 0,
                 'tone' => 'blue',
-                'copy' => 'Kategori kararı beklediği için satış zincirine temiz giremeyen kayıtlar.',
+                'copy' => 'Genel kategori eşleşmesi eksik ürünler burada bilgi amaçlı görünür; satışa çıkışı tek başına engellemez.',
                 'href' => route('admin.super.product-data-hub.product-panel', array_merge($request->except('page'), ['flow_mode' => 'category_waiting'])),
             ],
             [
@@ -1167,7 +1167,7 @@ class SuperAdminProductDataHubController extends Controller
             $warnings = [];
 
             if (blank($row->matched_category_name) || blank($row->standard_category_id) || data_get($meta, 'fallback_category_code') === 'PROMO-ESLENMEMIS-KATEGORI-BEKLEYEN') {
-                $warnings[] = 'Kategori eÅŸleÅŸmemiÅŸ';
+                $warnings[] = 'Kategori eşleşmemiş';
             }
 
             if (blank($row->price_value) || (float) $row->price_value <= 0) {
@@ -1188,8 +1188,8 @@ class SuperAdminProductDataHubController extends Controller
 
             $categoryStatus = 'Eşleşmiş';
 
-            if (blank($row->standard_category_id) || in_array('Kategori eÅŸleÅŸmemiÅŸ', $warnings, true)) {
-                $categoryStatus = 'Kategori EÅŸleÅŸmemiÅŸ';
+            if (blank($row->standard_category_id) || in_array('Kategori eşleşmemiş', $warnings, true)) {
+                $categoryStatus = 'Kategori Eşleşmemiş';
             } elseif ((bool) data_get($meta, 'category_conflict', false) || str_contains((string) json_encode($meta, JSON_UNESCAPED_UNICODE), 'target_missing')) {
                 $categoryStatus = 'Hedef Bulunamayan';
             } elseif (in_array('Uyarılı', $warnings, true)) {
@@ -2380,7 +2380,7 @@ class SuperAdminProductDataHubController extends Controller
         }
 
         if (blank($product['supplier_category_name'] ?? null)) {
-            return ['Kategori Eşleme Bekliyor', 'amber'];
+            return ['Kategori Eşleşmemiş', 'blue'];
         }
 
         if ((float) ($product['purchase_price'] ?? 0) <= 0) {
@@ -2398,4 +2398,3 @@ class SuperAdminProductDataHubController extends Controller
         return ['Hazır', 'green'];
     }
 }
-

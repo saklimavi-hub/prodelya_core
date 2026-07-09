@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 namespace App\Services\ProductDataHub;
 
@@ -84,39 +84,39 @@ class ProductHubLiveProductInfoService
         $productInactiveWarning = null;
 
         if (!$supplierAccess['active']) {
-            $warnings[] = 'Abone Firma bu tedarikciye erisemiyor.';
+            $warnings[] = 'Abone Firma bu tedarikçiye erişemiyor.';
         }
 
         if (!$tenantCatalogActive) {
             $productInactiveWarning = match ($tenantCatalogStatus) {
-                'hidden' => 'Bu urun su anda satis listesinde kapali.',
-                default => 'Bu urun su anda aktif degil.',
+                'hidden' => 'Ürün satış listesinde kapalı.',
+                default => 'Bu ürün şu anda aktif değil.',
             };
             $warnings[] = $productInactiveWarning;
         }
 
         if (!$quoteVisible) {
-            $warnings[] = 'Bu urun teklifte kullanima kapali.';
+            $warnings[] = 'Ürün teklifte kullanıma kapalı.';
         }
 
         if (!$selectionSellable) {
-            $warnings[] = 'Bu urun secilebilir satis satiri olarak hazir degil.';
+            $warnings[] = 'Ürün seçilebilir satış satırı olarak hazır değil.';
         }
 
         if (($truth['category_status'] ?? null) === 'category_waiting' || $tenantCatalogStatus === 'category_pending') {
-            $warnings[] = 'Kategori eÅŸleÅŸmemiÅŸ.';
-            $warnings[] = 'Genel kategori henÃ¼z baÄŸlanmadÄ±.';
+            $warnings[] = 'Kategori eşleşmemiş.';
+            $warnings[] = 'Genel kategori henüz bağlanmadı.';
         }
 
         if ($currentPriceValue === null) {
-            $warnings[] = 'Bu urunun guncel fiyat bilgisi eksik.';
+            $warnings[] = 'Bu ürünün güncel fiyat bilgisi eksik.';
         }
 
         if ($currentStock === null) {
-            $stockWarning = 'Stok bilgisi su anda okunamiyor.';
+            $stockWarning = 'Stok bilgisi şu anda okunamıyor.';
             $warnings[] = $stockWarning;
         } elseif ($currentStock <= 0) {
-            $stockWarning = 'Bu urun icin satista kullanilabilir stok gorunmuyor.';
+            $stockWarning = 'Bu ürün için satışta kullanılabilir stok görünmüyor.';
             $warnings[] = $stockWarning;
         }
 
@@ -126,11 +126,11 @@ class ProductHubLiveProductInfoService
         $stockChanged = $this->valuesDiffer($snapshotStock, $currentStock);
 
         if ($priceChanged) {
-            $warnings[] = 'Bu urunun guncel fiyati teklif satirindaki fiyattan farkli.';
+            $warnings[] = 'Bu ürünün güncel fiyatı teklif satırındaki fiyattan farklı.';
         }
 
         if ($stockChanged) {
-            $warnings[] = 'Stok bilgisi degismis olabilir.';
+            $warnings[] = 'Stok bilgisi değişmiş olabilir.';
         }
 
         $warnings = array_values(array_unique(array_filter($warnings)));
@@ -181,11 +181,11 @@ class ProductHubLiveProductInfoService
                 'status' => 422,
                 'body' => [
                     'ok' => false,
-                    'public_safe_message' => 'Urun secimi eksik.',
-                    'warnings' => ['En az bir urun veya varyant kimligi gonderilmelidir.'],
+                    'public_safe_message' => 'Ürün seçimi eksik.',
+                    'warnings' => ['En az bir ürün veya varyant kimliği gönderilmelidir.'],
                     'errors' => [
-                        'tenant_catalog_product_id' => ['En az bir urun veya varyant kimligi gonderilmelidir.'],
-                        'tenant_catalog_product_variant_id' => ['En az bir urun veya varyant kimligi gonderilmelidir.'],
+                        'tenant_catalog_product_id' => ['En az bir ürün veya varyant kimliği gönderilmelidir.'],
+                        'tenant_catalog_product_variant_id' => ['En az bir ürün veya varyant kimliği gönderilmelidir.'],
                     ],
                 ],
             ];
@@ -197,10 +197,10 @@ class ProductHubLiveProductInfoService
                     'status' => 422,
                     'body' => [
                         'ok' => false,
-                        'public_safe_message' => 'Gonderilen urun bilgisi dogrulanamadi.',
-                        'warnings' => ['Kimlik alanlari sayisal olmalidir.'],
+                        'public_safe_message' => 'Gönderilen ürün bilgisi doğrulanamadı.',
+                        'warnings' => ['Kimlik alanları sayısal olmalıdır.'],
                         'errors' => [
-                            $field => ['Kimlik alani sayisal olmalidir.'],
+                            $field => ['Kimlik alanı sayısal olmalıdır.'],
                         ],
                     ],
                 ];
@@ -213,10 +213,10 @@ class ProductHubLiveProductInfoService
                     'status' => 422,
                     'body' => [
                         'ok' => false,
-                        'public_safe_message' => 'Gonderilen karsilastirma bilgisi dogrulanamadi.',
-                        'warnings' => ['Snapshot alanlari sayisal olmalidir.'],
+                        'public_safe_message' => 'Gönderilen karşılaştırma bilgisi doğrulanamadı.',
+                        'warnings' => ['Snapshot alanları sayısal olmalıdır.'],
                         'errors' => [
-                            $field => ['Snapshot alani sayisal olmalidir.'],
+                            $field => ['Snapshot alanı sayısal olmalıdır.'],
                         ],
                     ],
                 ];
@@ -232,8 +232,8 @@ class ProductHubLiveProductInfoService
             'status' => 404,
             'body' => [
                 'ok' => false,
-                'public_safe_message' => 'Bu urun bilgisi guvenli sekilde okunamadi.',
-                'warnings' => ['Kayit bulunamadi veya erisim izni yok.'],
+                'public_safe_message' => 'Bu ürün bilgisi güvenli şekilde okunamadı.',
+                'warnings' => ['Kayıt bulunamadı veya erişim izni yok.'],
             ],
         ];
     }
@@ -342,21 +342,21 @@ class ProductHubLiveProductInfoService
     private function resolvePublicMessage(bool $isSellable, array $warnings): string
     {
         if ($isSellable && ($warnings === [] || $this->containsOnlyCategoryInfoWarnings($warnings))) {
-            return 'Urun guncel ve teklif icin uygun.';
+            return 'Ürün güncel ve teklif için uygun.';
         }
 
         if ($isSellable) {
-            return 'Urun secilebilir, ancak guncel durum icin uyari kontrol edilmelidir.';
+            return 'Ürün seçilebilir, ancak güncel durum için uyarı kontrol edilmelidir.';
         }
 
-        return 'Bu urun su anda teklif icin uygun degil.';
+        return 'Bu ürün şu anda teklif için uygun değil.';
     }
 
     private function containsOnlyCategoryInfoWarnings(array $warnings): bool
     {
         $categoryWarnings = [
-            'Kategori eÅŸleÅŸmemiÅŸ.',
-            'Genel kategori henÃ¼z baÄŸlanmadÄ±.',
+            'Kategori eşleşmemiş.',
+            'Genel kategori henüz bağlanmadı.',
         ];
 
         $filtered = array_values(array_filter($warnings));
@@ -425,4 +425,3 @@ class ProductHubLiveProductInfoService
         return is_numeric($value) ? (float) $value : null;
     }
 }
-

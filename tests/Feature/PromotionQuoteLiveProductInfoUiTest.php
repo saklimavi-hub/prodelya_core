@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 namespace Tests\Feature;
 
@@ -41,19 +41,19 @@ class PromotionQuoteLiveProductInfoUiTest extends TestCase
             ->get(route('admin.promotion-quotes.create'));
 
         $response->assertOk();
-        $response->assertSee('CanlÄ± ÃœrÃ¼n Bilgisi');
-        $response->assertSee('GÃ¼ncel fiyat');
-        $response->assertSee('GÃ¼ncel stok');
-        $response->assertSee('Son gÃ¼ncelleme');
-        $response->assertSee('SatÄ±ÅŸ durumu');
+        $response->assertSee('Canlı Ürün Bilgisi');
+        $response->assertSee('Güncel fiyat');
+        $response->assertSee('Güncel stok');
+        $response->assertSee('Son güncelleme');
+        $response->assertSee('Satış durumu');
         $response->assertSee('pd-product-live-info__compact-grid', false);
         $response->assertSee('pd-product-live-info__metric', false);
         $response->assertSee('pd-product-live-info__header', false);
         $response->assertSee('pd-product-live-info__status', false);
-        $response->assertSee('UyarÄ±lar');
-        $response->assertSee('ÃœrÃ¼n seÃ§ildiÄŸinde canlÄ± bilgi burada gÃ¶rÃ¼nÃ¼r.');
-        $response->assertSee('CanlÄ± bilgi kontrol ediliyor...');
-        $response->assertSee('CanlÄ± Ã¼rÃ¼n bilgisi ÅŸu anda alÄ±namadÄ±.');
+        $response->assertSee('Uyarılar');
+        $response->assertSee('Ürün seçildiğinde canlı bilgi burada görünür.');
+        $response->assertSee('Canlı bilgi kontrol ediliyor...');
+        $response->assertSee('Canlı ürün bilgisi şu anda alınamadı.');
         $response->assertSee('data-live-product-info-box', false);
         $response->assertSee('data-live-product-info-endpoint=', false);
         $response->assertSee('data-tenant-catalog-product-id=', false);
@@ -87,10 +87,10 @@ class PromotionQuoteLiveProductInfoUiTest extends TestCase
             ->get(route('admin.promotion-quotes.edit', $fixture['quote']));
 
         $response->assertOk();
-        $response->assertSee('CanlÄ± ÃœrÃ¼n Bilgisi');
-        $response->assertSee('GÃ¼ncel fiyat');
-        $response->assertSee('GÃ¼ncel stok');
-        $response->assertSee('SatÄ±ÅŸ durumu');
+        $response->assertSee('Canlı Ürün Bilgisi');
+        $response->assertSee('Güncel fiyat');
+        $response->assertSee('Güncel stok');
+        $response->assertSee('Satış durumu');
         $response->assertSee('data-live-product-info-box', false);
         $response->assertSee('"quote_item_id":' . $fixture['item']->id, false);
         $response->assertSee('"tenant_catalog_product_id":' . $fixture['catalog_product']->id, false);
@@ -136,9 +136,9 @@ class PromotionQuoteLiveProductInfoUiTest extends TestCase
             'supplier_id' => $supplier->id,
             'standard_product_code' => 'UI-LIVE-0506',
             'sku' => 'UI-LIVE-0506',
-            'product_name' => 'UI CanlÄ± Kalem',
-            'base_product_name' => 'UI CanlÄ± Kalem',
-            'name' => 'UI CanlÄ± Kalem',
+            'product_name' => 'UI Canlı Kalem',
+            'base_product_name' => 'UI Canlı Kalem',
+            'name' => 'UI Canlı Kalem',
             'slug' => 'ui-canli-kalem-' . uniqid(),
             'standard_category_id' => $category->id,
             'product_family' => 'promotion',
@@ -189,9 +189,9 @@ class PromotionQuoteLiveProductInfoUiTest extends TestCase
             'tenant_account_id' => $tenant->id,
             'standard_product_id' => $standardProduct->id,
             'tenant_sku' => 'TEN-UI-LIVE-' . strtoupper(substr(uniqid(), -6)),
-            'name' => 'UI CanlÄ± Kalem',
+            'name' => 'UI Canlı Kalem',
             'product_code' => 'UI-LIVE-0506',
-            'product_name' => 'UI CanlÄ± Kalem',
+            'product_name' => 'UI Canlı Kalem',
             'slug' => 'ui-live-tenant-' . uniqid(),
             'standard_category_id' => $category->id,
             'product_family' => 'promotion',
@@ -291,7 +291,7 @@ class PromotionQuoteLiveProductInfoUiTest extends TestCase
             'status' => 'draft',
             'catalog_source' => 'supplier_projection',
             'product_snapshot' => [
-                'product_name' => 'UI CanlÄ± Kalem',
+                'product_name' => 'UI Canlı Kalem',
                 'product_code' => 'UI-LIVE-0506-MV',
                 'tenant_catalog_product_id' => $catalogProduct->id,
                 'tenant_catalog_product_variant_id' => $catalogVariant->id,
@@ -312,13 +312,13 @@ class PromotionQuoteLiveProductInfoUiTest extends TestCase
             'tenant_account_id' => $tenant->id,
             'order_id' => $quote->id,
             'order_item_id' => $item->id,
-            'print_type' => 'UV BaskÄ±',
-            'print_option' => 'Tek taraf baskÄ±',
-            'production_type' => 'Ä°Ã§ Ã¼retim',
+            'print_type' => 'UV Baskı',
+            'print_option' => 'Tek taraf baskı',
+            'production_type' => 'İç üretim',
             'print_quantity' => 100,
             'print_unit_price' => 0,
             'print_total' => 0,
-            'note' => 'UI test baskÄ±',
+            'note' => 'UI test baskı',
             'status' => 'draft',
         ]);
 
@@ -330,4 +330,3 @@ class PromotionQuoteLiveProductInfoUiTest extends TestCase
         ];
     }
 }
-

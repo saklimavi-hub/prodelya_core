@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 namespace App\Http\Controllers\Admin;
 
@@ -33,4 +33,3 @@ class ProductHubLiveProductInfoController extends Controller
         return response()->json($result['body'], $result['status']);
     }
 }
-
