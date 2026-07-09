@@ -281,6 +281,125 @@
         background: #ffffff;
     }
 
+    .pd-product-live-info {
+        margin-top: 10px;
+        border: 1px solid #dbe3f0;
+        border-radius: 10px;
+        background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+        padding: 10px 12px;
+        display: grid;
+        gap: 8px;
+        font-family: Arial, Helvetica, sans-serif;
+    }
+
+    .pd-product-live-info__title {
+        font-size: 13px;
+        font-weight: 700;
+        color: #0f172a;
+    }
+
+    .pd-product-live-info__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+    }
+
+    .pd-product-live-info__status {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+        color: #475569;
+    }
+
+    .pd-product-live-info__grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px 12px;
+    }
+
+    .pd-product-live-info__compact-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+    }
+
+    .pd-product-live-info__metric {
+        display: grid;
+        gap: 2px;
+        padding: 7px 8px;
+        border: 1px solid #dbe3f0;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.78);
+    }
+
+    .pd-product-live-info__metric strong {
+        font-size: 10px;
+        font-weight: 700;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+    }
+
+    .pd-product-live-info__metric span {
+        font-size: 12px;
+        font-weight: 600;
+        color: #0f172a;
+    }
+
+    .pd-product-live-info__line {
+        display: grid;
+        gap: 2px;
+        font-size: 12px;
+        color: #475569;
+    }
+
+    .pd-product-live-info__line strong {
+        font-size: 11px;
+        font-weight: 700;
+        color: #334155;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+    }
+
+    .pd-product-live-info__message {
+        font-size: 12px;
+        line-height: 1.4;
+        color: #334155;
+    }
+
+    .pd-product-live-info--ok {
+        border-color: #bfdbfe;
+        background: linear-gradient(180deg, #eff6ff 0%, #ffffff 100%);
+    }
+
+    .pd-product-live-info--warning {
+        border-color: #fcd34d;
+        background: linear-gradient(180deg, #fff7ed 0%, #ffffff 100%);
+    }
+
+    .pd-product-live-info--error {
+        border-color: #fecaca;
+        background: linear-gradient(180deg, #fef2f2 0%, #ffffff 100%);
+    }
+
+    .pd-product-live-info__warnings {
+        display: grid;
+        gap: 4px;
+    }
+
+    .pd-product-live-info__chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+    }
+
+    .pd-product-live-info__empty {
+        font-size: 12px;
+        color: #64748b;
+    }
+
     .pd-quote-line-subtitle-rich {
         display: flex;
         flex-wrap: wrap;
@@ -545,6 +664,10 @@
         }
 
         .pd-customer-selected-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .pd-product-live-info__grid {
             grid-template-columns: 1fr;
         }
 
@@ -889,6 +1012,7 @@
         'invoiceStatus' => $invoiceStatusValue,
         'defaultPrintVatRate' => 20,
         'printDebugEnabled' => $quotePrintDebug,
+        'liveProductInfoUrl' => route('admin.product-hub.live-product-info'),
     ];
 @endphp
 
@@ -899,6 +1023,7 @@ let activeItemIndex = 0;
 let expandAllItems = false;
 const catalogSearchTimers = new Map();
 const catalogEntryStore = new Map();
+const liveProductInfoState = new Map();
 let catalogEntrySequence = 0;
 const tenantPrintSettings = Array.isArray(quoteWorkspace.tenantPrintSettings) ? quoteWorkspace.tenantPrintSettings : [];
 const tenantPrintSettingsById = new Map(tenantPrintSettings.map((setting) => [String(setting.id), setting]));
@@ -956,6 +1081,45 @@ function formatStock(value) {
         : '—';
 }
 
+function formatLiveInfoStock(value, fallbackLabel = null) {
+    if (fallbackLabel) {
+        return fallbackLabel;
+    }
+
+    if (value === null || value === undefined || value === '') {
+        return '—';
+    }
+
+    const number = Number(value);
+    return Number.isFinite(number)
+        ? number.toLocaleString('tr-TR', {
+            minimumFractionDigits: Number.isInteger(number) ? 0 : 2,
+            maximumFractionDigits: Number.isInteger(number) ? 0 : 2,
+        })
+        : '—';
+}
+
+function formatLiveInfoTimestamp(value) {
+    if (!value) {
+        return '—';
+    }
+
+    const [datePart = '', timePart = ''] = String(value).split(' ');
+    const today = new Date();
+    const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+    if (datePart === todayKey) {
+        return timePart ? `Bugün ${timePart}` : 'Bugün';
+    }
+
+    const [year = '', month = '', day = ''] = datePart.split('-');
+    if (!year || !month || !day) {
+        return value;
+    }
+
+    return `${day}.${month}.${year}${timePart ? ` ${timePart}` : ''}`;
+}
+
 function parseJsonValue(value) {
     if (!value) return null;
     if (typeof value === 'object') return value;
@@ -989,6 +1153,323 @@ function safeArray(value) {
     }
 
     return [value];
+}
+
+function itemHasLiveProductSelection(item = {}) {
+    return !!(
+        item.tenant_catalog_product_id
+        || item.tenant_catalog_product_variant_id
+        || item.selected_catalog_identity?.tenant_catalog_product_id
+        || item.selected_catalog_identity?.tenant_catalog_product_variant_id
+    );
+}
+
+function resolveLiveProductSnapshotPrice(item = {}) {
+    const priceSnapshot = safeObject(item.price_snapshot);
+    const productSnapshot = safeObject(item.product_snapshot);
+
+    return firstFilledValue([
+        priceSnapshot.list_price,
+        priceSnapshot.display_price,
+        productSnapshot.list_price,
+        item.list_price,
+        item.unit_price,
+    ], '');
+}
+
+function resolveLiveProductSnapshotStock(item = {}) {
+    const stockSnapshot = safeObject(item.stock_snapshot);
+    const productSnapshot = safeObject(item.product_snapshot);
+
+    return firstFilledValue([
+        stockSnapshot.visible_stock_quantity,
+        stockSnapshot.stock_quantity,
+        stockSnapshot.total_stock_quantity,
+        productSnapshot.visible_stock_quantity,
+    ], '');
+}
+
+function buildLiveProductInfoUrl(item = {}) {
+    const productId = firstFilledValue([
+        item.tenant_catalog_product_id,
+        item.selected_catalog_identity?.tenant_catalog_product_id,
+        item.product_snapshot?.tenant_catalog_product_id,
+    ], '');
+    const variantId = firstFilledValue([
+        item.tenant_catalog_product_variant_id,
+        item.selected_catalog_identity?.tenant_catalog_product_variant_id,
+        item.product_snapshot?.tenant_catalog_product_variant_id,
+    ], '');
+
+    if (!productId && !variantId) {
+        return null;
+    }
+
+    const params = new URLSearchParams();
+
+    if (productId) {
+        params.set('tenant_catalog_product_id', productId);
+    }
+
+    if (variantId) {
+        params.set('tenant_catalog_product_variant_id', variantId);
+    }
+
+    if (item.quote_item_id) {
+        params.set('quote_item_id', item.quote_item_id);
+    }
+
+    const snapshotPrice = resolveLiveProductSnapshotPrice(item);
+    const snapshotStock = resolveLiveProductSnapshotStock(item);
+
+    if (snapshotPrice !== '') {
+        params.set('snapshot_price', snapshotPrice);
+    }
+
+    if (snapshotStock !== '') {
+        params.set('snapshot_stock', snapshotStock);
+    }
+
+    return `${quoteWorkspace.liveProductInfoUrl}?${params.toString()}`;
+}
+
+function liveProductInfoRequestKey(item = {}) {
+    return buildLiveProductInfoUrl(item) || '';
+}
+
+function findItemElementByStableKey(stableKey = '') {
+    return Array.from(document.querySelectorAll('.pd-quote-item'))
+        .find((element) => String(element.dataset.stableKey || '') === String(stableKey || '')) || null;
+}
+
+function findCollectedItemByStableKey(stableKey = '') {
+    return collectItems().find((item) => String(item._stable_key || '') === String(stableKey || '')) || null;
+}
+
+function setLiveProductInfoState(stableKey, state) {
+    if (!stableKey) {
+        return;
+    }
+
+    liveProductInfoState.set(String(stableKey), state);
+}
+
+function getLiveProductInfoState(stableKey) {
+    return liveProductInfoState.get(String(stableKey || '')) || null;
+}
+
+function buildLiveProductInfoWarnings(payload = {}) {
+    const explicitWarnings = Array.isArray(payload.warnings) ? payload.warnings.filter(Boolean) : [];
+    const chips = [
+        payload.price_changed_since_snapshot ? 'Fiyat farkı var' : '',
+        payload.stock_changed_since_snapshot ? 'Stok değişmiş olabilir' : '',
+        payload.stock_warning || '',
+        payload.product_inactive_warning || '',
+        ...explicitWarnings,
+    ].filter(Boolean);
+
+    return Array.from(new Set(chips));
+}
+
+function liveProductInfoStatusLabel(payload = {}) {
+    if (payload.ok) {
+        return 'Teklife uygun';
+    }
+
+    if (payload.is_sellable) {
+        return 'Kontrol gerekli';
+    }
+
+    return 'Uygun değil';
+}
+
+function liveProductInfoTone(payload = {}, state = null) {
+    if (state?.status === 'error') {
+        return 'pd-product-live-info--error';
+    }
+
+    if (state?.status === 'loading') {
+        return '';
+    }
+
+    if (payload.ok) {
+        return 'pd-product-live-info--ok';
+    }
+
+    return 'pd-product-live-info--warning';
+}
+
+function renderLiveProductInfoPanel(item = {}) {
+    const stableKey = item._stable_key || '';
+    const state = getLiveProductInfoState(stableKey);
+    const hasSelection = itemHasLiveProductSelection(item);
+    const safeState = state?.requestKey === liveProductInfoRequestKey(item) ? state : null;
+    const payload = safeObject(safeState?.payload);
+    const warnings = buildLiveProductInfoWarnings(payload);
+    const toneClass = liveProductInfoTone(payload, safeState);
+    const productId = firstFilledValue([
+        item.tenant_catalog_product_id,
+        item.selected_catalog_identity?.tenant_catalog_product_id,
+    ], '');
+    const variantId = firstFilledValue([
+        item.tenant_catalog_product_variant_id,
+        item.selected_catalog_identity?.tenant_catalog_product_variant_id,
+    ], '');
+    const quoteItemId = item.quote_item_id || '';
+    const snapshotPrice = resolveLiveProductSnapshotPrice(item);
+    const snapshotStock = resolveLiveProductSnapshotStock(item);
+
+    let bodyHtml = `
+        <div class="pd-product-live-info__message">Canlı bilgi kontrol ediliyor...</div>
+    `;
+
+    if (!hasSelection) {
+        bodyHtml = `
+            <div class="pd-product-live-info__empty">Ürün seçildiğinde canlı bilgi burada görünür.</div>
+        `;
+    } else if (safeState?.status === 'error') {
+        bodyHtml = `
+            <div class="pd-product-live-info__message">Canlı ürün bilgisi şu anda alınamadı.</div>
+        `;
+    } else if (safeState?.status === 'success' && Object.keys(payload).length) {
+        bodyHtml = `
+            <div class="pd-product-live-info__header">
+                <div class="pd-product-live-info__message">${escapeHtml(payload.public_safe_message || 'Canlı ürün bilgisi alındı.')}</div>
+                <div class="pd-product-live-info__status">${escapeHtml(liveProductInfoStatusLabel(payload))}</div>
+            </div>
+            <div class="pd-product-live-info__compact-grid">
+                <div class="pd-product-live-info__metric">
+                    <strong>Güncel fiyat</strong>
+                    <span>${escapeHtml(payload.current_price || '—')}</span>
+                </div>
+                <div class="pd-product-live-info__metric">
+                    <strong>Güncel stok</strong>
+                    <span>${escapeHtml(formatLiveInfoStock(payload.current_stock, payload.stock_label || null))}</span>
+                </div>
+                <div class="pd-product-live-info__metric">
+                    <strong>Son güncelleme</strong>
+                    <span>${escapeHtml(formatLiveInfoTimestamp(payload.last_synced_at || ''))}</span>
+                </div>
+                <div class="pd-product-live-info__metric">
+                    <strong>Satış durumu</strong>
+                    <span>${escapeHtml(liveProductInfoStatusLabel(payload))}</span>
+                </div>
+            </div>
+            <div class="pd-product-live-info__warnings">
+                <div class="pd-product-live-info__line">
+                    <strong>Uyarılar</strong>
+                </div>
+                <div class="pd-product-live-info__chips">
+                    ${warnings.map((warning) => `<span class="pd-chip">${escapeHtml(warning)}</span>`).join('')}
+                    ${warnings.length === 0 ? '<span class="pd-chip">Uyarı yok</span>' : ''}
+                </div>
+            </div>
+        `;
+    }
+
+    return `
+        <div
+            class="pd-product-live-info pd-card ${toneClass}"
+            data-live-product-info-box
+            data-live-product-info-endpoint="${escapeHtml(quoteWorkspace.liveProductInfoUrl || '')}"
+            data-tenant-catalog-product-id="${escapeHtml(productId)}"
+            data-tenant-catalog-product-variant-id="${escapeHtml(variantId)}"
+            data-quote-item-id="${escapeHtml(quoteItemId)}"
+            data-snapshot-price="${escapeHtml(snapshotPrice)}"
+            data-snapshot-stock="${escapeHtml(snapshotStock)}"
+        >
+            <div class="pd-product-live-info__title">Canlı Ürün Bilgisi</div>
+            ${bodyHtml}
+        </div>
+    `;
+}
+
+function refreshLiveProductInfoPanel(stableKey = '') {
+    const itemElement = findItemElementByStableKey(stableKey);
+    const item = findCollectedItemByStableKey(stableKey);
+    const currentPanel = itemElement?.querySelector('[data-live-product-info-box]');
+
+    if (!itemElement || !item || !currentPanel) {
+        return;
+    }
+
+    currentPanel.outerHTML = renderLiveProductInfoPanel(item);
+}
+
+async function ensureLiveProductInfo(item = {}) {
+    const stableKey = item._stable_key || '';
+    const requestKey = liveProductInfoRequestKey(item);
+
+    if (!stableKey) {
+        return;
+    }
+
+    if (!requestKey) {
+        setLiveProductInfoState(stableKey, {
+            status: 'idle',
+            requestKey: '',
+            payload: null,
+            error: null,
+        });
+        refreshLiveProductInfoPanel(stableKey);
+        return;
+    }
+
+    const currentState = getLiveProductInfoState(stableKey);
+    if (currentState?.requestKey === requestKey && ['loading', 'success', 'error'].includes(currentState.status)) {
+        refreshLiveProductInfoPanel(stableKey);
+        return;
+    }
+
+    setLiveProductInfoState(stableKey, {
+        status: 'loading',
+        requestKey,
+        payload: null,
+        error: null,
+    });
+    refreshLiveProductInfoPanel(stableKey);
+
+    try {
+        const response = await fetch(requestKey, {
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json',
+            },
+        });
+
+        if (!response.ok) {
+            throw new Error('live-product-info-failed');
+        }
+
+        const payload = await response.json();
+        const latestState = getLiveProductInfoState(stableKey);
+
+        if (!latestState || latestState.requestKey !== requestKey) {
+            return;
+        }
+
+        setLiveProductInfoState(stableKey, {
+            status: 'success',
+            requestKey,
+            payload,
+            error: null,
+        });
+    } catch (error) {
+        const latestState = getLiveProductInfoState(stableKey);
+
+        if (!latestState || latestState.requestKey !== requestKey) {
+            return;
+        }
+
+        setLiveProductInfoState(stableKey, {
+            status: 'error',
+            requestKey,
+            payload: null,
+            error: error?.message || 'unknown-error',
+        });
+    }
+
+    refreshLiveProductInfoPanel(stableKey);
 }
 
 function firstFilledValue(values, fallback = '') {
@@ -1478,6 +1959,7 @@ function defaultItem() {
         supplier_id: '',
         supplier_source_id: '',
         catalog_source: 'tenant_catalog',
+        quote_item_id: '',
         product_snapshot: null,
         price_snapshot: null,
         stock_snapshot: null,
@@ -1520,6 +2002,7 @@ function normalizeItem(item = {}, index = 0) {
         discount_rate: formatInputNumber(item.discount_rate ?? 0),
         unit_price: formatInputNumber(item.unit_price ?? ''),
         line_total: formatInputNumber(item.line_total ?? ''),
+        quote_item_id: item.quote_item_id || '',
         manual_unit_price: item.manual_unit_price === true || item.manual_unit_price === 1 || item.manual_unit_price === '1' || !!priceSnapshot?.manual_unit_price,
         calculated_unit_price: formatInputNumber(item.calculated_unit_price ?? priceSnapshot?.calculated_unit_price ?? ''),
         warning_badges: [...new Set(warningBadges)],
@@ -2623,6 +3106,7 @@ function renderItem(item) {
                             </div>
                         </div>
                     </div>
+                    ${renderLiveProductInfoPanel(item)}
                     ${item._row_error ? `<div class="mt-2 text-xs font-medium text-red-700">${escapeHtml(item._row_error)}</div>` : ''}
                 </div>
                 <div><input type="number" name="items[${item._index}][quantity]" value="${escapeHtml(formatInputNumber(item.quantity || ''))}" step="0.01" min="0.01" class="pd-compact-input" placeholder="1.00"></div>
@@ -2723,6 +3207,9 @@ function mountItems(items) {
         const debugItem = ensureQuotePrintDebugItem(itemIndex, item._stable_key || '');
         debugItem.lastDomCount = countDomPrintRows(itemIndex);
     });
+    collectItems().forEach((item) => {
+        ensureLiveProductInfo(item);
+    });
     recalculateTotals();
     refreshAllPrintCurrencyWarnings();
     refreshCustomerSummary();
@@ -2752,6 +3239,7 @@ function collectItems() {
             calculated_unit_price: element.querySelector('input[data-calculated-unit-price]')?.value || '',
             description: element.querySelector('input[name$="[description]"]')?.value || '',
             has_print: element.querySelector('.quote-has-print')?.checked || false,
+            quote_item_id: element.querySelector('[data-live-product-info-box]')?.dataset.quoteItemId || '',
             tenant_catalog_product_id: element.querySelector('input[name$="[tenant_catalog_product_id]"]')?.value || '',
             tenant_catalog_product_variant_id: element.querySelector('input[name$="[tenant_catalog_product_variant_id]"]')?.value || '',
             standard_product_id: element.querySelector('input[name$="[standard_product_id]"]')?.value || '',
@@ -3049,6 +3537,7 @@ function updateItemSummary(itemElement, entry) {
     target.standard_product_variant_id = normalizedEntry.standard_product_variant_id;
     target.supplier_id = sourceSummary[0]?.supplier_id || target.supplier_id || '';
     target.supplier_source_id = sourceSummary[0]?.supplier_source_id || target.supplier_source_id || '';
+    target.quote_item_id = '';
     target.selected_catalog_identity = normalizedEntry.selected_catalog_identity;
     target._row_error = '';
     clearClientFormError();

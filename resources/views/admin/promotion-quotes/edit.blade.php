@@ -6,6 +6,9 @@
 @section('page_subtitle', 'Teklif girişini kompakt formda güncelleyin. Siparişe çevirme kararı teklif detay ekranında onay modalı ile verilir.')
 @section('page_actions')
     <a href="{{ route('admin.promotion-quotes.show', $quote) }}" class="pd-btn pd-btn-light">Teklifi Gör</a>
+    @if($revisionCompareUrl)
+        <a href="{{ $revisionCompareUrl }}" class="pd-btn pd-btn-light" data-testid="quote-revision-compare-link">Revizyon Karşılaştır</a>
+    @endif
     <a href="{{ route('admin.promotion-quotes.index') }}" class="pd-btn pd-btn-light">Listeye Dön</a>
 @endsection
 
@@ -13,6 +16,7 @@
     @php
         $initialItems = $quote->items->map(function ($item) {
             return [
+                'quote_item_id' => $item->id,
                 'product_name' => $item->product_name,
                 'product_code' => $item->product_code,
                 'quantity' => number_format((float) $item->quantity, 2, '.', ''),
@@ -69,6 +73,21 @@
             ];
         })->values()->all();
     @endphp
+
+    @if($sourceOrderContext['visible'])
+        <div class="pd-note pd-note-amber mb-4" data-testid="quote-copy-source-edit-note">
+            <strong>{{ $sourceOrderContext['badge'] }}</strong>
+            @if($sourceOrderContext['url'])
+                · <a href="{{ $sourceOrderContext['url'] }}">{{ $sourceOrderContext['source_label'] }}</a>
+            @else
+                · {{ $sourceOrderContext['source_label'] }}
+            @endif
+            <br>
+            {{ $sourceOrderContext['warning'] }}
+            <br>
+            {{ $sourceOrderContext['general_warning'] }}
+        </div>
+    @endif
 
     <div class="pd-note pd-note-amber mb-4">
         Bu teklifte kullanılan katalog bilgileri teklif oluşturulduktan sonra güncellenmiş olabilir. Local stok, tedarikçi stok ve warning badge’lerini kaydetmeden önce tekrar kontrol etmeniz önerilir.

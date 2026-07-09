@@ -9,6 +9,7 @@
 @section('content')
     @php
         $initialItems = collect(old('items', [[]]))->map(function ($item) {
+            $item['quote_item_id'] = $item['quote_item_id'] ?? null;
             $item['product_snapshot'] = is_string($item['product_snapshot'] ?? null) ? json_decode($item['product_snapshot'], true) : ($item['product_snapshot'] ?? null);
             $item['price_snapshot'] = is_string($item['price_snapshot'] ?? null) ? json_decode($item['price_snapshot'], true) : ($item['price_snapshot'] ?? null);
             $item['stock_snapshot'] = is_string($item['stock_snapshot'] ?? null) ? json_decode($item['stock_snapshot'], true) : ($item['stock_snapshot'] ?? null);
