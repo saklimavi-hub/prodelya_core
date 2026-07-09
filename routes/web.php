@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\TenantRootController;
@@ -15,6 +15,7 @@ use App\Http\Controllers\PublicWorkFormAttachmentController;
 use App\Http\Controllers\PublicWorkFormTrackingController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\CatalogSearchController;
+use App\Http\Controllers\Admin\ProductHubLiveProductInfoController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\TenantPackageOverviewController;
 use App\Http\Controllers\Admin\TenantUpgradeRequestController;
@@ -395,7 +396,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:web', 'resolve.tenant'
     Route::get('/catalog/visibility', [TenantCatalogController::class, 'visibility'])->name('catalog.visibility');
     Route::post('/catalog/visibility/bulk-update', [TenantCatalogController::class, 'bulkUpdateVisibility'])->name('catalog.visibility.bulk-update');
     Route::get('/catalog/warnings', [TenantCatalogController::class, 'warnings'])->name('catalog.warnings');
-    Route::get('/catalog/search', [CatalogSearchController::class, 'search'])->name('catalog.search');
+    
+    Route::get('/product-hub/live-product-info', [ProductHubLiveProductInfoController::class, 'show'])->name('product-hub.live-product-info');
     Route::post('/catalog/project', [TenantCatalogController::class, 'project'])->name('catalog.project');
     Route::post('/catalog/{product}/toggle-quote-visibility', [TenantCatalogController::class, 'toggleQuoteVisibility'])->name('catalog.toggle-quote-visibility')->whereNumber('product');
     Route::post('/catalog/{product}/local-stock', [TenantCatalogController::class, 'updateLocalStock'])->name('catalog.local-stock')->whereNumber('product');
@@ -679,3 +681,4 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:web', 'resolve.tenant'
         });
     });
 });
+
