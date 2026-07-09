@@ -249,6 +249,26 @@ class Order extends Model
         return $this->belongsTo(User::class, 'copied_by_user_id');
     }
 
+    public function revisions(): HasMany
+    {
+        return $this->hasMany(OrderRevision::class, 'order_id');
+    }
+
+    public function latestRevision(): HasOne
+    {
+        return $this->hasOne(OrderRevision::class, 'order_id')->latestOfMany();
+    }
+
+    public function orderRevision(): HasOne
+    {
+        return $this->hasOne(OrderRevision::class, 'revision_quote_id');
+    }
+
+    public function revisionRecord(): HasOne
+    {
+        return $this->orderRevision();
+    }
+
     /**
      * Scope to get only quotes
      */

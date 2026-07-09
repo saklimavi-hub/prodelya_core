@@ -22,6 +22,9 @@ use App\Models\TenantCatalogProduct;
 use App\Models\TenantCatalogProductVariant;
 use App\Services\ModuleFeatureCatalogService;
 use App\Services\CurrentAccountSyncService;
+use App\Services\OrderRevisionApplyService;
+use App\Services\OrderRevisionComparisonService;
+use App\Services\OrderRevisionRecordService;
 use App\Services\ProductDataHub\ProductHubSellableTruthService;
 use App\Services\ProductDataHub\SupplierWarningLabelService;
 use App\Services\PromotionQuotePdfService;
@@ -39,12 +42,14 @@ use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use App\Services\UsageLimitGuardService;
+use DomainException;
 use Symfony\Component\HttpFoundation\Response;
 
 class PromotionQuoteController extends Controller
@@ -62,6 +67,7 @@ class PromotionQuoteController extends Controller
         protected TenantDeliveryTypeService $tenantDeliveryTypeService,
         protected SupplierWarningLabelService $supplierWarningLabelService,
         protected ProductHubSellableTruthService $sellableTruthService,
+        protected OrderRevisionComparisonService $orderRevisionComparisonService,
         protected PrintSetupUnitDistributionService $printSetupUnitDistributionService,
         protected TenantPrintOptionService $tenantPrintOptionService,
     ) {}
@@ -289,6 +295,43 @@ class PromotionQuoteController extends Controller
     private function canManageQuoteApprovals(int $tenantId): bool
     {
         return Auth::user()?->hasPermissionInTenant('approve_quotes', $tenantId) ?? false;
+    }
+
+    private function buildSourceOrderContext(Order $quote, TenantAccount $tenant): array
+    {
+        $sourceOrder = $quote->sourceOrder;
+        $label = $quote->copyTypeLabel();
+
+        if (! $sourceOrder || ! $label) {
+            return [
+                'visible' => false,
+                'badge' => null,
+                'source_label' => null,
+                'warning' => null,
+                'general_warning' => null,
+                'url' => null,
+            ];
+        }
+
+        return [
+            'visible' => true,
+            'badge' => $label,
+            'source_label' => 'Kaynak Sipariş: ' . ($sourceOrder->document_number ?: '-'),
+            'warning' => $quote->copyTypeWarning(),
+            'general_warning' => 'Bu kayıt eski siparişten kopyalanmıştır. Fiyat, stok ve baskı bilgilerini kontrol ederek devam edin.',
+            'url' => (int) $sourceOrder->tenant_account_id === (int) $tenant->id
+                ? route('admin.orders.show', $sourceOrder)
+                : null,
+        ];
+    }
+
+    private function canAccessRevisionCompare(int $tenantId): bool
+    {
+        return Auth::user()?->hasAnyPermissionInTenant([
+            'create_quotes',
+            'edit_quotes',
+            'approve_quotes',
+        ], $tenantId) ?? false;
     }
 
     private function latestApprovalResponseSummary(Order $quote): string
@@ -1745,6 +1788,7 @@ class PromotionQuoteController extends Controller
 
         $quote->load([
             'customer',
+            'sourceOrder:id,tenant_account_id,document_number',
             'items.prints.subcontractorCompany',
             'creator',
             'quoteApprovalRequests.sendSnapshot',
@@ -1792,6 +1836,12 @@ class PromotionQuoteController extends Controller
         $whatsappReady = $whatsappAvailable && filled($normalizedRecipientPhone) && filled($approvalHelperUrl);
         $quotePdfAvailable = true;
         $notificationLogRows = $this->buildNotificationLogRows($quote);
+        $sourceOrderContext = $this->buildSourceOrderContext($quote, $tenant);
+        $revisionCompareUrl = $quote->isRevisionDraft()
+            && $quote->source_order_id
+            && $this->canAccessRevisionCompare($tenant->id)
+                ? route('admin.promotion-quotes.revision-compare', $quote)
+                : null;
 
         return view('admin.promotion-quotes.show', [
             'quote' => $quote,
@@ -1824,7 +1874,176 @@ class PromotionQuoteController extends Controller
             'whatsappAvailable' => $whatsappAvailable,
             'whatsappReady' => $whatsappReady,
             'quotePdfAvailable' => $quotePdfAvailable,
+            'sourceOrderContext' => $sourceOrderContext,
+            'revisionCompareUrl' => $revisionCompareUrl,
         ]);
+    }
+
+    public function revisionCompare(Request $request, Order $quote)
+    {
+        $tenant = $this->tenantResolver->getCurrentTenant($request);
+
+        if ($quote->tenant_account_id !== $tenant->id) {
+            abort(403, 'Bu teklife erişim yetkiniz yok.');
+        }
+
+        if (! $quote->isPromotion() || ! $quote->isQuote()) {
+            abort(404);
+        }
+
+        if (! $quote->isRevisionDraft() || ! $quote->source_order_id) {
+            abort(404);
+        }
+
+        if (! $this->canAccessRevisionCompare($tenant->id)) {
+            abort(403, 'Revizyon karşılaştırma ekranını açma yetkiniz yok.');
+        }
+
+        $relations = [
+            'customer',
+            'items.prints',
+            'sourceOrder.customer',
+            'sourceOrder.items.procurement',
+            'sourceOrder.items.delivery',
+            'sourceOrder.items.prints.production',
+            'sourceOrder.procurements',
+            'sourceOrder.printProductions',
+            'sourceOrder.deliveries',
+            'sourceOrder.payments',
+        ];
+
+        if ($this->revisionApplyInfrastructureReady()) {
+            $relations[] = 'orderRevision';
+        }
+
+        $quote->load($relations);
+
+        $comparison = $this->orderRevisionComparisonService->build($quote);
+        $applySummary = $this->buildRevisionApplySummary($quote, $comparison);
+
+        return view('admin.promotion-quotes.revision-compare', array_merge($comparison, [
+            'quote' => $quote,
+            'sourceOrderContext' => $this->buildSourceOrderContext($quote, $tenant),
+            'applySummary' => $applySummary,
+        ]));
+    }
+
+    public function applyRevision(
+        Request $request,
+        Order $quote,
+        OrderRevisionRecordService $orderRevisionRecordService,
+        OrderRevisionApplyService $orderRevisionApplyService,
+    ): RedirectResponse {
+        $tenant = $this->tenantResolver->getCurrentTenant($request);
+
+        if (! $tenant || (int) $quote->tenant_account_id !== (int) $tenant->id) {
+            abort(403, 'Bu teklife erişim yetkiniz yok.');
+        }
+
+        if (! $quote->isPromotion() || ! $quote->isQuote() || ! $quote->isRevisionDraft() || ! $quote->source_order_id) {
+            abort(404);
+        }
+
+        if (! $this->canAccessRevisionCompare($tenant->id)) {
+            abort(403, 'Revizyon uygulama yetkiniz yok.');
+        }
+
+        if (! $this->revisionApplyInfrastructureReady()) {
+            return redirect()
+                ->route('admin.promotion-quotes.revision-compare', $quote)
+                ->with('error', 'Revizyon apply altyapı tabloları bu ortamda hazır değil. Migration çalıştırılmadan apply smoke tamamlanamaz.');
+        }
+
+        $quote->load([
+            'customer',
+            'items.prints',
+            'orderRevision',
+            'sourceOrder.customer',
+            'sourceOrder.items.procurement',
+            'sourceOrder.items.delivery',
+            'sourceOrder.items.prints.production',
+            'sourceOrder.procurements',
+            'sourceOrder.printProductions',
+            'sourceOrder.deliveries',
+            'sourceOrder.payments',
+        ]);
+
+        try {
+            $comparison = $this->orderRevisionComparisonService->build($quote);
+            $revision = $orderRevisionRecordService->createOrUpdateFromComparison(
+                $quote->sourceOrder,
+                $quote,
+                $comparison,
+                $request->user()
+            );
+
+            $appliedRevision = $orderRevisionApplyService->apply($revision, $request->user());
+
+            $successMessage = $appliedRevision->status === \App\Models\OrderRevision::STATUS_PARTIALLY_APPLIED
+                ? 'Revizyon kısmi uygulandı. Kilitli alanlar atlandı, manuel kontrol gereken satırlar korundu.'
+                : 'Revizyon uygulandı. Güvenli ticari alanlar siparişe işlendi.';
+
+            return redirect()
+                ->route('admin.orders.show', $quote->sourceOrder)
+                ->with('success', $successMessage);
+        } catch (DomainException $exception) {
+            return redirect()
+                ->route('admin.promotion-quotes.revision-compare', $quote)
+                ->with('error', $exception->getMessage());
+        }
+    }
+
+    private function buildRevisionApplySummary(Order $quote, array $comparison): array
+    {
+        if (! $this->revisionApplyInfrastructureReady()) {
+            return [
+                'applicable_count' => 0,
+                'locked_count' => 0,
+                'manual_count' => 0,
+                'no_change_count' => 0,
+                'has_finance_note' => false,
+                'finance_note' => null,
+                'already_applied' => false,
+                'button_enabled' => false,
+                'button_disabled_reason' => 'Revizyon apply altyapı tabloları bu ortamda hazır değil. Migration çalıştırılmadan apply smoke tamamlanamaz.',
+            ];
+        }
+
+        $record = $quote->orderRevision;
+        $decisionRows = collect($comparison['decisionMatrix'] ?? []);
+        $applicableRows = $decisionRows->filter(fn (array $row) => in_array($row['decision'] ?? null, [
+            'Uygulanabilir',
+            'Kontrollü Uygulanabilir',
+        ], true));
+        $financeRow = $decisionRows->first(fn (array $row) => ($row['label'] ?? null) === 'Fiyat');
+        $alreadyApplied = (bool) ($record?->applied_at)
+            || in_array($record?->status, [
+                \App\Models\OrderRevision::STATUS_APPLIED,
+                \App\Models\OrderRevision::STATUS_PARTIALLY_APPLIED,
+            ], true);
+
+        return [
+            'applicable_count' => $applicableRows->count(),
+            'locked_count' => $decisionRows->where('decision', 'Kilitli')->count(),
+            'manual_count' => $decisionRows->where('decision', 'Manuel Kontrol Gerekli')->count(),
+            'no_change_count' => $decisionRows->where('decision', 'Değişiklik Yok')->count(),
+            'has_finance_note' => ($financeRow['decision'] ?? null) === 'Kontrollü Uygulanabilir',
+            'finance_note' => ($financeRow['decision'] ?? null) === 'Kontrollü Uygulanabilir'
+                ? 'Finans kontrolü gerekiyor. Fiyat farkı cari hareket veya tahsilat üretmeden yalnız ticari görünüme işlenir.'
+                : null,
+            'already_applied' => $alreadyApplied,
+            'button_enabled' => ! $alreadyApplied && $applicableRows->isNotEmpty(),
+            'button_disabled_reason' => $alreadyApplied
+                ? 'Bu revizyon daha önce uygulanmış.'
+                : ($applicableRows->isEmpty()
+                    ? 'Bu revizyonda otomatik uygulanabilir bir alan bulunamadı.'
+                    : null),
+        ];
+    }
+
+    private function revisionApplyInfrastructureReady(): bool
+    {
+        return Schema::hasTable('order_revisions') && Schema::hasTable('order_revision_changes');
     }
 
     private function maskEmail(?string $email): ?string
@@ -2058,7 +2277,7 @@ class PromotionQuoteController extends Controller
             abort(403, 'Bu teklif artık düzenlenemez.');
         }
 
-        $quote->load(['customer', 'items.prints.tenantPrintSetting.standardPrintType']);
+        $quote->load(['customer', 'sourceOrder:id,tenant_account_id,document_number', 'items.prints.tenantPrintSetting.standardPrintType']);
 
         // Get active customers
         $customers = $this->promotionQuoteCustomerQuery($tenant->id)
@@ -2086,6 +2305,12 @@ class PromotionQuoteController extends Controller
             $quote->delivery_type_id,
             $quote->delivery_type
         );
+        $sourceOrderContext = $this->buildSourceOrderContext($quote, $tenant);
+        $revisionCompareUrl = $quote->isRevisionDraft()
+            && $quote->source_order_id
+            && $this->canAccessRevisionCompare($tenant->id)
+                ? route('admin.promotion-quotes.revision-compare', $quote)
+                : null;
 
         return view('admin.promotion-quotes.edit', [
             'quote' => $quote,
@@ -2101,6 +2326,8 @@ class PromotionQuoteController extends Controller
             'deliveryTypeOptions' => $deliveryTypeState['types'],
             'selectedDeliveryTypeId' => old('delivery_type_id', $deliveryTypeState['selected_id']),
             'legacyDeliveryTypeLabel' => $deliveryTypeState['legacy_label'],
+            'sourceOrderContext' => $sourceOrderContext,
+            'revisionCompareUrl' => $revisionCompareUrl,
         ]);
     }
 

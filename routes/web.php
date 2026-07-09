@@ -373,6 +373,12 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:web', 'resolve.tenant'
         Route::get('/{quote}/pdf', [PromotionQuoteController::class, 'pdf'])
             ->name('pdf')
             ->whereNumber('quote');
+        Route::get('/{quote}/revision-compare', [PromotionQuoteController::class, 'revisionCompare'])
+            ->name('revision-compare')
+            ->whereNumber('quote');
+        Route::post('/{quote}/revision-apply', [PromotionQuoteController::class, 'applyRevision'])
+            ->name('revision-apply')
+            ->whereNumber('quote');
         Route::get('/{quote}', [PromotionQuoteController::class, 'show'])->name('show')->whereNumber('quote');
         Route::get('/{quote}/edit', [PromotionQuoteController::class, 'edit'])->name('edit')->whereNumber('quote');
         Route::put('/{quote}', [PromotionQuoteController::class, 'update'])->name('update')->whereNumber('quote');
