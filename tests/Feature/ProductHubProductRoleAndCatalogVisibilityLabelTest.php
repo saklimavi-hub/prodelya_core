@@ -32,10 +32,14 @@ class ProductHubProductRoleAndCatalogVisibilityLabelTest extends TestCase
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->get('/admin/super-admin/product-data-hub/product-panel')
             ->assertOk()
-            ->assertSeeText('Ürün Paneli')
-            ->assertSeeText('Teşhis başlatmak için arama veya filtre seçin')
-            ->assertSeeText('projection satırları üzerinden kontrol edilir')
-            ->assertSeeText('ana operasyon ekranıdır');
+            ->assertSeeText('Bekleyen Kontroller')
+            ->assertSeeText('Kontrol başlatmak için arama veya filtre seçin.')
+            ->assertSeeText('Karar Bekleyen Başlıklar')
+            ->assertSeeText('Normal fiyat ve stok senkronizasyonu otomatik çalışır')
+            ->assertSeeText('Güncellik Özeti')
+            ->assertDontSeeText('Supheli')
+            ->assertDontSeeText('Urun')
+            ->assertDontSeeText('Guncel');
 
         $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])

@@ -103,7 +103,7 @@
             </div>
         </div>
         <div class="pd-card-body">
-            <div class="pd-note mb-4">Eşleşmeyen kategoriler ürünlerde Kategori Bekliyor uyarısı üretir; tek başına teklif görünürlüğünü kapatmaz.</div>
+            <div class="pd-note mb-4">Eşleşmeyen kategoriler ürünlerde Kategori eşleşmemiş uyarısı üretir; tek başına teklif görünürlüğünü kapatmaz.</div>
             <div class="pd-health-list">
                 <span>Tümü</span>
                 <span>İncelenmemiş</span>

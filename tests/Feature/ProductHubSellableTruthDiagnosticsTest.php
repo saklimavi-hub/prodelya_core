@@ -62,8 +62,8 @@ class ProductHubSellableTruthDiagnosticsTest extends TestCase
             ->assertSeeText('Katalog yansıması geri kalmış')
             ->assertSeeText('Varyant Eşleşmesi Kontrol')
             ->assertSeeText('Satılabilir varyant')
-            ->assertSeeText('9,20 TL')
-            ->assertSeeText('6,20 TL');
+            ->assertDontSeeText('9,20 TL')
+            ->assertDontSeeText('6,20 TL');
 
         $variant->refresh();
         $catalogVariant = TenantCatalogProductVariant::query()
@@ -148,7 +148,7 @@ class ProductHubSellableTruthDiagnosticsTest extends TestCase
             ->get('/admin/super-admin/product-data-hub/product-panel?search=ET-0506&sales_state=parent_only');
 
         $panelResponse->assertOk()
-            ->assertSeeText('Grup / parent')
+            ->assertSeeText('Parent / grup')
             ->assertSeeText('Teklifte görünmez');
 
         $request = Request::create('/admin/catalog/search', 'GET', ['q' => 'ET-0506']);

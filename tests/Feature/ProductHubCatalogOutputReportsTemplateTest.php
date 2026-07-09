@@ -34,11 +34,11 @@ class ProductHubCatalogOutputReportsTemplateTest extends TestCase
         $response->assertOk();
         $response->assertSee('Abone Katalog Yayını');
         $response->assertSee('Abone Firma seçin');
-        $response->assertSee('Bu ekran seçili Abone Firma kataloğuna yansıtılmış ürünleri ve eksik katalog kayıtlarını gösterir. Ön kontrol read-only çalışır; projection mutasyonları yalnız seçili Abone Firma context’iyle yapılır.');
-        $response->assertSee('Merkezi panelden gerçek projection güncellemesi bu tenant için çalıştırılır.');
-        $response->assertSee('Abone Katalog Güncelle');
-        $response->assertSee('Eksik Kayıtları Tamamla');
-        $response->assertSee('Değişen Ürünleri Kataloğa Yansıt');
+        $response->assertSee('Normal kullanımda ayrı “havuza aktar”, “kataloğa aktar” veya “teklife gönder” adımı beklenmez.');
+        $response->assertSee('İleri düzey satış listesi güncellemesi yalnız bu Abone Firma için kontrollü çalıştırılır.');
+        $response->assertSee('Ürünleri Güncelle');
+        $response->assertSee('Boşlukları Tamamla');
+        $response->assertSee('Abone Firma Ürün Listesi');
         $response->assertSee('catalog-output/project-refresh', false);
         $response->assertSee('catalog-output/project-missing', false);
         $response->assertDontSee(route('admin.super.product-data-hub.sources.sync-reports', ['review_only' => 1]), false);
@@ -52,7 +52,7 @@ class ProductHubCatalogOutputReportsTemplateTest extends TestCase
 
         $response->assertOk();
         $response->assertSee('Abone Firma Tedarikçi Erişimleri');
-        $response->assertSee('Bir tedarikçinin ürünlerinin Abone Firma kataloğunda görünebilmesi için tedarikçi erişimi aktif, katalog görünürlüğü açık ve teklif kullanımı izinli olmalıdır.');
+        $response->assertSee('Bir tedarikçinin ürünlerinin Abone Firma ürün listesinde ve teklif aramasında otomatik görünebilmesi için tedarikçi erişimi aktif, katalog görünürlüğü açık ve teklif kullanımı izinli olmalıdır.');
         $response->assertSee('Katalogda Görünsün');
         $response->assertSee('Teklifte Kullanılsın');
         $response->assertSee('Son katalog durumu');

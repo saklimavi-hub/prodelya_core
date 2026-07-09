@@ -312,6 +312,26 @@
         </div>
     </section>
 
+    <section class="pd-section-card pd-section-card-soft-green pd-product-hub__setup-flow">
+        <div class="pd-section-header">
+            <div>
+                <h3 class="pd-section-title">Birleşik Kurulum Akışında Bu Adım</h3>
+                <p class="pd-section-subtitle">Kategori eşlenirse aynı kategoriye gelen yeni ürünler tekrar sorulmadan akışa devam eder. Kategori eşlenmeyen ürünler satış listesine otomatik açılmaz; Bekleyen Kontroller tarafında kalır.</p>
+            </div>
+            <a href="{{ route('admin.super.product-data-hub.sources.sync-reports', ['review_only' => 1]) }}" class="pd-btn pd-btn-light">Bekleyen Kontrolleri Aç</a>
+        </div>
+        <div class="pd-section-body">
+            <div class="pd-grid pd-grid-3">
+                <div class="pd-note"><strong>1. Kaynak Bilgisi</strong><br>Kaynak kaydı tamamlandı.</div>
+                <div class="pd-note"><strong>2. Ön Kontrol</strong><br>Örnek ürünler ve veri kalitesi gözden geçirildi.</div>
+                <div class="pd-note"><strong>3. Alan Eşleme</strong><br>Ürün kodu, ad, kategori, fiyat, stok ve görsel alanları bağlandı.</div>
+                <div class="pd-note"><strong>4. İlk Kategori Eşleme</strong><br>Şu an bu adımı tamamlıyorsunuz.</div>
+                <div class="pd-note"><strong>5. Toplu Kategori Değiştir</strong><br>Aynı tedarikçi kategorisini topluca yeni hedefe bağlayabilir veya bekletebilirsiniz.</div>
+                <div class="pd-note"><strong>6. Otomatik Senkron</strong><br>Eşleme tamamlanınca uygun ürünler ekstra “teklife aç” işlemi olmadan normal akışta ilerler.</div>
+            </div>
+        </div>
+    </section>
+
     @unless($isSimpleMode)
     <section class="pd-section-card pd-section-card-soft-amber">
         <div class="pd-section-header">
@@ -681,7 +701,7 @@
                                                             @csrf
                                                             <input type="hidden" name="mode" value="advanced">
                                                             <input type="hidden" name="view_mode" value="quick">
-                                                            <button type="submit" class="pd-btn pd-btn-success pd-btn-sm">Kabul Et</button>
+                                                            <button type="submit" class="pd-btn pd-btn-success pd-btn-sm">Kategorileri Eşle</button>
                                                         </form>
                                                     @elseif($mapping->quick_can_accept && $mapping->quick_review_required)
                                                         <form method="POST" action="{{ route('admin.super.product-data-hub.category-mappings.accept', $mapping) }}">
@@ -692,7 +712,7 @@
                                                             <button type="submit" class="pd-btn pd-btn-warning pd-btn-sm" onclick="return confirm('Bu kayıt review/risk sinyali taşıyor. Kontrollü onaylamak istiyor musunuz?')">Kontrollü Onayla</button>
                                                         </form>
                                                     @else
-                                                        <button type="button" class="pd-btn pd-btn-light pd-btn-sm" disabled title="{{ $mapping->quick_disabled_reason }}">Kabul Et</button>
+                                                        <button type="button" class="pd-btn pd-btn-light pd-btn-sm" disabled title="{{ $mapping->quick_disabled_reason }}">Kategorileri Eşle</button>
                                                     @endif
                                                     <a href="{{ route('admin.super.product-data-hub.category-mappings.index', array_merge(request()->query(), ['view_mode' => 'detail', 'search' => $mapping->source_category])) }}#mapping-{{ $mapping->id }}" class="pd-btn pd-btn-light pd-btn-sm">Değiştir</a>
                                                     <details class="pd-inline-details pd-quick-detail">
@@ -980,7 +1000,7 @@
                                         </div>
                                     </div>
                                     <div class="pd-category-action-row">
-                                        <button type="submit" class="pd-btn pd-btn-success pd-btn-sm" onclick="pdApplyCategoryAction({{ $mapping->id }}, 'approved', 'map', '{{ $safeTargetCategoryId }}'); return true;" @disabled(!$safeTargetCategoryId)>Kabul Et</button>
+                                        <button type="submit" class="pd-btn pd-btn-success pd-btn-sm" onclick="pdApplyCategoryAction({{ $mapping->id }}, 'approved', 'map', '{{ $safeTargetCategoryId }}'); return true;" @disabled(!$safeTargetCategoryId)>Kategorileri Eşle</button>
                                         <button type="button" class="pd-btn pd-btn-light pd-btn-sm" onclick="pdApplyCategoryAction({{ $mapping->id }}, 'approved', 'alias', '{{ $safeTargetCategoryId }}')">Alias Kaydet</button>
                                         <button type="button" class="pd-btn pd-btn-warning pd-btn-sm" onclick="pdApplyCategoryAction({{ $mapping->id }}, 'needs_review', 'twin_view', '{{ $safeTargetCategoryId }}')">İkiz Yap</button>
                                         <button type="button" class="pd-btn pd-btn-light pd-btn-sm" onclick="pdApplyCategoryAction({{ $mapping->id }}, 'needs_review', 'separate', '')">Ayrı Bırak</button>
@@ -1040,7 +1060,7 @@
 @unless($isSimpleMode)
 <div>
     <strong>Sonraki adım:</strong>
-    <span class="pd-muted">Kategori taraması, karar kaydı ve standart kategori temizliği aynı bar üzerinden yönetilir.</span>
+    <span class="pd-muted">Kategori taraması, karar kaydı ve gerektiğinde toplu değiştir aynı bar üzerinden yönetilir. Eşleme tamamlanınca uygun ürünler otomatik senkron akışına devam eder.</span>
 </div>
 <div class="pd-bottom-action-buttons">
     <a href="{{ route('admin.super.product-data-hub.index') }}" class="pd-btn pd-btn-light">Önizleme</a>

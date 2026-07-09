@@ -2,15 +2,15 @@
 
 @section('title', 'Abone Katalog Yayını')
 @section('page_title', 'Abone Katalog Yayını')
-@section('page_subtitle', 'Hazır ürünlerin seçili Abone Firma kataloglarına yansıma durumunu ve eksik katalog kayıtlarını buradan izleyin.')
+@section('page_subtitle', 'Hazır ürünlerin seçili Abone Firma ürün listesine otomatik yansıma durumunu ve yalnız karar gereken boşlukları buradan izleyin.')
 
 @section('page_actions')
 <div class="pd-actions">
-    <a href="{{ route('admin.super.product-data-hub.index') }}" class="pd-btn pd-btn-light">Hub Özeti</a>
-    <a href="{{ route('admin.super.product-data-hub.standard-products.index') }}" class="pd-btn pd-btn-light">Teknik Standart Ürünler</a>
-    <a href="{{ route('admin.super.tenant-supplier-access.index') }}" class="pd-btn pd-btn-light">Abone Firma Tedarikçi Erişimleri</a>
+    <a href="{{ route('admin.super.product-data-hub.index') }}" class="pd-btn pd-btn-light">Ürün Veri Merkezi</a>
+    <a href="{{ route('admin.super.product-data-hub.standard-products.index') }}" class="pd-btn pd-btn-light">Standart Ürün Havuzu (Teknik)</a>
+    <a href="{{ route('admin.super.tenant-supplier-access.index') }}" class="pd-btn pd-btn-light">Abone Firma Erişimleri</a>
     @if($selectedTenantCatalogUrl)
-        <a href="{{ $selectedTenantCatalogUrl }}" class="pd-btn pd-btn-primary">Seçili Abone Firma Kataloğu</a>
+        <a href="{{ $selectedTenantCatalogUrl }}" class="pd-btn pd-btn-primary">Seçili Abone Firma Ürün Listesi</a>
     @else
         <span class="pd-btn pd-btn-primary disabled" aria-disabled="true">Abone Firma seçin</span>
     @endif
@@ -22,38 +22,30 @@
     $metricCards = [
         ['label' => 'Abone Firma sayısı', 'value' => $catalogOutput['active_tenants'] ?? 0, 'class' => 'pd-metric-card-soft-blue'],
         ['label' => 'Katalogda ürün / varyant', 'value' => ($catalogOutput['tenant_open_products'] ?? 0) . ' / ' . ($catalogOutput['total_variants'] ?? 0), 'class' => 'pd-metric-card-soft-green'],
-        ['label' => 'Kataloğa yansımayı bekleyen', 'value' => $catalogOutput['projection_blocked_missing_category'] ?? 0, 'class' => 'pd-metric-card-soft-amber'],
+        ['label' => 'Projection boşluğu', 'value' => $catalogOutput['projection_blocked_missing_category'] ?? 0, 'class' => 'pd-metric-card-soft-amber'],
         ['label' => 'Teklifte kullanılabilir', 'value' => $catalogOutput['tenant_open_products'] ?? 0, 'class' => 'pd-metric-card-soft-purple'],
         ['label' => 'İnceleme bekleyen', 'value' => $catalogOutput['warning_products'] ?? 0, 'class' => 'pd-metric-card-soft-red'],
-        ['label' => 'Son katalog güncelleme', 'value' => $catalogOutput['last_projection_run_at'] ?? 'Henüz yok', 'class' => 'pd-metric-card-soft-slate'],
+        ['label' => 'Son satış listesi güncellemesi', 'value' => $catalogOutput['last_projection_run_at'] ?? 'Henüz yok', 'class' => 'pd-metric-card-soft-slate'],
     ];
 @endphp
 
-<div class="pd-hub-family-shell">
-    <section class="pd-hero-card">
+<div class="pd-hub-family-shell pd-product-hub">
+    <section class="pd-hero-card pd-product-hub__summary">
         <div class="pd-card-body">
             <div class="pd-hero-main">
                 <div class="pd-hero-copy">
                     <h1 class="pd-hero-title">Abone Katalog Yayını</h1>
-                    <p class="pd-hero-subtitle">Bu ekran, Product Hub’daki hazır ürünlerin seçili Abone Firma kataloglarına yansıma durumunu izlemek için kullanılır.</p>
+                    <p class="pd-hero-subtitle">Bu ekran, uygun ürünlerin seçili Abone Firma ürün listesine otomatik yansıma durumunu izlemek için kullanılır. Normalde ayrı bir aktarım adımı beklenmez; yalnız sorunlu kayıtlar ve boşluklar görünür olur.</p>
                     <div class="pd-hero-badges">
-                        <span class="pd-badge pd-badge-blue">Abone Firma Kataloğu</span>
-                        <span class="pd-badge pd-badge-green">Katalog Ürünleri</span>
+                        <span class="pd-badge pd-badge-blue">Abone Firma Ürün Listesi</span>
+                        <span class="pd-badge pd-badge-green">Otomatik yayın</span>
                         <span class="pd-badge pd-badge-purple">Teklifte Kullanım</span>
                     </div>
                 </div>
                 <div class="pd-hero-actions">
-                    <a href="{{ route('admin.super.product-data-hub.sources.sync-reports') }}" class="pd-btn pd-btn-light">Ön Kontrol Yap</a>
-                    <form action="{{ route('admin.super.product-data-hub.catalog-output.project-missing') }}" method="POST" onsubmit="return confirm('Seçili Abone Firma için eksik projection kayıtları tamamlanacak. Devam edilsin mi?');">
-                        @csrf
-                        <input type="hidden" name="tenant_id" value="{{ $selectedTenant?->id }}">
-                        <button type="submit" class="pd-btn pd-btn-warning" @disabled(!$selectedTenant)>Eksik Kayıtları Tamamla</button>
-                    </form>
-                    <form action="{{ route('admin.super.product-data-hub.catalog-output.project-refresh') }}" method="POST" onsubmit="return confirm('Seçili Abone Firma için değişen projection kayıtları kataloğa yansıtılacak. Devam edilsin mi?');">
-                        @csrf
-                        <input type="hidden" name="tenant_id" value="{{ $selectedTenant?->id }}">
-                        <button type="submit" class="pd-btn pd-btn-primary" @disabled(!$selectedTenant)>Değişen Ürünleri Kataloğa Yansıt</button>
-                    </form>
+                    <a href="{{ route('admin.super.product-data-hub.sources.sync-reports') }}" class="pd-btn pd-btn-primary">Ürünleri Senkronize Et</a>
+                    <a href="{{ route('admin.super.product-data-hub.product-panel', ['flow_mode' => 'review_queue']) }}" class="pd-btn pd-btn-warning">Bekleyen Kontrolleri Aç</a>
+                    <a href="{{ route('admin.super.tenant-supplier-access.index') }}" class="pd-btn pd-btn-light">Abone Firma Erişimleri</a>
                 </div>
             </div>
             <form method="GET" action="{{ route('admin.super.product-data-hub.catalog-output') }}" class="pd-form-shell mt-4">
@@ -70,17 +62,17 @@
                     <div class="pd-form-actions">
                         <button type="submit" class="pd-btn pd-btn-light">Abone Firmayı Aç</button>
                         @if($selectedTenantCatalogUrl)
-                            <a href="{{ $selectedTenantCatalogUrl }}" class="pd-btn pd-btn-light">Abone Firma Panelini Aç</a>
+                            <a href="{{ $selectedTenantCatalogUrl }}" class="pd-btn pd-btn-light">Abone Firma Ürün Listesini Aç</a>
                         @endif
                     </div>
                 </div>
             </form>
-            <div class="pd-note mt-4">Bu ekran seçili Abone Firma kataloğuna yansıtılmış ürünleri ve eksik katalog kayıtlarını gösterir. Ön kontrol read-only çalışır; projection mutasyonları yalnız seçili Abone Firma context’iyle yapılır.</div>
+            <div class="pd-note mt-4 pd-product-hub__auto-note">Normal kullanımda ayrı “havuza aktar”, “kataloğa aktar” veya “teklife gönder” adımı beklenmez. Senkronizasyon sonrası uygun ürünler satış listesine otomatik yansır; yalnız eksik veya riskli kayıtlar kontrol ister.</div>
             <div class="pd-note mt-3">
                 @if($selectedTenant)
-                    Seçili Abone Firma: <strong>{{ $selectedTenant->name }}</strong>. Merkezi panelden gerçek projection güncellemesi bu tenant için çalıştırılır.
+                    Seçili Abone Firma: <strong>{{ $selectedTenant->name }}</strong>. İleri düzey satış listesi güncellemesi yalnız bu Abone Firma için kontrollü çalıştırılır.
                 @else
-                    Platform yöneticisi olarak merkezi paneldeyseniz önce Abone Firma seçin. Tenant seçilmeden projection güncellemesi çalıştırılmaz.
+                    Platform yöneticisi olarak merkezi paneldeyseniz önce Abone Firma seçin. İleri düzey güncelleme işlemleri Abone Firma seçilmeden çalıştırılmaz.
                 @endif
             </div>
         </div>
@@ -95,11 +87,11 @@
         @endforeach
     </section>
 
-    <section class="pd-section-card pd-section-card-soft-slate">
+    <section class="pd-section-card pd-section-card-soft-slate pd-product-hub__flow">
         <div class="pd-section-header">
             <div>
-                <h3 class="pd-section-title">Katalog Güncelleme Adımları</h3>
-                <p class="pd-section-subtitle">Günlük karar için gerekli adımları kısa akışta görün. Teknik projection ayrıntıları detay alanında kalır.</p>
+                <h3 class="pd-section-title">Otomatik Yayın Akışı</h3>
+                <p class="pd-section-subtitle">Normalde yalnız senkronizasyon yeterlidir. Sistem uygun ürünleri otomatik satış listesine yansıtır; yalnız eksik veya riskli kayıtlar burada karar ister.</p>
             </div>
             <span class="pd-badge pd-badge-blue">Operasyon özeti</span>
         </div>
@@ -134,24 +126,29 @@
                 @endforeach
             </div>
             <details class="pd-inline-details mt-4">
-                <summary>Gelişmiş İşlemler</summary>
+                <summary>İleri Düzey Güncelleme</summary>
                 <div class="pd-chip-list mt-3">
-                    <form action="{{ route('admin.super.product-data-hub.catalog-output.project-refresh') }}" method="POST" onsubmit="return confirm('Seçili Abone Firma için projection kayıtları güncellenecek. Devam edilsin mi?');">
+                    <form action="{{ route('admin.super.product-data-hub.catalog-output.project-refresh') }}" method="POST" onsubmit="return confirm('Seçili Abone Firma için satış listesi kayıtları güncellenecek. Devam edilsin mi?');">
                         @csrf
                         <input type="hidden" name="tenant_id" value="{{ $selectedTenant?->id }}">
-                        <button type="submit" class="pd-btn pd-btn-light pd-btn-sm" @disabled(!$selectedTenant)>Abone Katalog Güncelle</button>
+                        <button type="submit" class="pd-btn pd-btn-light pd-btn-sm" @disabled(!$selectedTenant)>Ürünleri Güncelle</button>
+                    </form>
+                    <form action="{{ route('admin.super.product-data-hub.catalog-output.project-missing') }}" method="POST" onsubmit="return confirm('Seçili Abone Firma için satış listesinde eksik kalan kayıtlar tamamlanacak. Devam edilsin mi?');">
+                        @csrf
+                        <input type="hidden" name="tenant_id" value="{{ $selectedTenant?->id }}">
+                        <button type="submit" class="pd-btn pd-btn-light pd-btn-sm" @disabled(!$selectedTenant)>Boşlukları Tamamla</button>
                     </form>
                     @if($selectedTenantCatalogUrl)
-                        <a href="{{ $selectedTenantCatalogUrl }}" class="pd-btn pd-btn-light pd-btn-sm">Katalog Ürünleri</a>
+                        <a href="{{ $selectedTenantCatalogUrl }}" class="pd-btn pd-btn-light pd-btn-sm">Abone Firma Ürün Listesi</a>
                     @endif
                     <a href="{{ route('admin.super.product-data-hub.sources.sync-reports') }}" class="pd-btn pd-btn-light pd-btn-sm">Senkron Raporunu Aç</a>
-                    <span class="pd-muted-badge">Mutating projection işlemleri yalnız seçili Abone Firma context’iyle çalışır.</span>
+                    <span class="pd-muted-badge">İleri düzey satış listesi güncellemesi yalnız seçili Abone Firma context’iyle çalışır.</span>
                 </div>
             </details>
         </div>
     </section>
 
-    <section class="pd-section-card pd-section-card-soft-purple">
+    <section class="pd-section-card pd-section-card-soft-purple pd-product-hub__tenant-list">
         <div class="pd-section-header">
             <div>
                 <h3 class="pd-section-title">Katalog Yayını Özeti</h3>
@@ -173,11 +170,11 @@
                     <div class="pd-profile-info-value">{{ $catalogOutput['tenant_open_products'] }}</div>
                 </div>
                 <div class="pd-profile-info">
-                    <div class="pd-profile-info-label">Eksik kayıtları tamamla</div>
+                    <div class="pd-profile-info-label">Projection boşluğu</div>
                     <div class="pd-profile-info-value">{{ $catalogOutput['projection_blocked_missing_category'] }}</div>
                 </div>
                 <div class="pd-profile-info">
-                    <div class="pd-profile-info-label">Değişen ürünleri kataloğa yansıt</div>
+                    <div class="pd-profile-info-label">Ürünleri güncelle</div>
                     <div class="pd-profile-info-value">{{ $catalogOutput['projection_updated_products'] }}</div>
                 </div>
                 <div class="pd-profile-info">
@@ -270,29 +267,20 @@
             <div class="pd-status-row"><span>Abone Firma sayısı</span><span class="pd-badge pd-badge-blue">{{ $catalogOutput['active_tenants'] ?? 0 }}</span></div>
             <div class="pd-status-row"><span>Katalogda ürün</span><span class="pd-badge pd-badge-green">{{ $catalogOutput['tenant_open_products'] }}</span></div>
             <div class="pd-status-row"><span>Katalogda kapalı</span><span class="pd-badge pd-badge-gray">{{ $catalogOutput['tenant_closed_products'] }}</span></div>
-            <div class="pd-status-row"><span>Eksik kayıt</span><span class="pd-badge pd-badge-amber">{{ $catalogOutput['projection_blocked_missing_category'] }}</span></div>
+            <div class="pd-status-row"><span>Boşluk kalan kayıt</span><span class="pd-badge pd-badge-amber">{{ $catalogOutput['projection_blocked_missing_category'] }}</span></div>
             <div class="pd-status-row"><span>İnceleme bekleyen</span><span class="pd-badge pd-badge-red">{{ $catalogOutput['warning_products'] }}</span></div>
         </div>
 
         <div class="pd-summary-section">
             <h4 class="pd-summary-section-title">Günlük Aksiyonlar</h4>
             <div class="pd-summary-action-list">
-                <a href="{{ route('admin.super.product-data-hub.sources.sync-reports') }}" class="pd-summary-action"><span>Ön Kontrol Yap</span><span class="pd-badge pd-badge-blue">Kontrol</span></a>
-                <form action="{{ route('admin.super.product-data-hub.catalog-output.project-missing') }}" method="POST" onsubmit="return confirm('Seçili Abone Firma için eksik projection kayıtları tamamlanacak. Devam edilsin mi?');">
-                    @csrf
-                    <input type="hidden" name="tenant_id" value="{{ $selectedTenant?->id }}">
-                    <button type="submit" class="pd-summary-action" @disabled(!$selectedTenant)><span>Eksik Kayıtları Tamamla</span><span class="pd-badge pd-badge-amber">Eksik</span></button>
-                </form>
-                <form action="{{ route('admin.super.product-data-hub.catalog-output.project-refresh') }}" method="POST" onsubmit="return confirm('Seçili Abone Firma için değişen projection kayıtları kataloğa yansıtılacak. Devam edilsin mi?');">
-                    @csrf
-                    <input type="hidden" name="tenant_id" value="{{ $selectedTenant?->id }}">
-                    <button type="submit" class="pd-summary-action" @disabled(!$selectedTenant)><span>Değişen Ürünleri Kataloğa Yansıt</span><span class="pd-badge pd-badge-purple">Değişen</span></button>
-                </form>
-                <a href="{{ route('admin.super.tenant-supplier-access.index') }}" class="pd-summary-action"><span>Tedarikçi Erişimlerini Aç</span><span class="pd-badge pd-badge-green">Erişim</span></a>
+                <a href="{{ route('admin.super.product-data-hub.sources.sync-reports') }}" class="pd-summary-action"><span>Ürünleri Senkronize Et</span><span class="pd-badge pd-badge-blue">Sync</span></a>
+                <a href="{{ route('admin.super.product-data-hub.product-panel', ['flow_mode' => 'review_queue']) }}" class="pd-summary-action"><span>Bekleyen Kontroller</span><span class="pd-badge pd-badge-amber">Kontrol</span></a>
+                <a href="{{ route('admin.super.tenant-supplier-access.index') }}" class="pd-summary-action"><span>Abone Firma Erişimleri</span><span class="pd-badge pd-badge-green">Erişim</span></a>
             </div>
         </div>
 
-        <div class="pd-side-note">Önizleme canlı veriyi gösterir; katalog ve teklif fiyatları projection yenileme sonrası güncellenir. Review-only rapor mutating işlem yerine kullanılmaz.</div>
+        <div class="pd-side-note">Normal akışta ek bir “teklife aktar” adımı yoktur. Erişim açık ve ürün satışa uygunsa senkronizasyon sonrası Abone Firma ürün listesi ve teklif araması otomatik güncel kalır.</div>
     </div>
 </div>
 @endsection
@@ -300,18 +288,18 @@
 @section('bottom_actions')
 <div>
     <strong>Abone Katalog Yayını:</strong>
-    <span class="pd-muted">Ön kontrol read-only kalır. Projection güncellemesi yalnız seçili Abone Firma context’iyle çalışır.</span>
+    <span class="pd-muted">Normalde otomatik çalışır. İleri düzey satış listesi güncellemesi yalnız seçili Abone Firma context’iyle kontrollü çalışır.</span>
 </div>
 <div class="pd-bottom-action-buttons">
-    <a href="{{ route('admin.super.product-data-hub.sources.sync-reports') }}" class="pd-btn pd-btn-light">Senkron Raporları</a>
-    <a href="{{ route('admin.super.tenant-supplier-access.index') }}" class="pd-btn pd-btn-light">Abone Firma Tedarikçi Erişimleri</a>
+    <a href="{{ route('admin.super.product-data-hub.sources.sync-reports') }}" class="pd-btn pd-btn-light">Ürünleri Senkronize Et</a>
+    <a href="{{ route('admin.super.tenant-supplier-access.index') }}" class="pd-btn pd-btn-light">Abone Firma Erişimleri</a>
     @if($selectedTenantCatalogUrl)
-        <a href="{{ $selectedTenantCatalogUrl }}" class="pd-btn pd-btn-warning">Katalog Ürünleri</a>
+        <a href="{{ $selectedTenantCatalogUrl }}" class="pd-btn pd-btn-warning">Abone Firma Ürün Listesi</a>
     @endif
-    <form action="{{ route('admin.super.product-data-hub.catalog-output.project-refresh') }}" method="POST" onsubmit="return confirm('Seçili Abone Firma için projection kayıtları güncellenecek. Devam edilsin mi?');">
+    <form action="{{ route('admin.super.product-data-hub.catalog-output.project-refresh') }}" method="POST" onsubmit="return confirm('Seçili Abone Firma için satış listesi kayıtları güncellenecek. Devam edilsin mi?');">
         @csrf
         <input type="hidden" name="tenant_id" value="{{ $selectedTenant?->id }}">
-        <button type="submit" class="pd-btn pd-btn-primary" @disabled(!$selectedTenant)>Abone Katalog Güncelle</button>
+        <button type="submit" class="pd-btn pd-btn-primary" @disabled(!$selectedTenant)>Ürünleri Güncelle</button>
     </form>
 </div>
 @endsection

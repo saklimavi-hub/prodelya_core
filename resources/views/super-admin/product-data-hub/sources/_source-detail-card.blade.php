@@ -10,8 +10,8 @@
         ? $summary['tenant_catalog_products'] . ' ürün / ' . $summary['tenant_catalog_variants'] . ' varyant'
         : ($summary['tenant_access'] > 0 ? 'Yansıtma bekliyor' : 'Erişim tanımı bekleniyor');
     $focusMessage = match (true) {
-        $reviewTotal > 0 => 'İnceleme bekleyen ' . $reviewTotal . ' kayıt var.',
-        ($decision['projection_pending'] ?? 0) > 0 => 'Projection katmanında yansıtma bekleyen kayıt var.',
+        $reviewTotal > 0 => 'Bekleyen Kontroller alanında ' . $reviewTotal . ' kayıt var.',
+        ($decision['projection_pending'] ?? 0) > 0 => 'Satış listesine otomatik yansıması bekleyen kayıt var.',
         ($summary['tenant_catalog_products'] ?? 0) === 0 && ($summary['standard_products'] ?? 0) > 0 && ($summary['tenant_access'] ?? 0) > 0 => 'Bu kaynakta ürünler hazır, ancak Abone Firma kataloğuna henüz yansıtılmamış kayıtlar var.',
         ($summary['category_pending'] ?? 0) > 0 => $summary['category_pending'] . ' kayıt için kategori kararı bekleniyor.',
         default => $summary['preview_note'] ?? 'Akış durumuna göre yönlendiriliyor.',
@@ -35,15 +35,15 @@
             </div>
         </div>
         <div class="pd-source-primary">
-            <div class="pd-source-next-label">Birincil aksiyon</div>
+            <div class="pd-source-next-label">Ana aksiyon</div>
             <form action="{{ route('admin.super.product-data-hub.sources.apply-price-stock', $source) }}" method="POST">
                 @csrf
-                <button type="submit" class="pd-btn pd-btn-warning" data-primary-action="Fiyat/Stok Güncelle" onclick="return confirm('Bu işlem güvenli fiyat/stok değişikliklerini raw, standart ve tenant katalog katmanına yansıtır. Devam edilsin mi?')">
-                    Fiyat/Stok Güncelle
+                <button type="submit" class="pd-btn pd-btn-warning" data-primary-action="Ürünleri Senkronize Et" onclick="return confirm('Bu işlem güvenli fiyat/stok değişikliklerini arka plandaki otomatik akışa yansıtır. Devam edilsin mi?')">
+                    Ürünleri Senkronize Et
                 </button>
             </form>
             @if($reviewTotal > 0)
-                <a href="{{ route('admin.super.product-data-hub.sources.sync-reports', ['source_id' => $source->id, 'review_only' => 1]) }}" class="pd-btn pd-btn-light pd-gap-top-xs">Değişimleri İncele</a>
+                <a href="{{ route('admin.super.product-data-hub.sources.sync-reports', ['source_id' => $source->id, 'review_only' => 1]) }}" class="pd-btn pd-btn-light pd-gap-top-xs">Bekleyen Kontrolleri Aç</a>
             @endif
             <div class="pd-source-next-note">{{ $focusMessage }}</div>
         </div>
@@ -80,7 +80,7 @@
         <div class="pd-freshness-header">
             <div>
                 <div class="pd-source-summary-label">Katalog Tazeliği</div>
-                <div class="pd-source-summary-note">Normal fiyat/stok değişimleri sessiz akışta ilerlemeli; yalnız yeni ürün, kategori, kimlik ve projection istisnaları operatöre iş çıkarmalı.</div>
+                <div class="pd-source-summary-note">Normal fiyat/stok değişimleri sessiz akışta ilerlemeli; yalnız yeni ürün, kategori, kimlik ve satış listesine yansıma istisnaları operatöre iş çıkarmalı.</div>
             </div>
             <span class="pd-badge pd-badge-{{ $decision['state_tone'] ?? 'blue' }}">{{ $decision['state_label'] ?? 'Henüz delta raporu yok' }}</span>
         </div>
@@ -93,13 +93,13 @@
         <div class="pd-freshness-metrics">
             <div class="pd-freshness-metric"><span>Son fiyat/stok kontrolü</span><strong>{{ optional($freshness['last_check_at'] ?? null)->format('d.m.Y H:i') ?: 'Henüz yok' }}</strong></div>
             <div class="pd-freshness-metric"><span>Son fiyat/stok güncelleme</span><strong>{{ optional($freshness['last_apply_at'] ?? null)->format('d.m.Y H:i') ?: 'Henüz yok' }}</strong></div>
-            <div class="pd-freshness-metric"><span>Son projection onarım</span><strong>{{ optional($freshness['last_project_at'] ?? null)->format('d.m.Y H:i') ?: 'Henüz yok' }}</strong></div>
+            <div class="pd-freshness-metric"><span>Son satış listesi onarımı</span><strong>{{ optional($freshness['last_project_at'] ?? null)->format('d.m.Y H:i') ?: 'Henüz yok' }}</strong></div>
             <div class="pd-freshness-metric"><span>Değişen fiyat/stok kaydı</span><strong>{{ ($freshness['price_changed_total'] ?? 0) + ($freshness['stock_changed_total'] ?? 0) }}</strong></div>
             <div class="pd-freshness-metric"><span>Kataloğa yansıtılan kayıt</span><strong>{{ $freshness['projected_total'] ?? 0 }}</strong></div>
             <div class="pd-freshness-metric"><span>İnceleme gerektiren istisna</span><strong>{{ $decision['review_required'] ?? 0 }}</strong></div>
             <div class="pd-freshness-metric"><span>Katalogda var, teklifte kapalı</span><strong>{{ $quoteHiddenTotal }}</strong></div>
         </div>
-        <div class="pd-source-next-note">{{ $decision['note'] ?? 'Önizleme canlı kaynağı okur, projection ve teklif fiyatı yalnız apply akışıyla güncellenir.' }}</div>
+        <div class="pd-source-next-note">{{ $decision['note'] ?? 'Ön kontrol canlı kaynağı okur; uygun ürünler normal senkron akışında Abone Firma ürün listesine ve teklif seçimine otomatik yansır.' }}</div>
     </div>
 
     <div class="pd-flow-stepper" aria-label="Tedarikçi akışı stepper">
@@ -124,10 +124,10 @@
         <summary class="pd-source-advanced-toggle">Gelişmiş İşlemler</summary>
         <div class="pd-source-actions">
             <form action="{{ route('admin.super.product-data-hub.sources.delta-dry-run', $source) }}" method="POST">@csrf<button type="submit" class="pd-btn pd-btn-sm pd-btn-light">Sadece Tara</button></form>
-            <form action="{{ route('admin.super.product-data-hub.sources.apply-price-stock-project-dirty', $source) }}" method="POST">@csrf<button type="submit" class="pd-btn pd-btn-sm pd-btn-primary" onclick="return confirm('Bu işlem repair/retry amaçlı projection onarımı çalıştırır. Devam edilsin mi?')">Projection Onar</button></form>
+            <form action="{{ route('admin.super.product-data-hub.sources.apply-price-stock-project-dirty', $source) }}" method="POST">@csrf<button type="submit" class="pd-btn pd-btn-sm pd-btn-primary" onclick="return confirm('Bu işlem yalnız teknik onarım içindir. Normal kullanımda gerekmez. Devam edilsin mi?')">Satış Listesi Onar</button></form>
             <a href="{{ route('admin.super.product-data-hub.sources.sync-reports', ['source_id' => $source->id]) }}" class="pd-btn pd-btn-sm pd-btn-light">Senkron Raporları</a>
             <a href="{{ route('admin.super.product-data-hub.sources.edit', $source) }}" class="pd-btn pd-btn-sm pd-btn-light">Kaynak Ayarları</a>
-            <a href="{{ route('admin.super.product-data-hub.sources.preview', $source) }}" class="pd-btn pd-btn-sm pd-btn-light">Önizleme</a>
+            <a href="{{ route('admin.super.product-data-hub.sources.preview', $source) }}" class="pd-btn pd-btn-sm pd-btn-light">Ön Kontrol</a>
             <a href="{{ route('admin.super.product-data-hub.supplier-products', ['source_id' => $source->id]) }}" class="pd-btn pd-btn-sm pd-btn-light">Teknik Kayıtlar</a>
         </div>
     </details>
