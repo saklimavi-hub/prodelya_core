@@ -14,6 +14,7 @@ use App\Models\Company;
 use App\Models\TenantAccount;
 use App\Services\DeliveryWorkflowService;
 use App\Services\NumberGenerationService;
+use App\Services\OrderQuoteDraftCloneService;
 use App\Services\OrderDeliveryPlanningService;
 use App\Services\OrderCurrentAccountDebitSyncService;
 use App\Services\OrderListSummaryService;
@@ -42,7 +43,8 @@ class OrderController extends Controller
         protected OrderDeliveryPlanningService $orderDeliveryPlanningService,
         protected DeliveryWorkflowService $deliveryWorkflowService,
         protected UsageLimitGuardService $usageLimitGuardService,
-        protected NotificationEventService $notificationEventService
+        protected NotificationEventService $notificationEventService,
+        protected OrderQuoteDraftCloneService $orderQuoteDraftCloneService
     ) {
         // TODO: Add middleware for orders
         // $this->middleware('permission:manage_orders');
@@ -360,6 +362,16 @@ class OrderController extends Controller
             'activeOrderTab' => $activeOrderTab,
             'deliveryTab' => $deliveryTab,
         ]);
+    }
+
+    public function createRevisionDraft(Request $request, Order $order): RedirectResponse
+    {
+        return $this->createCopiedQuoteDraft($request, $order, Order::COPY_TYPE_REVISION);
+    }
+
+    public function createRepeatOrderDraft(Request $request, Order $order): RedirectResponse
+    {
+        return $this->createCopiedQuoteDraft($request, $order, Order::COPY_TYPE_REPEAT_ORDER);
     }
 
     public function storeDeliveryPackages(Request $request, Order $order): RedirectResponse
@@ -765,6 +777,37 @@ class OrderController extends Controller
                 ->route('admin.promotion-quotes.show', $quote)
                 ->withErrors(['error' => $this->humanizeConversionException($exception)]);
         }
+    }
+
+    private function createCopiedQuoteDraft(Request $request, Order $order, string $copyType): RedirectResponse
+    {
+        $tenant = $this->tenantResolver->getCurrentTenant($request);
+
+        if (! $tenant || (int) $order->tenant_account_id !== (int) $tenant->id) {
+            abort(403);
+        }
+
+        if ($order->document_type !== 'order') {
+            abort(404);
+        }
+
+        if (! ($request->user()?->hasPermissionInTenant('create_quotes', $tenant->id) ?? false)) {
+            abort(403);
+        }
+
+        $this->usageLimitGuardService->assertCanCreate($tenant, 'orders');
+
+        $quote = $copyType === Order::COPY_TYPE_REVISION
+            ? $this->orderQuoteDraftCloneService->createRevisionDraft($order, $request->user())
+            : $this->orderQuoteDraftCloneService->createRepeatOrderDraft($order, $request->user());
+
+        $successMessage = $copyType === Order::COPY_TYPE_REVISION
+            ? ($quote->copyTypeLabel() . ' taslağı oluşturuldu. Orijinal sipariş değiştirilmedi.')
+            : 'Tekrar sipariş için yeni teklif taslağı oluşturuldu. Eski sipariş değiştirilmedi.';
+
+        return redirect()
+            ->route('admin.promotion-quotes.edit', $quote)
+            ->with('success', $successMessage);
     }
 
     /**

@@ -526,6 +526,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:web', 'resolve.tenant'
         Route::post('/{order}/delivery-labels', [OrderController::class, 'storeDeliveryLabels'])->name('delivery-labels.store')->whereNumber('order');
         Route::post('/{order}/delivery-info', [OrderController::class, 'updateDeliveryInfo'])->name('delivery-info.update')->whereNumber('order');
         Route::post('/{order}/delivery-complete', [OrderController::class, 'completeDelivery'])->name('delivery.complete')->whereNumber('order');
+        Route::post('/{order}/revision-draft', [OrderController::class, 'createRevisionDraft'])->name('revision-draft.store')->whereNumber('order');
+        Route::post('/{order}/repeat-order-draft', [OrderController::class, 'createRepeatOrderDraft'])->name('repeat-order-draft.store')->whereNumber('order');
         Route::get('/{order}/delivery-labels/print', [OrderController::class, 'printDeliveryLabels'])->name('delivery-labels.print')->whereNumber('order');
         Route::get('/{order}', [OrderController::class, 'show'])->name('show')->whereNumber('order');
         Route::get('/{order}/edit', [OrderController::class, 'edit'])->name('edit')->whereNumber('order');
