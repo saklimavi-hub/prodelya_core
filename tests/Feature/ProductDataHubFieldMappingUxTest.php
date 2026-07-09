@@ -68,6 +68,7 @@ class ProductDataHubFieldMappingUxTest extends TestCase
 
         $response->assertOk();
         $response->assertSeeText('Bu kaynak import için hazır değil. Zorunlu alan eşlemeleri eksik.');
+        $response->assertSeeText('Bu ekran birleşik kurulum akışının alan eşleme adımıdır.');
         $response->assertSeeText('urun_kodu');
         $response->assertSeeText('AK-2420-GRI');
         $response->assertSeeText('kategori_adi');
@@ -91,6 +92,7 @@ class ProductDataHubFieldMappingUxTest extends TestCase
         $response->assertSeeText('alis_fiyati');
         $response->assertDontSeeText('kategori_adi');
         $response->assertDontSeeText('resim');
+        $response->assertSeeText('Kategorileri Eşle');
     }
 
     public function test_saved_mappings_make_list_and_detail_consistent_and_complete(): void
@@ -140,6 +142,7 @@ class ProductDataHubFieldMappingUxTest extends TestCase
         $detailResponse->assertOk();
         $listResponse->assertSeeText('Zorunlu alanlar tamam');
         $detailResponse->assertSeeText('Zorunlu alanlar tamam.');
+        $detailResponse->assertSeeText('Eşlemeyi Kaydet');
         $detailResponse->assertSeeText('Ürün Kodu (supplier_product_code)');
         $detailResponse->assertSeeText('Ürün Adı (product_name)');
         $detailResponse->assertSeeText('Ham Alış Fiyatı (purchase_price)');

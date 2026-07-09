@@ -50,8 +50,8 @@ class ProductHubTemplateCleanupTest extends TestCase
         $response->assertSeeText('Aktif Hazır Tedarikçi Kaynağı');
         $response->assertSeeText('Kontrol Bekleyen Ürün');
         $response->assertSeeText('Abone Katalog Yayını Bekleyen');
-        $response->assertSeeText('Tedarikçi Akışlarını Aç');
-        $response->assertSeeText('Abone Katalog Yayınını Aç');
+        $response->assertSeeText('Ürünleri Senkronize Et');
+        $response->assertSeeText('Yeni Kaynak Ekle');
         $response->assertSeeText('Abone Firma Erişimi');
         $response->assertDontSeeText('İki Katmanlı Yönetim Modeli');
         $response->assertDontSeeText('Tenant Tedarikçi Erişim Matrisi');
@@ -68,11 +68,11 @@ class ProductHubTemplateCleanupTest extends TestCase
 
         $card = $this->extractSourceCard($this->renderSupplierDetail($source)->getContent(), $source->id);
         $this->assertSame(1, substr_count($card, 'data-primary-action="'));
-        $this->assertStringContainsString('data-primary-action="Fiyat/Stok Güncelle"', $card);
+        $this->assertStringContainsString('data-primary-action="Ürünleri Senkronize Et"', $card);
         $this->assertStringContainsString('Bu kaynakta ürünler hazır, ancak Abone Firma kataloğuna henüz yansıtılmamış kayıtlar var.', $card);
         $this->assertStringContainsString('Gelişmiş İşlemler', $card);
         $this->assertStringContainsString('Abone Katalog Durumu', $card);
-        $this->assertStringContainsString('Projection Onar', $card);
+        $this->assertStringContainsString('Satış Listesi Onar', $card);
     }
 
     public function test_review_waiting_source_prefers_inceleme_bekleyenleri_cta(): void
@@ -107,8 +107,8 @@ class ProductHubTemplateCleanupTest extends TestCase
 
         $card = $this->extractSourceCard($this->renderSupplierDetail($source)->getContent(), $source->id);
         $this->assertSame(1, substr_count($card, 'data-primary-action="'));
-        $this->assertStringContainsString('data-primary-action="Fiyat/Stok Güncelle"', $card);
-        $this->assertStringContainsString('Değişimleri İncele', $card);
+        $this->assertStringContainsString('data-primary-action="Ürünleri Senkronize Et"', $card);
+        $this->assertStringContainsString('Bekleyen Kontrolleri Aç', $card);
         $this->assertStringContainsString('data-review-type="new_product" data-review-count="1"', $card);
     }
 

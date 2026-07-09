@@ -40,7 +40,7 @@ class ProductHubFinalUiTerminologyRadiusTest extends TestCase
 
         $catalogOutput->assertOk();
         $catalogOutput->assertSee('Abone Katalog Yayını');
-        $catalogOutput->assertSee('Projection güncellemesi yalnız seçili Abone Firma context’iyle çalışır.');
+        $catalogOutput->assertSee('İleri düzey satış listesi güncellemesi yalnız seçili Abone Firma context’iyle çalışır.');
         $catalogOutput->assertDontSee('Tenant Çıkışları');
     }
 

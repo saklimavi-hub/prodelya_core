@@ -121,7 +121,7 @@ class AdminMenuVisibilityTest extends TestCase
         $response->assertSee('Başvurular');
         $response->assertSee('Abone Firmalar');
         $response->assertSee('Ödeme Altyapısı');
-        $response->assertSee('Product Data Hub');
+        $response->assertSee('Ürün Veri Merkezi');
         $response->assertSee('Standart Kategori Ağacı');
         $response->assertDontSee('Paket Talepleri');
         $response->assertDontSee('Promosyon Teklifleri');

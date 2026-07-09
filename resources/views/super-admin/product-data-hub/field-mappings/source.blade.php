@@ -3,19 +3,33 @@
 @section('page_title', 'Alan Eşleme')
 
 @section('content')
-<div class="pd-page-head">
+<div class="pd-page-head pd-product-hub">
     <div>
         <h1 class="pd-page-title">Alan Eşleme — {{ $source->source_name }}</h1>
-        <p class="pd-page-subtitle">Kaynak alanı, örnek değer ve Prodelya standart alan ilişkisini sade biçimde kontrol edin.</p>
+        <p class="pd-page-subtitle">Bu ekran birleşik kurulum akışının alan eşleme adımıdır. Ön kontrolde görülen örnek değerleri Prodelya standart alanlarına bağlayın; uygun ürünler sonra otomatik senkron akışına katılır.</p>
     </div>
     <div class="pd-page-actions">
         <a href="{{ route('admin.super.product-data-hub.sources.preview', $source) }}" class="pd-btn pd-btn-light">Önizlemeye Dön</a>
+        <a href="{{ route('admin.super.product-data-hub.category-mappings.index', ['supplier_id' => $source->supplier_id]) }}" class="pd-btn pd-btn-light">Kategorileri Eşle</a>
     </div>
 </div>
 
 <div class="pd-note mb-6">Bu ekran Super Admin tarafından yönetilir. Abone Firma bu verileri değiştiremez.</div>
 
-<div class="pd-note mb-6">Tedarikçiden gelen alanları Prodelya standart alanlarına bağlayın. Zorunlu alanlar tamamlanmadan güvenli ürün işleme başlatılmamalıdır.</div>
+<div class="pd-note mb-6 pd-product-hub__auto-note">Tedarikçiden gelen alanları Prodelya standart alanlarına bağlayın. Zorunlu alanlar tamamlanmadan ürünler güvenli otomatik akışa tam açılmaz; eksik veya şüpheli kayıtlar Bekleyen Kontroller tarafında kalır.</div>
+
+<div class="pd-card mb-6 pd-product-hub__setup-flow">
+    <div class="pd-card-body">
+        <div class="pd-grid pd-grid-3">
+            <div class="pd-note"><strong>1. Kaynak Bilgisi</strong><br>Kaynak ve bağlantı kaydı hazır.</div>
+            <div class="pd-note"><strong>2. Ön Kontrol</strong><br>Örnek ürünler preview ekranında doğrulandı.</div>
+            <div class="pd-note"><strong>3. Alan Eşleme</strong><br>Şu an bu adımı tamamlıyorsunuz.</div>
+            <div class="pd-note"><strong>4. İlk Kategori Eşleme</strong><br>Sonraki adımda yeni kategori kararlarını bağlayın.</div>
+            <div class="pd-note"><strong>5. Bekleyen Kontroller</strong><br>Eksik alan, şüpheli fiyat veya kategori kararı ayrı kuyrukta toplanır.</div>
+            <div class="pd-note"><strong>6. Otomatik Senkron</strong><br>Kaynak aktif kaldığında uygun ürünler Abone Firma ürün listesine ve teklif/sipariş ürün seçimine otomatik yansır.</div>
+        </div>
+    </div>
+</div>
 
 <div class="pd-kpi-strip mb-6">
     <div class="pd-card"><div class="pd-card-body"><div class="pd-kpi-label">Kaynak Alan</div><div class="pd-kpi-value">{{ $stats['source_fields'] }}</div></div></div>
@@ -54,7 +68,7 @@
     <div class="pd-card mb-6">
         <div class="pd-card-body">
             <div class="pd-warn">Bu kaynak import için hazır değil. Zorunlu alan eşlemeleri eksik.</div>
-            <div class="pd-note mt-3">Zorunlu alanlar tamamlanmadan güvenli ürün işleme başlatılmamalıdır.</div>
+            <div class="pd-note mt-3">Zorunlu alanlar tamamlanmadan güvenli otomatik akış başlatılmamalıdır.</div>
             <div class="pd-chip-group mt-3">
                 @foreach($missingRequiredLabels as $label)
                     <span class="pd-badge pd-badge-amber">{{ $label }}</span>
@@ -87,10 +101,10 @@
             </div>
         </div>
         <div class="pd-card-body">
-            <div class="pd-note mb-4">Hızlı filtrelerle yalnız zorunlu eksikleri, eşlenmemiş alanları veya fiyat, görsel, kategori ve varyant alanlarını açabilirsiniz.</div>
+            <div class="pd-note mb-4">Hızlı filtrelerle yalnız zorunlu eksikleri, eşlenmemiş alanları veya fiyat, görsel, kategori ve varyant alanlarını açabilirsiniz. Bu tabloda kaynak alanı, örnek değer, Prodelya alanı ve durum aynı akışta görünür.</div>
             <div class="pd-form-actions mb-4">
                 <button type="button" class="pd-btn pd-btn-light" id="applySuggestedMappings">Önerilenleri Doldur</button>
-                <button type="submit" class="pd-btn pd-btn-primary">Eşlemeleri Kaydet</button>
+                <button type="submit" class="pd-btn pd-btn-primary">Eşlemeyi Kaydet</button>
             </div>
             <div class="pd-table-wrap">
                 <table class="pd-table">
@@ -201,7 +215,7 @@
             </div>
         </div>
 
-        <div class="pd-side-note">Zorunlu alanlar tamamlanmadan güvenli ürün işleme, staging veya standart ürün oluşturma adımına geçilmemelidir.</div>
+        <div class="pd-side-note">Zorunlu alanlar tamamlanmadan ürünler güvenli otomatik akışa tam açılmaz. Sonraki adımda ilk kategori eşlemeyi tamamlayın; eşlenmeyen kayıtlar Bekleyen Kontroller tarafında kalır.</div>
     </div>
 </div>
 @endsection

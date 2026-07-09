@@ -135,6 +135,38 @@
         'supplier-warning' => 'Kırmızı / Turuncu uyarılı',
         'parse-error' => 'Parse hatalı',
     ];
+    $setupSteps = [
+        [
+            'title' => 'Kaynak Bilgisi',
+            'status' => filled($source->url) || filled(data_get($source->config, 'source_file_path')) ? 'Tamam' : 'Eksik',
+            'tone' => filled($source->url) || filled(data_get($source->config, 'source_file_path')) ? 'pd-badge-green' : 'pd-badge-amber',
+            'note' => 'Bağlantı ve güncelleme ayarı tanımlı olmalı.',
+        ],
+        [
+            'title' => 'Ön Kontrol',
+            'status' => $sourceMode === 'live_source' ? 'Hazır' : 'Kontrol',
+            'tone' => $sourceMode === 'live_source' ? 'pd-badge-green' : 'pd-badge-amber',
+            'note' => '5-10 örnek ürün üzerinden veri kalitesini doğrulayın.',
+        ],
+        [
+            'title' => 'Alan Eşleme',
+            'status' => empty($mappingWarnings) ? 'Hazır' : 'Eksik',
+            'tone' => empty($mappingWarnings) ? 'pd-badge-green' : 'pd-badge-amber',
+            'note' => 'Ürün kodu, ürün adı, kategori, fiyat, stok ve görsel alanları eksiksiz olmalı.',
+        ],
+        [
+            'title' => 'İlk Kategori Eşleme',
+            'status' => ($stats['missing_category_count'] ?? 0) === 0 ? 'Hazır' : 'Bekliyor',
+            'tone' => ($stats['missing_category_count'] ?? 0) === 0 ? 'pd-badge-green' : 'pd-badge-amber',
+            'note' => 'Kategori eşlenmeyen ürünler satış listesine otomatik açılmaz.',
+        ],
+        [
+            'title' => 'Kaynağı Aktif Et / Senkron',
+            'status' => $source->status === 'active' ? 'Aktif' : 'Pasif',
+            'tone' => $source->status === 'active' ? 'pd-badge-green' : 'pd-badge-gray',
+            'note' => 'Uygun ürünler bundan sonra otomatik senkronla Abone Firma ürün listesine ve teklif seçimine yansır.',
+        ],
+    ];
 @endphp
 
 <div class="pd-page-shell pd-hub-preview-shell">
@@ -144,7 +176,7 @@
                 <div class="pd-hub-hero-icon">PDH</div>
                 <div class="pd-hub-hero-copy">
                     <div class="pd-hub-hero-title">Kaynak Önizleme</div>
-                    <div class="pd-hub-hero-subtitle">Bu ekran kaynağın ilk kayıtlarını okur ve alanların doğru gelip gelmediğini kontrol eder. Veri yazmadan önce örnek değerleri inceleyin.</div>
+                    <div class="pd-hub-hero-subtitle">Bu ekran kaynağın ilk kayıtlarını okur ve alanların doğru gelip gelmediğini kontrol eder. Bu adım birleşik kurulum akışındaki ön kontroldür; veri yazmadan önce örnek değerleri inceleyin.</div>
                     <div class="pd-hub-pill-row mt-3">
                         <span class="pd-badge pd-badge-blue">{{ $sourceSummary['supplier_name'] }}</span>
                         <span class="pd-badge pd-badge-gray">Kaynak #{{ $sourceSummary['source_id'] }}</span>
@@ -162,13 +194,35 @@
                 <form action="{{ route('admin.super.product-data-hub.sources.preview', $source) }}" method="GET">
                     <input type="hidden" name="limit" value="{{ $selectedLimit }}">
                     <input type="hidden" name="filter" value="{{ $selectedFilter }}">
-                    <button type="submit" class="pd-btn pd-btn-primary">Kaynağı Tekrar Önizle</button>
+                    <button type="submit" class="pd-btn pd-btn-primary">Ön Kontrol Yap</button>
                 </form>
-                <a href="{{ route('admin.super.product-data-hub.field-mappings.source', $source) }}" class="pd-btn pd-btn-light">Alan Eşlemeyi Aç</a>
-                <a href="{{ route('admin.super.product-data-hub.category-mappings.index') }}" class="pd-btn pd-btn-light">Kategori Eşlemeye Git</a>
-                <a href="{{ route('admin.super.product-data-hub.sources.sync-reports', ['source_id' => $source->id]) }}" class="pd-btn pd-btn-light">Senkron Raporlarını Aç</a>
+                <a href="{{ route('admin.super.product-data-hub.field-mappings.source', $source) }}" class="pd-btn pd-btn-light">Eşlemeyi Kaydet</a>
+                <a href="{{ route('admin.super.product-data-hub.category-mappings.index', ['supplier_id' => $source->supplier_id]) }}" class="pd-btn pd-btn-light">Kategorileri Eşle</a>
+                <a href="{{ route('admin.super.product-data-hub.sources.sync-reports', ['source_id' => $source->id, 'review_only' => 1]) }}" class="pd-btn pd-btn-light">Bekleyen Kontrolleri Aç</a>
                 <a href="{{ route('admin.super.product-data-hub.sources.edit', $source) }}" class="pd-btn pd-btn-light">Kaynağı Düzenle</a>
                 <a href="{{ route('admin.super.product-data-hub.sources.index') }}" class="pd-btn pd-btn-light">Kaynaklara Dön</a>
+            </div>
+        </div>
+    </section>
+
+    <section class="pd-card pd-section-card mb-6 pd-product-hub__setup-flow">
+        <div class="pd-card-body">
+            <div class="pd-hub-section-head">
+                <div>
+                    <div class="pd-hub-section-title">Birleşik Kurulum Akışı</div>
+                    <div class="pd-hub-section-copy">Bu ekran ön kontrol adımıdır. Alan eşleme ve ilk kategori eşleme tamamlanınca uygun ürünler ek işlem gerekmeden otomatik senkron akışına katılır. Yalnız eksik veya şüpheli kayıtlar Bekleyen Kontroller alanına düşer.</div>
+                </div>
+            </div>
+            <div class="pd-grid pd-grid-3">
+                @foreach($setupSteps as $step)
+                    <div class="pd-note pd-product-hub__setup-step">
+                        <div class="pd-inline-wrap-sm pd-gap-bottom-sm">
+                            <strong>{{ $step['title'] }}</strong>
+                            <span class="pd-badge {{ $step['tone'] }}">{{ $step['status'] }}</span>
+                        </div>
+                        <div>{{ $step['note'] }}</div>
+                    </div>
+                @endforeach
             </div>
         </div>
     </section>
@@ -211,7 +265,7 @@
                 <div class="pd-hub-metric-card pd-hub-metric-info">
                     <div class="pd-hub-metric-label">Sonraki önerilen adım</div>
                     <div class="pd-hub-metric-value">{{ $nextStepLabel }}</div>
-                    <div class="pd-hub-metric-note">Önce inceleyin, sonra gerekiyorsa gelişmiş uygulama adımlarına geçin.</div>
+                    <div class="pd-hub-metric-note">Önce inceleyin, sonra alan eşleme ve kategori eşleme ile aynı kurulum zincirine devam edin.</div>
                 </div>
             </div>
         </div>
@@ -268,11 +322,11 @@
                     @endforeach
                 </div>
             @else
-                <div class="pd-note mb-4">Bu önizlemede zorunlu alan eşleme uyarısı görünmüyor.</div>
+                <div class="pd-note mb-4">Bu ön kontrolde zorunlu alan eşleme uyarısı görünmüyor.</div>
             @endif
 
             @if($sourceMode === 'live_source')
-                <div class="pd-note">Canlı kaynak okundu. Örnek değerler gerçek kaynaktan geldiği için alan eşleme kararları daha güvenli değerlendirilebilir.</div>
+                <div class="pd-note">Canlı kaynak okundu. Ön kontrol başarılıysa sistem senkronizasyon sonrası satış listesine otomatik yansıtır; ekstra havuza aktarma veya teklife gönderme kararı beklenmez.</div>
             @else
                 <div class="pd-warn">Canlı kaynak okunamadı, örnek veya demo veri gösteriliyor. Bu ekranı başarılı canlı bağlantı doğrulaması yerine kullanmayın.</div>
             @endif
@@ -521,12 +575,12 @@
                                         <details class="pd-hub-detail-box">
                                             <summary>Teknik detay</summary>
                                             <div class="pd-hub-detail-list">
-                                                <div class="pd-hub-detail-item">Ham alış fiyatı: {{ $formatMoney($item['purchase_price'] ?? null) }}</div>
-                                                <div class="pd-hub-detail-item">İskonto: {{ $formatPercent($item['discount_rate'] ?? null) }}</div>
-                                                <div class="pd-hub-detail-item">Alternatif fiyat: {{ $formatMoney($item['alternative_price'] ?? null) }}</div>
-                                                <div class="pd-hub-detail-item">USD fiyat: {{ $formatMoney($item['usd_price'] ?? null) }}</div>
-                                                <div class="pd-hub-detail-item">EUR fiyat: {{ $formatMoney($item['eur_price'] ?? null) }}</div>
-                                                <div class="pd-hub-detail-item">Kapalı liste: {{ $formatMoney($item['closed_list_price'] ?? null) }}</div>
+                                                <div class="pd-hub-detail-item">Ham fiyat alanı: {{ filled($item['purchase_price'] ?? null) ? 'Algılandı' : 'Yok' }}</div>
+                                                <div class="pd-hub-detail-item">İskonto alanı: {{ filled($item['discount_rate'] ?? null) ? 'Algılandı' : 'Yok' }}</div>
+                                                <div class="pd-hub-detail-item">Alternatif fiyat alanı: {{ filled($item['alternative_price'] ?? null) ? 'Algılandı' : 'Yok' }}</div>
+                                                <div class="pd-hub-detail-item">USD fiyat alanı: {{ filled($item['usd_price'] ?? null) ? 'Algılandı' : 'Yok' }}</div>
+                                                <div class="pd-hub-detail-item">EUR fiyat alanı: {{ filled($item['eur_price'] ?? null) ? 'Algılandı' : 'Yok' }}</div>
+                                                <div class="pd-hub-detail-item">Kapalı liste alanı: {{ filled($item['closed_list_price'] ?? null) ? 'Algılandı' : 'Yok' }}</div>
                                                 <div class="pd-hub-detail-item">Ana görsel kaynağı: {{ $item['image_source_field'] ?? '-' }}</div>
                                                 <div class="pd-hub-detail-item">Galeri alanları: {{ !empty($item['gallery_source_fields']) ? implode(', ', $item['gallery_source_fields']) : '-' }}</div>
                                                 @if(count($galleryImages) === 1)
@@ -658,12 +712,12 @@
                                         <details class="pd-hub-detail-box">
                                             <summary>Teknik detay</summary>
                                             <div class="pd-hub-detail-list">
-                                                <div class="pd-hub-detail-item">Ham alış fiyatı: {{ $formatMoney($item['purchase_price'] ?? null) }}</div>
-                                                <div class="pd-hub-detail-item">İskonto: {{ $formatPercent($item['discount_rate'] ?? null) }}</div>
-                                                <div class="pd-hub-detail-item">Alternatif fiyat: {{ $formatMoney($item['alternative_price'] ?? null) }}</div>
-                                                <div class="pd-hub-detail-item">USD fiyat: {{ $formatMoney($item['usd_price'] ?? null) }}</div>
-                                                <div class="pd-hub-detail-item">EUR fiyat: {{ $formatMoney($item['eur_price'] ?? null) }}</div>
-                                                <div class="pd-hub-detail-item">Kapalı liste: {{ $formatMoney($item['closed_list_price'] ?? null) }}</div>
+                                                <div class="pd-hub-detail-item">Ham fiyat alanı: {{ filled($item['purchase_price'] ?? null) ? 'Algılandı' : 'Yok' }}</div>
+                                                <div class="pd-hub-detail-item">İskonto alanı: {{ filled($item['discount_rate'] ?? null) ? 'Algılandı' : 'Yok' }}</div>
+                                                <div class="pd-hub-detail-item">Alternatif fiyat alanı: {{ filled($item['alternative_price'] ?? null) ? 'Algılandı' : 'Yok' }}</div>
+                                                <div class="pd-hub-detail-item">USD fiyat alanı: {{ filled($item['usd_price'] ?? null) ? 'Algılandı' : 'Yok' }}</div>
+                                                <div class="pd-hub-detail-item">EUR fiyat alanı: {{ filled($item['eur_price'] ?? null) ? 'Algılandı' : 'Yok' }}</div>
+                                                <div class="pd-hub-detail-item">Kapalı liste alanı: {{ filled($item['closed_list_price'] ?? null) ? 'Algılandı' : 'Yok' }}</div>
                                                 <div class="pd-hub-detail-item">Fallback: {{ !empty($item['image_fallback_used']) ? 'Var' : 'Yok' }}</div>
                                                 <div class="pd-hub-detail-item">Supplier warning: {{ !empty($item['supplier_warning_flag']) ? ($item['supplier_warning_type'] ?? 'Var') : 'Yok' }}</div>
                                             </div>
@@ -682,8 +736,8 @@
         <div class="pd-card-body">
             <div class="pd-hub-section-head">
                 <div>
-                    <div class="pd-hub-section-title">Gelişmiş İşlemler</div>
-                    <div class="pd-hub-section-copy">Aşağıdaki işlemler veri yazabilir veya teknik bakım adımıdır. Önce örnek kayıtları ve eşlemeleri kontrol edin.</div>
+                    <div class="pd-hub-section-title">Gelişmiş Teknik İşlemler</div>
+                    <div class="pd-hub-section-copy">Normal kullanımda gerekmez. Önce ön kontrol, alan eşleme, kategori eşleme ve Bekleyen Kontroller akışını tamamlayın.</div>
                 </div>
             </div>
             <form id="pdSourceRetestForm" action="{{ route('admin.super.product-data-hub.sources.test', $source) }}" method="POST">
@@ -703,7 +757,7 @@
                 @endif
 
                 <div class="pd-form-actions pd-preview-advanced-actions">
-                    <button type="submit" form="pdSourceRetestForm" class="pd-btn pd-btn-light" onclick="return confirm('Kaynak bağlantısı yeniden test edilecek ve canlı önizleme verisi çekilebilir. Veri güncellenmez. Devam edilsin mi?')">Teknik Test</button>
+                    <button type="submit" form="pdSourceRetestForm" class="pd-btn pd-btn-light" onclick="return confirm('Kaynak bağlantısı yeniden test edilecek ve canlı önizleme verisi çekilebilir. Veri güncellenmez. Devam edilsin mi?')">Ön Kontrolü Yenile</button>
                     <a href="{{ route('admin.super.product-data-hub.sources.preview', array_merge(['source' => $source->id], $currentQuery, ['limit' => 'all'])) }}" class="pd-btn pd-btn-light" onclick="return confirm('Tüm kayıtları göstermek ekranı yavaşlatabilir. Devam edilsin mi?')">Tümünü Göster</a>
                     <button type="submit" class="pd-btn pd-btn-primary" onclick="return confirm('Preview kayıtları staging havuzuna aktarılacak. Bu işlem veri yazar; checkbox onayı da gerektirir. Devam edilsin mi?')" {{ !$canStagePreview ? 'disabled' : '' }}>Staging’e Aktar</button>
                     <button type="submit" form="pdSourceBuildStandardForm" class="pd-btn pd-btn-warning" onclick="return confirm('Bu işlem kaynak ürünlerini standart ürün havuzuna dönüştürür veya günceller. Önce önizleme ve hazırlık sonucu kontrol edilmelidir. Devam edilsin mi?')" {{ $sourceMode !== 'live_source' ? 'disabled' : '' }}>Standart Ürün Havuzuna Al</button>

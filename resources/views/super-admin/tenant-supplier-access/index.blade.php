@@ -2,20 +2,20 @@
 
 @section('title', 'Abone Firma Tedarikçi Erişimleri')
 @section('page_title', 'Abone Firma Tedarikçi Erişimleri')
-@section('page_subtitle', 'Bir tedarikçinin ürünlerinin Abone Firma kataloğunda görünebilmesi için erişim, katalog görünürlüğü ve teklif kullanımı izinlerini buradan yönetin.')
+@section('page_subtitle', 'Bir tedarikçinin satışa uygun ürünlerinin Abone Firma ürün listesi ve teklif aramasında otomatik görünebilmesi için erişim izinlerini buradan yönetin.')
 
 @section('content')
-<div class="pd-hub-family-shell">
+<div class="pd-hub-family-shell pd-product-hub">
     <section class="pd-hero-card">
         <div class="pd-card-body">
             <div class="pd-hero-main">
                 <div class="pd-hero-copy">
                     <h1 class="pd-hero-title">Abone Firma Tedarikçi Erişimleri</h1>
-                    <p class="pd-hero-subtitle">Bir tedarikçinin ürünlerinin Abone Firma kataloğunda görünebilmesi için tedarikçi erişimi aktif, katalog görünürlüğü açık ve teklif kullanımı izinli olmalıdır.</p>
+                    <p class="pd-hero-subtitle">Bir tedarikçinin ürünlerinin Abone Firma ürün listesinde ve teklif aramasında otomatik görünebilmesi için tedarikçi erişimi aktif, katalog görünürlüğü açık ve teklif kullanımı izinli olmalıdır. Ekstra “teklife aktar” adımı yoktur.</p>
                 </div>
                 <div class="pd-hero-actions">
-                    <a href="{{ route('admin.super.product-data-hub.index') }}" class="pd-btn pd-btn-light">PD Hub Ana</a>
-                    <a href="{{ route('admin.super.product-data-hub.sources.index') }}" class="pd-btn pd-btn-light">Global Kaynaklar</a>
+                    <a href="{{ route('admin.super.product-data-hub.index') }}" class="pd-btn pd-btn-light">Ürün Veri Merkezi</a>
+                    <a href="{{ route('admin.super.product-data-hub.sources.index') }}" class="pd-btn pd-btn-light">Kaynak ve Ön Kontrol</a>
                 </div>
             </div>
         </div>
@@ -25,11 +25,11 @@
         <div class="pd-section-header">
             <div>
                 <h3 class="pd-section-title">Abone Firma Listesi</h3>
-                <p class="pd-section-subtitle">Katalog yayını için ön koşul olan erişim ve görünürlük izinlerini daha sade tabloda izleyin.</p>
+                <p class="pd-section-subtitle">Otomatik ürün görünürlüğü için ön koşul olan erişim ve görünürlük izinlerini daha sade tabloda izleyin.</p>
             </div>
         </div>
         <div class="pd-section-body">
-            <div class="pd-note mb-4">Bir tedarikçinin ürünlerinin Abone Firma kataloğunda görünebilmesi için tedarikçi erişimi aktif, katalogda görünsün açık ve teklifte kullanılsın izinli olmalıdır.</div>
+            <div class="pd-note mb-4 pd-product-hub__auto-note">Tedarikçi erişimi açık ve ürün satışa uygunsa senkronizasyon sonrası ürünler Abone Firma ürün listesinde ve teklif aramasında otomatik görünür. Eski teklif snapshot kayıtları ayrıca korunur.</div>
             <div class="pd-table-wrap">
                 <table class="pd-table pd-table-compact">
                     <thead>
@@ -110,7 +110,7 @@
                 @endforeach
             </div>
         </div>
-        <div class="pd-side-note">Bu ekran Abone Katalog Yayını için ön koşul olan erişim kurallarını gösterir. Katalog yayını görünmüyorsa önce bu izinleri kontrol edin.</div>
+        <div class="pd-side-note">Bu ekran otomatik ürün görünürlüğü için ön koşul olan erişim kurallarını gösterir. Ürünler görünmüyorsa önce bu izinleri kontrol edin.</div>
     </div>
 </div>
 @endsection

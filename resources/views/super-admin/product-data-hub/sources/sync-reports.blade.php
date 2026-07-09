@@ -22,7 +22,7 @@
         ['label' => 'Fiyat değişimi', 'value' => $latestRun?->price_changed_count ?? 0, 'class' => 'pd-metric-card-soft-green'],
         ['label' => 'Stok değişimi', 'value' => $latestRun?->stock_changed_count ?? 0, 'class' => 'pd-metric-card-soft-purple'],
         ['label' => 'İnceleme bekleyen', 'value' => $changes->whereNotNull('review_status')->count(), 'class' => 'pd-metric-card-soft-amber'],
-        ['label' => 'Kataloğa yansıyan', 'value' => data_get($latestPayload, 'projection.updated_products', 0), 'class' => 'pd-metric-card-soft-red'],
+        ['label' => 'Satış listesine yansıyan', 'value' => data_get($latestPayload, 'projection.updated_products', 0), 'class' => 'pd-metric-card-soft-red'],
     ];
     $decisionCards = [
         ['label' => 'Otomatik güncellenen', 'value' => $decisionSummary['automatic_updates'] ?? 0, 'class' => 'pd-metric-card-soft-green'],
@@ -30,11 +30,11 @@
         ['label' => 'Yeni ürün / varyant', 'value' => $decisionSummary['new_items'] ?? 0, 'class' => 'pd-metric-card-soft-blue'],
         ['label' => 'Kategori bekleyen', 'value' => $decisionSummary['category_waiting'] ?? 0, 'class' => 'pd-metric-card-soft-amber'],
         ['label' => 'Kimlik / varyant sorunu', 'value' => $decisionSummary['identity_issues'] ?? 0, 'class' => 'pd-metric-card-soft-red'],
-        ['label' => 'Projection bekleyen', 'value' => $decisionSummary['projection_pending'] ?? 0, 'class' => 'pd-metric-card-soft-purple'],
+        ['label' => 'Satış listesi bekleyen', 'value' => $decisionSummary['projection_pending'] ?? 0, 'class' => 'pd-metric-card-soft-purple'],
     ];
 @endphp
 
-<div class="pd-hub-family-shell">
+<div class="pd-hub-family-shell pd-product-hub">
     @if (session('success'))
         <div class="pd-note pd-note-soft-blue">{{ session('success') }}</div>
     @endif
@@ -48,7 +48,7 @@
             <div class="pd-hero-main">
                 <div class="pd-hero-copy">
                     <h1 class="pd-hero-title">Senkron ve Raporlar</h1>
-                    <p class="pd-hero-subtitle">Kaynak güncelleme sonuçlarını, fiyat/stok değişimlerini ve inceleme bekleyen kayıtları günlük karar için daha net izleyin.</p>
+                    <p class="pd-hero-subtitle">Kaynak güncelleme sonuçlarını, fiyat/stok değişimlerini ve bekleyen kontrol kayıtlarını günlük karar için daha net izleyin. Normal kullanımda uygun ürünler otomatik yansır; bu ekran yalnız istisnaları görünür kılar.</p>
                     <div class="pd-hero-badges">
                         <span class="pd-badge pd-badge-blue">Kaynak Güncelleme</span>
                         <span class="pd-badge pd-badge-green">Fiyat / Stok</span>
@@ -56,13 +56,13 @@
                     </div>
                 </div>
                 <div class="pd-hero-actions">
-                    <a href="{{ route('admin.super.product-data-hub.sources.index') }}" class="pd-btn pd-btn-light">Kaynaklara Dön</a>
-                    <a href="{{ route('admin.super.product-data-hub.sources.sync-reports', ['review_only' => 1]) }}" class="pd-btn pd-btn-warning">İnceleme Bekleyenleri Aç</a>
+                    <a href="{{ route('admin.super.product-data-hub.sources.index') }}" class="pd-btn pd-btn-light">Kaynak ve Ön Kontrole Dön</a>
+                    <a href="{{ route('admin.super.product-data-hub.sources.sync-reports', ['review_only' => 1]) }}" class="pd-btn pd-btn-warning">Bekleyen Kontrolleri Aç</a>
                 </div>
             </div>
-            <div class="pd-note mt-4">Önizleme canlı veriyi gösterir; katalog ve teklif fiyatları ancak fiyat/stok güncelleme ve Abone Katalog yansıtma sonrası güncellenir.</div>
-            <div class="pd-note mt-3">Hedef akışta normal fiyat ve stok değişimleri sessizce ilerler; bu ekran yalnız yeni ürün, kategori, kimlik ve projection istisnalarını görünür kılmak için kullanılır.</div>
-            <div class="pd-note mt-3">Otomatik saatlik/günlük/haftalık çalışmalar için sunucuda Laravel scheduler aktif olmalıdır.</div>
+            <div class="pd-note mt-4 pd-product-hub__auto-note">Normal akışta yalnız senkronizasyon yeterlidir. Fiyat ve stok değişimleri sessizce ilerler; uygun ürünler Abone Firma ürün listesi ve teklif aramasına otomatik yansır.</div>
+            <div class="pd-note mt-3">Bu ekran yalnız yeni ürün, kategori, kimlik ve satış listesine yansımayı engelleyen istisnaları görünür kılmak için kullanılır.</div>
+            <div class="pd-note mt-3">Güncelleme ayarı için otomatik saatlik/günlük/haftalık çalışmaların sunucuda Laravel scheduler ile aktif olması gerekir.</div>
         </div>
     </section>
 
@@ -197,7 +197,7 @@
                     <div class="pd-profile-info-value">{{ data_get($applySummary, 'price_stock_applied', 0) ?: (($decisionSummary['automatic_updates'] ?? 0)) }}</div>
                 </div>
                 <div class="pd-profile-info">
-                    <div class="pd-profile-info-label">Kataloğa yansıtılan dirty ürün</div>
+                    <div class="pd-profile-info-label">Satış listesine güncellenen değişen ürün</div>
                     <div class="pd-profile-info-value">{{ data_get($applySummary, 'projected_dirty_products', data_get($latestPayload, 'projection.updated_products', 0)) }}</div>
                 </div>
                 <div class="pd-profile-info">
@@ -285,7 +285,7 @@
                                 <div class="pd-source-meta-line">Başlangıç: {{ optional($run->started_at)->format('d.m.Y H:i') ?: '-' }}</div>
                                 <div class="pd-source-meta-line">Fiyat: {{ $run->price_changed_count }} / Stok: {{ $run->stock_changed_count }}</div>
                                 <div class="pd-source-meta-line">İnceleme: {{ $run->changes()->whereNotNull('review_status')->count() }}</div>
-                                <div class="pd-source-meta-line">Kataloğa yansıyan: {{ data_get($run->report_payload, 'projection.updated_products', 0) }}</div>
+                                <div class="pd-source-meta-line">Satış listesine yansıyan: {{ data_get($run->report_payload, 'projection.updated_products', 0) }}</div>
                             </div>
                         </summary>
                         <div class="pd-source-meta mt-3">
@@ -295,7 +295,7 @@
                             <div class="pd-source-meta-line">Kaynakta görünmeyen: {{ $run->products_missing_from_feed }} / Pasif adayı: {{ $run->products_inactivated }}</div>
                             <div class="pd-source-meta-line">Kategori: {{ $run->category_changed_count }} / Görsel: {{ $run->image_changed_count }} / Açıklama: {{ $run->description_changed_count }}</div>
                             <div class="pd-source-meta-line">Standart ürün: +{{ data_get($run->report_payload, 'build.created_products', 0) }} / {{ data_get($run->report_payload, 'build.updated_products', 0) }}</div>
-                            <div class="pd-source-meta-line">Abone Kataloğu: +{{ data_get($run->report_payload, 'projection.created_products', 0) }} / {{ data_get($run->report_payload, 'projection.updated_products', 0) }}</div>
+                            <div class="pd-source-meta-line">Abone Firma Ürün Listesi: +{{ data_get($run->report_payload, 'projection.created_products', 0) }} / {{ data_get($run->report_payload, 'projection.updated_products', 0) }}</div>
                             <div class="pd-source-meta-line">Bloklanan: {{ $run->blocked_total }} / Hata: {{ $run->error_count }}</div>
                             @if(data_get($run->report_payload, 'dry_run'))
                                 <div class="pd-source-meta-line">Not: Bu işlem ön kontroldür; veri yazılmadı.</div>

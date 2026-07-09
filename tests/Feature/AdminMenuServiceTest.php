@@ -122,7 +122,7 @@ class AdminMenuServiceTest extends TestCase
         $this->assertContains('Super Admin Paneli', $flatSuper);
         $this->assertContains('Abone Firmalar', $flatSuper);
         $this->assertContains('Başvurular', $flatSuper);
-        $this->assertContains('Product Data Hub', $flatSuper);
+        $this->assertContains('Ürün Veri Merkezi', $flatSuper);
         $this->assertContains('Standart Kategori Ağacı', $flatSuper);
         $this->assertNotContains('Paket Talepleri', $flatSuper);
         $this->assertNotContains('Modüller', $flatSuper);

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 return [
     'tenant' => [
@@ -397,13 +397,13 @@ return [
         ],
         [
             'key' => 'super-pdh',
-            'label' => 'Product Data Hub',
+            'label' => 'ÃœrÃ¼n Veri Merkezi',
             'type' => 'group',
             'sort_order' => 20,
             'children' => [
                 [
                     'key' => 'super-product-data-hub',
-                    'label' => 'Product Data Hub',
+                    'label' => 'ÃœrÃ¼n Veri Merkezi',
                     'type' => 'accordion',
                     'icon' => 'check-circle',
                     'status' => 'active',
@@ -585,3 +585,4 @@ return [
         ],
     ],
 ];
+

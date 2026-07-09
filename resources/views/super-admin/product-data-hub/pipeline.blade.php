@@ -2,7 +2,7 @@
 
 @section('title', 'Akış Kontrol')
 @section('page_title', 'Akış Kontrol')
-@section('page_subtitle', 'Product Hub veri hattının teknik bakım ve süreç açıklama ekranı.')
+@section('page_subtitle', 'Ürün Veri Merkezi veri hattının arka planda otomatik ilerleyen teknik bakım ve süreç açıklama ekranı.')
 
 @section('page_actions')
 <div class="pd-hero-actions">
@@ -14,13 +14,13 @@
 @endsection
 
 @section('content')
-<div class="pd-hub-family-shell">
+<div class="pd-hub-family-shell pd-product-hub">
     <section class="pd-hero-card">
         <div class="pd-card-body">
             <div class="pd-hero-main">
                 <div class="pd-hero-copy">
                     <h1 class="pd-hero-title">Akış Kontrol</h1>
-                    <p class="pd-hero-subtitle">Bu ekran günlük karar ekranı değildir. Kaynak yapısı, süreç sırası ve teknik bakım görünümü için kullanılır.</p>
+                    <p class="pd-hero-subtitle">Bu ekran günlük karar ekranı değildir. Kaynak yapısı, süreç sırası ve otomatik satış listesi akışının teknik bakım görünümü için kullanılır.</p>
                     <div class="pd-hero-badges">
                         <span class="pd-badge pd-badge-blue">Teknik bakım</span>
                         <span class="pd-badge pd-badge-green">{{ $summary['active_sources'] ?? 0 }} aktif kaynak</span>

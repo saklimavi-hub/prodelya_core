@@ -17,10 +17,10 @@
     ];
 
     $primaryLinks = [
-        ['title' => 'Tedarikçi Akışlarını Aç', 'copy' => 'Kaynakların bir sonraki doğru adımını yönetin.', 'href' => route('admin.super.product-data-hub.sources.index')],
-        ['title' => 'Kategori Bekleyenleri Aç', 'copy' => 'Bekleyen kategori eşlemelerini topluca gözden geçirin.', 'href' => route('admin.super.product-data-hub.category-mappings.index', ['queue' => 'pending'])],
-        ['title' => 'Abone Katalog Yayınını Aç', 'copy' => 'Kataloga yansıtma ve erişim durumunu kontrol edin.', 'href' => route('admin.super.product-data-hub.catalog-output')],
-        ['title' => 'Senkron Raporlarını Aç', 'copy' => 'Son işlemler, uyarılar ve inceleme bekleyenleri görüntüleyin.', 'href' => route('admin.super.product-data-hub.sources.sync-reports')],
+        ['title' => 'Ürünleri Senkronize Et', 'copy' => 'Normalde günlük güncelleme için senkronizasyon yeterlidir; uygun ürünler satış listesine otomatik yansır.', 'href' => route('admin.super.product-data-hub.sources.index')],
+        ['title' => 'Bekleyen Kontrolleri Aç', 'copy' => 'Sadece kategori, kimlik, fiyat anomali ve pasif ürün gibi karar gereken işleri görün.', 'href' => route('admin.super.product-data-hub.product-panel', ['flow_mode' => 'review_queue'])],
+        ['title' => 'Yeni Kaynak Ekle', 'copy' => 'Yeni tedarikçi kaynağını bağlayın, ön kontrol yapın ve senkronizasyona hazır hale getirin.', 'href' => route('admin.super.product-data-hub.sources.create')],
+        ['title' => 'Güncelleme Ayarı', 'copy' => 'Saatlik/günlük otomatik akışın teknik çalışma mantığını ve bakım adımlarını kontrol edin.', 'href' => route('admin.super.product-data-hub.pipeline')],
     ];
 
     $detailLinks = [
@@ -37,26 +37,27 @@
     ];
 @endphp
 
-<div class="pd-page-shell">
+<div class="pd-page-shell pd-product-hub">
     <section class="pd-hero-card">
         <div class="pd-card-body">
             <div class="pd-hero-main">
                 <div class="pd-hero-copy">
                     <h1 class="pd-hero-title">Senkron Sonuç Merkezi</h1>
-                    <p class="pd-hero-subtitle">Durum Merkezi artık tek soru üstünden ilerler: bugün aksiyon gereken ürün var mı? Normal fiyat ve stok değişimleri sessiz akışta ilerlemeli, yalnız istisnalar operatöre iş çıkarmalı.</p>
+                    <p class="pd-hero-subtitle">Durum Merkezi artık tek soru üstünden ilerler: bugün aksiyon gereken ürün var mı? Normal kullanımda yalnız senkronizasyon yeterlidir; sistem satış listesine otomatik yansıtır, yalnız istisnalar operatöre iş çıkarır.</p>
                     <div class="pd-hero-badges">
                         <span class="pd-badge pd-badge-blue">Durum Merkezi</span>
                         <span class="pd-badge pd-badge-light">Super Admin</span>
+                        <span class="pd-badge pd-badge-light">Otomatik satış listesi</span>
                         <span class="pd-badge pd-badge-green">{{ $platformStats['global_sources'] }} aktif kaynak</span>
                         <span class="pd-badge pd-badge-amber">{{ $platformStats['pending_category_mappings'] }} kategori bekliyor</span>
                         <span class="pd-badge pd-badge-purple">{{ $platformStats['pending_tenant_catalog_categories'] }} yayın bekliyor</span>
                     </div>
                 </div>
                 <div class="pd-hero-actions">
-                    <a href="{{ route('admin.super.product-data-hub.sources.index') }}" class="pd-btn pd-btn-primary">Tedarikçi Akışlarını Aç</a>
-                    <a href="{{ route('admin.super.product-data-hub.category-mappings.index', ['queue' => 'pending']) }}" class="pd-btn pd-btn-warning">Kategori Bekleyenleri Aç</a>
-                    <a href="{{ route('admin.super.product-data-hub.catalog-output') }}" class="pd-btn pd-btn-light">Abone Katalog Yayınını Aç</a>
-                    <a href="{{ route('admin.super.product-data-hub.sources.sync-reports') }}" class="pd-btn pd-btn-light">Senkron Raporlarını Aç</a>
+                    <a href="{{ route('admin.super.product-data-hub.sources.index') }}" class="pd-btn pd-btn-primary">Ürünleri Senkronize Et</a>
+                    <a href="{{ route('admin.super.product-data-hub.product-panel', ['flow_mode' => 'review_queue']) }}" class="pd-btn pd-btn-warning">Bekleyen Kontrolleri Aç</a>
+                    <a href="{{ route('admin.super.product-data-hub.sources.create') }}" class="pd-btn pd-btn-light">Yeni Kaynak Ekle</a>
+                    <a href="{{ route('admin.super.product-data-hub.pipeline') }}" class="pd-btn pd-btn-light">Güncelleme Ayarı</a>
                 </div>
             </div>
         </div>
@@ -97,13 +98,13 @@
         @endforeach
     </section>
 
-    <section class="pd-section-card pd-section-card-soft-slate">
+    <section class="pd-section-card pd-section-card-soft-slate pd-product-hub__flow">
             <div class="pd-section-header">
                 <div>
-                    <h3 class="pd-section-title">Bugün Öncelikli Aksiyonlar</h3>
-                    <p class="pd-section-subtitle">İstisna yönetimi için gerekli kısa geçişler burada tutulur. Teknik komut zinciri yerine karar ekranları öne çıkarılır.</p>
+                    <h3 class="pd-section-title">Sade Günlük Akış</h3>
+                    <p class="pd-section-subtitle">Normalde yalnız senkronizasyon yeterlidir. Sistem uygun ürünleri otomatik satış listesine yansıtır; yalnız sorunlu kayıtlar bekleyen kontrole düşer.</p>
                 </div>
-                <a href="{{ route('admin.super.product-data-hub.pipeline') }}" class="pd-btn pd-btn-light pd-btn-sm">Akış Kontrolü Aç</a>
+                <a href="{{ route('admin.super.product-data-hub.pipeline') }}" class="pd-btn pd-btn-light pd-btn-sm">Güncelleme Ayarını Aç</a>
             </div>
         <div class="pd-section-body">
             <div class="pd-mini-grid pd-mini-grid-compact">
@@ -209,14 +210,14 @@
         <div class="pd-summary-section">
             <h4 class="pd-summary-section-title">Hızlı Geçiş</h4>
             <div class="pd-summary-action-list">
-                <a href="{{ route('admin.super.product-data-hub.sources.index') }}" class="pd-summary-action"><span>Tedarikçi Akışları</span><span class="pd-badge pd-badge-blue">Akış</span></a>
-                <a href="{{ route('admin.super.product-data-hub.category-mappings.index', ['queue' => 'pending']) }}" class="pd-summary-action"><span>Kategori Bekleyenler</span><span class="pd-badge pd-badge-amber">Kategori</span></a>
-                <a href="{{ route('admin.super.product-data-hub.catalog-output') }}" class="pd-summary-action"><span>Abone Katalog Yayını</span><span class="pd-badge pd-badge-purple">Yayın</span></a>
-                <a href="{{ route('admin.super.product-data-hub.sources.sync-reports') }}" class="pd-summary-action"><span>Senkron Raporları</span><span class="pd-badge pd-badge-green">Rapor</span></a>
+                <a href="{{ route('admin.super.product-data-hub.sources.index') }}" class="pd-summary-action"><span>Ürünleri Senkronize Et</span><span class="pd-badge pd-badge-blue">Sync</span></a>
+                <a href="{{ route('admin.super.product-data-hub.product-panel', ['flow_mode' => 'review_queue']) }}" class="pd-summary-action"><span>Bekleyen Kontroller</span><span class="pd-badge pd-badge-amber">Kontrol</span></a>
+                <a href="{{ route('admin.super.product-data-hub.sources.create') }}" class="pd-summary-action"><span>Yeni Kaynak</span><span class="pd-badge pd-badge-purple">Kaynak</span></a>
+                <a href="{{ route('admin.super.product-data-hub.pipeline') }}" class="pd-summary-action"><span>Güncelleme Ayarı</span><span class="pd-badge pd-badge-green">Ayar</span></a>
             </div>
         </div>
 
-        <div class="pd-side-note">Senkron Sonuç Merkezi günlük karar ekranıdır. Normal fiyat/stok değişimi için ekstra apply/project dili göstermez; yalnız istisnaları öne çıkarır.</div>
+        <div class="pd-side-note">Senkron Sonuç Merkezi günlük karar ekranıdır. Havuza aktar, satış listesine aktar veya teklife gönder gibi ayrı işlem hissi vermez; yalnız istisnaları öne çıkarır.</div>
     </div>
 </div>
 @endsection

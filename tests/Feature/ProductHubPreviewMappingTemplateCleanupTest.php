@@ -90,10 +90,12 @@ XML);
         $response->assertOk();
         $response->assertSeeText('Zorunlu Eksikler ve Uyarılar');
         $response->assertSeeText('Zorunlu eşleme eksikleri var.');
-        $response->assertSeeText('Gelişmiş İşlemler');
+        $response->assertSeeText('Birleşik Kurulum Akışı');
+        $response->assertSeeText('Gelişmiş Teknik İşlemler');
         $response->assertSeeText('Staging’e Aktar');
         $response->assertSeeText('Standart Ürün Havuzuna Al');
-        $response->assertSeeText('Teknik Test');
+        $response->assertSeeText('Ön Kontrolü Yenile');
+        $response->assertSeeText('Bekleyen Kontrolleri Aç');
     }
 
     public function test_mapping_screen_shows_compact_columns_and_filters(): void
@@ -117,6 +119,7 @@ XML);
 
         $response->assertOk();
         $response->assertSeeText('Abone Firma bu verileri değiştiremez.');
+        $response->assertSeeText('Bu ekran birleşik kurulum akışının alan eşleme adımıdır.');
         $response->assertSeeText('Kaynak Alan');
         $response->assertSeeText('Örnek Değer');
         $response->assertSeeText('Önerilen Standart Alan');
@@ -154,19 +157,47 @@ XML);
             ->get(route('admin.super.product-data-hub.sources.edit', $source));
 
         $createResponse->assertOk();
+        $createResponse->assertSeeText('Birleşik Kurulum Akışı');
         $createResponse->assertSeeText('Kaynak Kimliği');
         $createResponse->assertSeeText('Profil ve Parsing');
         $createResponse->assertSeeText('Bağlantı ve Güvenlik');
+        $createResponse->assertSeeText('Kaydetme Sonrası Ana Aksiyonlar');
         $createResponse->assertSeeText('Önizleme ve Alan Eşleme Hazırlığı');
         $createResponse->assertSeeText('Sync Davranışı');
 
         $editResponse->assertOk();
+        $editResponse->assertSeeText('Kaynak Kurulum Durumu');
         $editResponse->assertSeeText('Kaynak Kimliği');
         $editResponse->assertSeeText('Profil ve Parsing');
         $editResponse->assertSeeText('Bağlantı ve Güvenlik');
+        $editResponse->assertSeeText('Kurulum Zincirinde Sonraki Adımlar');
         $editResponse->assertSeeText('Gelişmiş Ayarlar');
         $editResponse->assertSeeText('Sync Davranışı');
         $editResponse->assertSeeText('Abone Firma bu URL’yi değiştiremez.');
+    }
+
+    public function test_preview_technical_details_do_not_expose_purchase_cost_values(): void
+    {
+        $source = $this->createCustomXmlSource('template-sensitive.xml', <<<'XML'
+<?xml version="1.0" encoding="UTF-8"?>
+<urunler>
+    <urun>
+        <urun_kodu>TM-500</urun_kodu>
+        <urun_adi>Hassas Fiyat Testi</urun_adi>
+        <alis_fiyati>29.90</alis_fiyati>
+        <kategori_adi>Defterler</kategori_adi>
+    </urun>
+</urunler>
+XML);
+
+        $response = $this->actingAs($this->platformAdmin, 'web')
+            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
+            ->get(route('admin.super.product-data-hub.sources.preview', $source));
+
+        $response->assertOk();
+        $response->assertSeeText('Ham fiyat alanı');
+        $response->assertDontSeeText('Ham alış fiyatı');
+        $response->assertDontSeeText('29,90');
     }
 
     public function test_product_hub_preview_and_mapping_css_stays_on_standard_radii(): void
