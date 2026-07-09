@@ -163,9 +163,9 @@ class ProductDataHubNewMissingReviewFlowTest extends TestCase
         $this->assertMatchesRegularExpression('/data-review-type="new_variant" data-review-count="([1-9][0-9]*)"/', $card);
         $this->assertStringContainsString('data-review-type="missing_product" data-review-count="1"', $card);
         $this->assertStringContainsString('data-review-type="missing_variant" data-review-count="1"', $card);
-        $this->assertStringContainsString('data-primary-action="Fiyat/Stok Güncelle"', $card);
-        $this->assertStringContainsString('Değişimleri İncele', $card);
-        $response->assertSeeText('Değişimleri İncele');
+        $this->assertStringContainsString('data-primary-action="Ürünleri Senkronize Et"', $card);
+        $this->assertStringContainsString('Bekleyen Kontrolleri Aç', $card);
+        $response->assertSeeText('Bekleyen Kontrolleri Aç');
     }
 
     public function test_missing_changes_become_passive_candidate_after_grace_runs_but_are_not_deleted_or_passivated(): void

@@ -487,9 +487,9 @@ class CatalogSearchController extends Controller
         }
 
         if ($payload['missing_category'] ?? false) {
-            $badges[] = 'Kategori Bekliyor';
-            $badges[] = 'Kategori eksik';
-            $messages[] = 'Bu ürünün standart kategori eşlemesi bekliyor.';
+            $badges[] = 'Kategori eşleşmemiş';
+            $badges[] = 'Kategori uyarısı';
+            $messages[] = 'Genel kategori henüz bağlanmadı. Ürün teklif aramasında görünmeye devam eder.';
         }
 
         if ($payload['out_of_stock'] ?? false) {

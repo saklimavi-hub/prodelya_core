@@ -97,7 +97,7 @@ class TenantCatalogQuoteVisibilityLabelTest extends TestCase
                 'is_sellable' => true,
                 'quote_search_visible' => true,
                 'parent_product_code' => 'ET-0900',
-                'warnings' => ['Kategori Bekliyor'],
+                'warnings' => ['Kategori eşleşmemiş'],
                 'category_missing_warning' => true,
                 'price_snapshot' => ['list_price' => 95, 'vat_rate' => 20],
             ],
@@ -112,7 +112,7 @@ class TenantCatalogQuoteVisibilityLabelTest extends TestCase
         $response->assertOk();
         $response->assertSeeText('ET-0900-S');
         $row = $this->extractCatalogRow($response->getContent(), 'ET-0900-S');
-        $this->assertStringContainsString('Kategori Bekliyor', $row);
+        $this->assertStringContainsString('Kategori eşleşmemiş', $row);
         $this->assertStringContainsString('Stok yok', $row);
         $this->assertStringContainsString('Teklifte kullanılabilir', $row);
         $this->assertStringNotContainsString('Teklifte kapalı', $row);

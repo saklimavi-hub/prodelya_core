@@ -49,7 +49,7 @@ class SuperAdminCatalogOutputProjectionActionsTest extends TestCase
 
         $before->assertOk();
         $before->assertSee('Katalog Fiyatı Eski');
-        $before->assertSee('Kategori Bekliyor');
+        $before->assertSee('Kategori eşleşmemiş');
 
         $response = $this->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->post(route('admin.super.product-data-hub.catalog-output.project-refresh'), [
@@ -95,7 +95,7 @@ class SuperAdminCatalogOutputProjectionActionsTest extends TestCase
         $after->assertOk();
         $after->assertDontSee('Katalog Fiyatı Eski');
         $after->assertDontSee('Katalog Stoğu Eski');
-        $after->assertSee('Kategori Bekliyor');
+        $after->assertSee('Kategori eşleşmemiş');
     }
 
     public function test_catalog_output_project_missing_creates_missing_projection_rows(): void

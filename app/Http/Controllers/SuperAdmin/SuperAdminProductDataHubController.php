@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace App\Http\Controllers\SuperAdmin;
 
@@ -345,15 +345,15 @@ class SuperAdminProductDataHubController extends Controller
                         'key' => 'review_queue',
                         'title' => 'İnceleme Gerekenler',
                         'count' => 0,
-                        'tone' => 'amber',
+                        'tone' => 'blue',
                         'copy' => 'Yeni ürün, kategori ve freshness istisnaları burada toplanır.',
                         'href' => route('admin.super.product-data-hub.product-panel', ['flow_mode' => 'review_queue']),
                     ],
                     [
                         'key' => 'category_waiting',
-                        'title' => 'Kategori Bekleyenler',
+                        'title' => 'Kategori UyarÄ±larÄ±',
                         'count' => 0,
-                        'tone' => 'amber',
+                        'tone' => 'blue',
                         'copy' => 'Kategori kararı bekleyen satırlar hedefli taramada görünür.',
                         'href' => route('admin.super.product-data-hub.product-panel', ['flow_mode' => 'category_waiting']),
                     ],
@@ -385,9 +385,9 @@ class SuperAdminProductDataHubController extends Controller
                 ],
                 'reviewQueueCards' => [
                     ['key' => 'new_items', 'title' => 'Yeni Ürünler', 'count' => 0, 'tone' => 'blue', 'copy' => 'İlk kez görülen ürün ve varyantlar burada toplanır.', 'href' => route('admin.super.product-data-hub.product-panel', ['review_bucket' => 'new_items'])],
-                    ['key' => 'category_waiting', 'title' => 'Kategori Bekleyenler', 'count' => 0, 'tone' => 'amber', 'copy' => 'Kategori kararı bekleyenler burada görünür.', 'href' => route('admin.super.product-data-hub.product-panel', ['review_bucket' => 'category_waiting'])],
+                    ['key' => 'category_waiting', 'title' => 'Kategori UyarÄ±larÄ±', 'count' => 0, 'tone' => 'blue', 'copy' => 'Kategori kararı bekleyenler burada görünür.', 'href' => route('admin.super.product-data-hub.product-panel', ['review_bucket' => 'category_waiting'])],
                     ['key' => 'identity_issues', 'title' => 'Kimlik / Variant Sorunları', 'count' => 0, 'tone' => 'red', 'copy' => 'Eksik ürün, eksik varyant ve yapı kırıkları burada toplanır.', 'href' => route('admin.super.product-data-hub.product-panel', ['review_bucket' => 'identity_issues'])],
-                    ['key' => 'anomaly_flags', 'title' => 'Anomali / Freshness', 'count' => 0, 'tone' => 'amber', 'copy' => 'Fiyat, stok ve quote uyumsuzlukları burada görünür.', 'href' => route('admin.super.product-data-hub.product-panel', ['review_bucket' => 'anomaly_flags'])],
+                    ['key' => 'anomaly_flags', 'title' => 'Anomali / Freshness', 'count' => 0, 'tone' => 'blue', 'copy' => 'Fiyat, stok ve quote uyumsuzlukları burada görünür.', 'href' => route('admin.super.product-data-hub.product-panel', ['review_bucket' => 'anomaly_flags'])],
                     ['key' => 'projection_issues', 'title' => 'Projection Sorunları', 'count' => 0, 'tone' => 'red', 'copy' => 'Katalog yansıması geri kalan satırlar burada izlenir.', 'href' => route('admin.super.product-data-hub.product-panel', ['review_bucket' => 'projection_issues'])],
                     ['key' => 'tenant_output_blocks', 'title' => 'Tenant Çıkışı Blokajları', 'count' => 0, 'tone' => 'purple', 'copy' => 'Erişim ve görünürlük blokları burada filtrelenir.', 'href' => route('admin.super.product-data-hub.product-panel', ['review_bucket' => 'tenant_output_blocks'])],
                 ],
@@ -604,16 +604,16 @@ class SuperAdminProductDataHubController extends Controller
             [
                 'key' => 'review_queue',
                 'title' => 'İnceleme Gerekenler',
-                'count' => ($summary['review_required'] ?? 0) + ($summary['category_waiting'] ?? 0) + ($summary['projection_lagging'] ?? 0) + ($summary['tenant_output_closed'] ?? 0),
-                'tone' => 'amber',
+                'count' => ($summary['review_required'] ?? 0) + ($summary['projection_lagging'] ?? 0) + ($summary['tenant_output_closed'] ?? 0),
+                'tone' => 'blue',
                 'copy' => 'Yalnız manuel karar gerektiren satırları tek kuyruğa indirir.',
                 'href' => route('admin.super.product-data-hub.product-panel', array_merge($request->except('page'), ['flow_mode' => 'review_queue'])),
             ],
             [
                 'key' => 'category_waiting',
-                'title' => 'Kategori Bekleyenler',
+                'title' => 'Kategori UyarÄ±larÄ±',
                 'count' => $summary['category_waiting'] ?? 0,
-                'tone' => 'amber',
+                'tone' => 'blue',
                 'copy' => 'Kategori kararı beklediği için satış zincirine temiz giremeyen kayıtlar.',
                 'href' => route('admin.super.product-data-hub.product-panel', array_merge($request->except('page'), ['flow_mode' => 'category_waiting'])),
             ],
@@ -943,7 +943,7 @@ class SuperAdminProductDataHubController extends Controller
             ->when(($filters['flow_mode'] ?? '') !== '', function (Collection $collection) use ($filters) {
                 return match ($filters['flow_mode']) {
                     'clean_flow' => $collection->filter(fn (array $row) => ($row['operation_state_key'] ?? null) === 'auto_updated' && ($row['sellable_state_key'] ?? null) !== 'parent_only'),
-                    'review_queue' => $collection->filter(fn (array $row) => in_array($row['operation_state_key'] ?? '', ['review_required', 'category_waiting', 'projection_lagging', 'tenant_output_closed'], true)),
+                    'review_queue' => $collection->filter(fn (array $row) => in_array($row['operation_state_key'] ?? '', ['review_required', 'projection_lagging', 'tenant_output_closed'], true)),
                     'category_waiting' => $collection->filter(fn (array $row) => ($row['operation_state_key'] ?? null) === 'category_waiting'),
                     'projection_issues' => $collection->filter(fn (array $row) => ($row['operation_state_key'] ?? null) === 'projection_lagging' || in_array('quote_price_outdated', $row['diagnostic_badge_keys'] ?? [], true)),
                     'tenant_output_blocks' => $collection->filter(function (array $row) {
@@ -1167,7 +1167,7 @@ class SuperAdminProductDataHubController extends Controller
             $warnings = [];
 
             if (blank($row->matched_category_name) || blank($row->standard_category_id) || data_get($meta, 'fallback_category_code') === 'PROMO-ESLENMEMIS-KATEGORI-BEKLEYEN') {
-                $warnings[] = 'Kategori Bekliyor';
+                $warnings[] = 'Kategori eÅŸleÅŸmemiÅŸ';
             }
 
             if (blank($row->price_value) || (float) $row->price_value <= 0) {
@@ -1188,8 +1188,8 @@ class SuperAdminProductDataHubController extends Controller
 
             $categoryStatus = 'Eşleşmiş';
 
-            if (blank($row->standard_category_id) || in_array('Kategori Bekliyor', $warnings, true)) {
-                $categoryStatus = 'Kategori Bekliyor';
+            if (blank($row->standard_category_id) || in_array('Kategori eÅŸleÅŸmemiÅŸ', $warnings, true)) {
+                $categoryStatus = 'Kategori EÅŸleÅŸmemiÅŸ';
             } elseif ((bool) data_get($meta, 'category_conflict', false) || str_contains((string) json_encode($meta, JSON_UNESCAPED_UNICODE), 'target_missing')) {
                 $categoryStatus = 'Hedef Bulunamayan';
             } elseif (in_array('Uyarılı', $warnings, true)) {
@@ -1220,7 +1220,7 @@ class SuperAdminProductDataHubController extends Controller
                 'group_code' => data_get($primarySource, 'supplier_group_code'),
                 'supplier_source_id' => data_get($primarySource, 'supplier_source_id'),
                 'supplier_category_path' => data_get($primarySource, 'supplier_category_path', data_get($meta, 'supplier_category_path')),
-                'category_action_required' => in_array($categoryStatus, ['Kategori Bekliyor', 'Hedef Bulunamayan'], true),
+                'category_action_required' => in_array($categoryStatus, ['Hedef Bulunamayan'], true),
                 'detail_link' => route('admin.super.product-data-hub.standard-products.index', ['q' => $productCode]),
                 'standard_link' => route('admin.super.product-data-hub.standard-products.index', ['q' => $productCode]),
             ];
@@ -2398,3 +2398,4 @@ class SuperAdminProductDataHubController extends Controller
         return ['Hazır', 'green'];
     }
 }
+

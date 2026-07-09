@@ -390,13 +390,13 @@ class SuperAdminSupplierSourceController extends Controller
 
         $categoryStep = match (true) {
             (int) ($source->category_mappings_count ?? 0) === 0 => $this->flowStep('category', 'Kategori', 'Tedarikçi kategorilerini Prodelya standart kategori ağacına eşler.', 'missing', 'Eksik', 'Kategori eşleme henüz başlamadı.'),
-            $categoryPendingCount > 0 => $this->flowStep('category', 'Kategori', 'Tedarikçi kategorilerini Prodelya standart kategori ağacına eşler.', 'warning', 'Uyarı', $categoryPendingCount . ' kategori bekliyor.'),
+            $categoryPendingCount > 0 => $this->flowStep('category', 'Kategori', 'Tedarikçi kategorilerini Prodelya standart kategori ağacına eşler.', 'warning', 'Uyarı', $categoryPendingCount . ' kategori eşleşmemiş kaydı var.'),
             default => $this->flowStep('category', 'Kategori', 'Tedarikçi kategorilerini Prodelya standart kategori ağacına eşler.', 'ready', 'Hazır', 'Kategori eşleme kuyruğu temiz görünüyor.'),
         };
 
         $qualityStep = match (true) {
             !$hasLocation || $missingRequiredCount > 0 => $this->flowStep('quality', 'Kalite Kontrol', 'Görsel, fiyat, stok, varyant ve uyarıları kontrol eder.', 'error', 'Hata', 'Kaynak veya zorunlu alanlar eksik olduğu için kalite kapısı bloklu.'),
-            $warningProductCount > 0 || $categoryPendingCount > 0 || $syncErrors > 0 => $this->flowStep('quality', 'Kalite Kontrol', 'Görsel, fiyat, stok, varyant ve uyarıları kontrol eder.', 'warning', 'Uyarı', trim($warningProductCount . ' uyarılı ürün, ' . $categoryPendingCount . ' kategori bekliyor, ' . $syncErrors . ' son işlem hatası.')),
+            $warningProductCount > 0 || $categoryPendingCount > 0 || $syncErrors > 0 => $this->flowStep('quality', 'Kalite Kontrol', 'Görsel, fiyat, stok, varyant ve uyarıları kontrol eder.', 'warning', 'Uyarı', trim($warningProductCount . ' uyarılı ürün, ' . $categoryPendingCount . ' kategori eşleşmemiş kaydı, ' . $syncErrors . ' son işlem hatası.')),
             $rawProductCount > 0 || $standardProductCount > 0 => $this->flowStep('quality', 'Kalite Kontrol', 'Görsel, fiyat, stok, varyant ve uyarıları kontrol eder.', 'ready', 'Hazır', 'Kritik kalite uyarısı görünmüyor.'),
             default => $this->flowStep('quality', 'Kalite Kontrol', 'Görsel, fiyat, stok, varyant ve uyarıları kontrol eder.', 'missing', 'Eksik', 'Kalite kontrolü için henüz ürün akışı yok.'),
         };
@@ -478,7 +478,7 @@ class SuperAdminSupplierSourceController extends Controller
                     $tenantAccessCount === 0 => 'Teklif kullanımı kapalı / erişim yok',
                     $tenantCatalogProductCount === 0 && $standardProductCount > 0 => 'Kataloğa yansıtma bekliyor',
                     $missingRequiredCount > 0 => 'Alan eşleme eksik',
-                    $categoryPendingCount > 0 => 'Kategori bekliyor',
+                    $categoryPendingCount > 0 => 'Kategori eşleşmesi eksik',
                     $quoteVisibleProductCount === 0 && $quoteVisibleVariantCount === 0 && ($tenantCatalogProductCount > 0 || $tenantCatalogVariantCount > 0) => 'Teklif görünürlüğü kapalı olabilir',
                     default => 'Görünürlük zinciri açık',
                 },

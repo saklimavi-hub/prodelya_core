@@ -13,7 +13,7 @@
     @php
         $warningBadge = static function (string $warning): string {
             return match ($warning) {
-                'Kategori Bekliyor' => 'pd-badge-amber',
+                'Kategori eşleşmemiş', 'Kategori uyarısı' => 'pd-badge-amber',
                 'Stok yok', 'Stok Yok' => 'pd-badge-red',
                 'Fiyat eksik', 'Fiyat Eksik' => 'pd-badge-red',
                 default => 'pd-badge-blue',
@@ -48,7 +48,7 @@
                     <select name="category_status" class="pd-select">
                         <option value="">Tümü</option>
                         <option value="matched" @selected($filters['category_status'] === 'matched')>Eşleşmiş</option>
-                        <option value="category_waiting" @selected($filters['category_status'] === 'category_waiting')>Kategori Bekliyor</option>
+                        <option value="category_waiting" @selected($filters['category_status'] === 'category_waiting')>Kategori eşleşmemiş</option>
                         <option value="target_missing" @selected($filters['category_status'] === 'target_missing')>Hedef Bulunamayan</option>
                         <option value="warning" @selected($filters['category_status'] === 'warning')>Uyarılı</option>
                     </select>
@@ -166,7 +166,7 @@
                                     <div style="display:flex;flex-wrap:wrap;gap:6px;">
                                         @php
                                             $badges = collect($product->warning_items)
-                                                ->filter(fn ($warning) => in_array($warning, ['Kategori Bekliyor', 'Stok yok', 'Fiyat eksik', 'Net fiyat uyarısı', 'Kırmızı Ürün', 'Turuncu Ürün'], true))
+                                                ->filter(fn ($warning) => in_array($warning, ['Kategori eşleşmemiş', 'Kategori uyarısı', 'Stok yok', 'Fiyat eksik', 'Net fiyat uyarısı', 'Kırmızı Ürün', 'Turuncu Ürün'], true))
                                                 ->values();
                                         @endphp
                                         @if($badges->isEmpty())

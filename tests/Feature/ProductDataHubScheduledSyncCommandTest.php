@@ -207,8 +207,8 @@ class ProductDataHubScheduledSyncCommandTest extends TestCase
         $response->assertSeeText('Tedarikçi Akışları');
         $response->assertSeeText('Detaya Git');
         $response->assertSeeText('Son Sync');
-        $response->assertSeeText('Tenant Katalog Etkisi');
-        $response->assertSeeText('Senkron Raporlarını Aç');
+        $response->assertSeeText('Abone Firma Ürün Listesi');
+        $response->assertSeeText('Ürünleri Senkronize Et');
     }
 
     public function test_dry_run_ui_message_and_sync_report_badge_are_visible(): void
@@ -232,7 +232,7 @@ class ProductDataHubScheduledSyncCommandTest extends TestCase
 
         $reportResponse->assertOk();
         $reportResponse->assertSeeText('Dry-run');
-        $reportResponse->assertSeeText('Otomatik saatlik/günlük/haftalık çalışmalar için sunucuda Laravel scheduler aktif olmalıdır.');
+        $reportResponse->assertSeeText('Güncelleme ayarı için otomatik saatlik/günlük/haftalık çalışmaların sunucuda Laravel scheduler ile aktif olması gerekir.');
     }
 
     public function test_source_list_shows_build_waiting_warning_when_staging_exists_without_standard_product(): void

@@ -116,7 +116,7 @@ class ProductDataHubAutoSyncProjectionTest extends TestCase
 
         $this->assertSame('category_pending', $tenantCatalog->catalog_status);
         $this->assertSame('PROMO-ESLENMEMIS-KATEGORI-BEKLEYEN', data_get($tenantCatalog->meta, 'fallback_category_code'));
-        $this->assertContains('Kategori eksik', data_get($tenantCatalog->meta, 'warning_snapshot', []));
+        $this->assertContains('Genel kategori henüz bağlanmadı', data_get($tenantCatalog->meta, 'warning_snapshot', []));
     }
 
     public function test_product_level_category_override_survives_next_sync(): void
@@ -187,8 +187,8 @@ class ProductDataHubAutoSyncProjectionTest extends TestCase
 
         $catalogResponse->assertOk();
         $catalogResponse->assertSee('Katalog Yayını Özeti');
-        $catalogResponse->assertSee('Değişen ürünleri kataloğa yansıt');
-        $catalogResponse->assertSee('Eksik kayıtları tamamla');
+        $catalogResponse->assertSee('Ürünleri güncelle');
+        $catalogResponse->assertSee('Projection boşluğu');
     }
 
     private function findSourceBySupplierCode(string $code): SupplierSource

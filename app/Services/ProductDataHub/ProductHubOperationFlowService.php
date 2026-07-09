@@ -145,10 +145,10 @@ class ProductHubOperationFlowService
                 ],
                 [
                     'key' => 'category_waiting',
-                    'title' => 'Kategori Bekleyenler',
+                    'title' => 'Kategori Uyarıları',
                     'count' => $counts['category_waiting'],
-                    'tone' => 'amber',
-                    'copy' => 'Kategori kararı bekleyen kayıtlar satış akışını yavaşlatır. Burada yalnız gerçekten karar gerektiren eşleme işi tutulur.',
+                    'tone' => 'blue',
+                    'copy' => 'Genel kategori eşleşmesi eksik kayıtlar burada bilgi olarak görünür; bu durum tek başına satış blokajı değildir.',
                     'href' => route('admin.super.product-data-hub.product-panel', ['flow_mode' => 'category_waiting']),
                     'action' => 'Kategori kuyruğunu aç',
                 ],

@@ -175,7 +175,9 @@ class TenantCatalogListRowQueryService
         if (($filters['category_status'] ?? '') === 'matched') {
             $query->whereNotNull('standard_category_id')
                 ->where('meta_json', 'not like', '%PROMO-ESLENMEMIS-KATEGORI-BEKLEYEN%')
-                ->where('meta_json', 'not like', '%Kategori bekliyor%');
+                ->where('meta_json', 'not like', '%Kategori bekliyor%')
+                ->where('meta_json', 'not like', '%Kategori Bekliyor%')
+                ->where('meta_json', 'not like', '%Kategori eşleşmemiş%');
         }
 
         if (($filters['category_status'] ?? '') === 'category_waiting') {
@@ -183,6 +185,8 @@ class TenantCatalogListRowQueryService
                 $inner->whereNull('standard_category_id')
                     ->orWhere('meta_json', 'like', '%PROMO-ESLENMEMIS-KATEGORI-BEKLEYEN%')
                     ->orWhere('meta_json', 'like', '%Kategori bekliyor%')
+                    ->orWhere('meta_json', 'like', '%Kategori Bekliyor%')
+                    ->orWhere('meta_json', 'like', '%Kategori eşleşmemiş%')
                     ->orWhere('meta_json', 'like', '%category_missing%');
             });
         }
@@ -304,6 +308,8 @@ class TenantCatalogListRowQueryService
                 $inner->whereNull('standard_category_id')
                     ->orWhere('meta_json', 'like', '%category_missing%')
                     ->orWhere('meta_json', 'like', '%Kategori bekliyor%')
+                    ->orWhere('meta_json', 'like', '%Kategori Bekliyor%')
+                    ->orWhere('meta_json', 'like', '%Kategori eşleşmemiş%')
                     ->orWhere('meta_json', 'like', '%PROMO-ESLENMEMIS-KATEGORI-BEKLEYEN%');
             });
         }
@@ -718,8 +724,8 @@ class TenantCatalogListRowQueryService
         if (blank($row->standard_category_id)
             || (bool) data_get($meta, 'category_missing_warning', false)
             || data_get($meta, 'fallback_category_code') === 'PROMO-ESLENMEMIS-KATEGORI-BEKLEYEN') {
-            $warnings->push('Kategori Bekliyor');
-            $warnings->push('Kategori eksik');
+            $warnings->push('Kategori eşleşmemiş');
+            $warnings->push('Kategori uyarısı');
         }
 
         if ($this->effectiveStock((float) $row->local_stock_quantity, (float) $row->supplier_stock_quantity, (bool) $row->local_stock_priority) <= 0) {
@@ -734,8 +740,8 @@ class TenantCatalogListRowQueryService
         return match ($warning) {
             'Fiyat eksik' => 'Ürün fiyatı eksik; teklif ve katalog görünürlüğü kontrol edilmeli.',
             'Görsel eksik' => 'Ürün görseli eksik veya projection görseli gelmemiş.',
-            'Kategori Bekliyor' => 'Ürün geçici fallback kategoriyle görünür; standart kategori eşlemesi bekleniyor.',
-            'Kategori eksik' => 'Standart kategori eşlemesi tamamlanmamış.',
+            'Kategori eşleşmemiş' => 'Ürün teklif/sipariş ekranında görünür; yalnız genel kategori eşlemesi eksik.',
+            'Kategori uyarısı' => 'Kategori eşleşmesi ürünün bulunmasını ve raporlamayı iyileştirir, satışa çıkışı engellemez.',
             'Stok yok' => 'Local veya tedarikçi stok bilgisi satış için yetersiz.',
             'Net fiyat uyarısı' => 'Bu ürün net/sabit fiyatlı olabilir; iskonto kontrolü gerekli.',
             'Kırmızı Ürün' => 'Bu ürün Etkin kaynağında kırmızı ürün olarak işaretlenmiş.',

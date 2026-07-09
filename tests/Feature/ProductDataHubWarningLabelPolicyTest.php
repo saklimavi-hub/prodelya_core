@@ -89,7 +89,7 @@ class ProductDataHubWarningLabelPolicyTest extends TestCase
         ]);
 
         $this->assertContains('Net fiyat uyarısı', $warnings);
-        $this->assertContains('Kategori Bekliyor', $warnings);
+        $this->assertContains('Kategori eşleşmemiş', $warnings);
         $this->assertContains('Görsel eksik', $warnings);
         $this->assertContains('Stok yok', $warnings);
         $this->assertContains('Renk ayrıştırılamadı', $warnings);

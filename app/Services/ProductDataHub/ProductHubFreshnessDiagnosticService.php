@@ -392,7 +392,7 @@ class ProductHubFreshnessDiagnosticService
         }
 
         if (($row['category_status'] ?? null) !== 'Eşleşmiş' || (bool) ($row['category_action_required'] ?? false)) {
-            return ['key' => 'category_waiting', 'label' => 'Kategori kararı bekliyor', 'tone' => 'amber'];
+            return ['key' => 'category_waiting', 'label' => 'Kategori eşleşmemiş', 'tone' => 'amber'];
         }
 
         if (

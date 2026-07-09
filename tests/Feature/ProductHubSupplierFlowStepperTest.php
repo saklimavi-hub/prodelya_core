@@ -174,15 +174,15 @@ class ProductHubSupplierFlowStepperTest extends TestCase
         $missingLocationCard = $this->extractSourceCard($this->renderSupplierDetail($missingLocation)->getContent(), $missingLocation->id);
         $this->assertSame(8, substr_count($missingLocationCard, 'data-flow-step="'));
         $this->assertStringContainsString('data-flow-step="source" data-flow-status="missing"', $missingLocationCard);
-        $this->assertStringContainsString('data-primary-action="Fiyat/Stok Güncelle"', $missingLocationCard);
+        $this->assertStringContainsString('data-primary-action="Ürünleri Senkronize Et"', $missingLocationCard);
         $this->assertStringContainsString('Gelişmiş İşlemler', $missingLocationCard);
         $this->assertStringContainsString('Sadece Tara', $missingLocationCard);
-        $this->assertStringContainsString('Projection Onar', $missingLocationCard);
+        $this->assertStringContainsString('Satış Listesi Onar', $missingLocationCard);
 
         $livePreviewCard = $this->extractSourceCard($this->renderSupplierDetail($livePreviewMissingMapping)->getContent(), $livePreviewMissingMapping->id);
         $this->assertStringContainsString('data-flow-step="preview" data-flow-status="ready"', $livePreviewCard);
         $this->assertStringContainsString('data-flow-step="field_mapping" data-flow-status="missing"', $livePreviewCard);
-        $this->assertStringContainsString('data-primary-action="Fiyat/Stok Güncelle"', $livePreviewCard);
+        $this->assertStringContainsString('data-primary-action="Ürünleri Senkronize Et"', $livePreviewCard);
 
         $fallbackCard = $this->extractSourceCard($this->renderSupplierDetail($fallbackPreview)->getContent(), $fallbackPreview->id);
         $this->assertStringContainsString('data-flow-step="preview" data-flow-status="warning"', $fallbackCard);
@@ -192,13 +192,13 @@ class ProductHubSupplierFlowStepperTest extends TestCase
         $categoryPendingCard = $this->extractSourceCard($this->renderSupplierDetail($categoryPending)->getContent(), $categoryPending->id);
         $this->assertStringContainsString('data-flow-step="field_mapping" data-flow-status="ready"', $categoryPendingCard);
         $this->assertStringContainsString('data-flow-step="category" data-flow-status="warning"', $categoryPendingCard);
-        $this->assertStringContainsString('kategori bekliyor.', $categoryPendingCard);
+        $this->assertStringContainsString('kategori eşleşmemiş kaydı var.', $categoryPendingCard);
 
         $catalogPendingCard = $this->extractSourceCard($this->renderSupplierDetail($catalogPending)->getContent(), $catalogPending->id);
         $this->assertStringContainsString('data-flow-step="standard_pool" data-flow-status="ready"', $catalogPendingCard);
         $this->assertStringContainsString('data-flow-step="catalog_projection" data-flow-status="warning"', $catalogPendingCard);
         $this->assertStringContainsString('Erişim var ama projection bekliyor.', $catalogPendingCard);
-        $this->assertStringContainsString('data-primary-action="Fiyat/Stok Güncelle"', $catalogPendingCard);
+        $this->assertStringContainsString('data-primary-action="Ürünleri Senkronize Et"', $catalogPendingCard);
     }
 
     public function test_tenant_owner_cannot_open_supplier_flows_screen(): void

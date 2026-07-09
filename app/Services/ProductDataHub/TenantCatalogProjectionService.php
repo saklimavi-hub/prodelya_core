@@ -490,13 +490,13 @@ class TenantCatalogProjectionService
         }
 
         if ($missingCategory) {
-            $warnings[] = 'Kategori bekliyor';
-            $warnings[] = 'Kategori eksik';
+            $warnings[] = 'Kategori eşleşmemiş';
+            $warnings[] = 'Genel kategori henüz bağlanmadı';
         }
 
         if ($hasCategoryConflict) {
-            $warnings[] = 'Kategori Bekliyor';
-            $warnings[] = 'Kategori önerisi review bekliyor';
+            $warnings[] = 'Kategori eşleşmemiş';
+            $warnings[] = 'Kategori uyarısı';
         }
 
         if ($hasWarnings) {

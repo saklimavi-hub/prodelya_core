@@ -83,7 +83,11 @@ class ProductHubReviewQueueService
         ];
 
         $summary = collect($bucketMaps)->map(fn (array $rowKeys) => count($rowKeys))->all();
-        $summary['total'] = array_sum($summary);
+        $summary['total'] = ($summary['new_items'] ?? 0)
+            + ($summary['identity_issues'] ?? 0)
+            + ($summary['projection_issues'] ?? 0)
+            + ($summary['tenant_output_blocks'] ?? 0)
+            + ($summary['anomaly_flags'] ?? 0);
 
         return [
             'summary' => $summary,

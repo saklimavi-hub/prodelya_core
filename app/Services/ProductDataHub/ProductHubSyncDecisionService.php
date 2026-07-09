@@ -53,7 +53,6 @@ class ProductHubSyncDecisionService
             + (int) data_get($payload, $summaryKey . '.skipped_required_field_missing', 0);
         $projectionPending = (int) data_get($payload, $summaryKey . '.projection_skipped_review_only_change', 0)
             + (int) data_get($payload, $summaryKey . '.would_project_dirty_products', 0)
-            + (int) data_get($payload, $summaryKey . '.projection.blocked_missing_category', 0)
             + (int) data_get($payload, $summaryKey . '.projection.blocked_missing_price', 0);
         $anomalyFlags = 0;
 
@@ -79,11 +78,16 @@ class ProductHubSyncDecisionService
         $stateTone = 'green';
         $note = 'Normal fiyat ve stok değişimleri ekstra komut beklemeden ilerler. Bu koşu operatöre yalnız istisna varsa iş çıkarmalıdır.';
 
-        if ($newItems > 0 || $categoryWaiting > 0 || $identityIssues > 0 || $reviewRequired > 0 || $anomalyFlags > 0) {
+        if ($newItems > 0 || $identityIssues > 0 || $reviewRequired > 0 || $anomalyFlags > 0) {
             $state = 'review_required';
             $stateLabel = 'İstisnalar review bekliyor';
             $stateTone = 'amber';
             $note = 'Yeni ürün, kategori, kimlik veya anomali içeren kayıtlar manuel incelemeye ayrılmış. Normal değişiklikler bu kuyruğun dışında kalmalıdır.';
+        } elseif ($categoryWaiting > 0) {
+            $state = 'category_notice';
+            $stateLabel = 'Kategori uyarısı var';
+            $stateTone = 'blue';
+            $note = 'Genel kategori eşlemesi eksik kayıtlar var. Bu durum ürünleri satıştan düşürmez; yalnız sınıflandırma ve raporlama kalitesini etkiler.';
         } elseif ($projectionPending > 0) {
             $state = 'projection_pending';
             $stateLabel = 'Projection yansıması bekliyor';

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace App\Http\Controllers\Admin;
 
@@ -2702,8 +2702,8 @@ class PromotionQuoteController extends Controller
         if (blank($catalogProduct->standard_category_id)
             || (bool) data_get($productMeta, 'category_missing_warning', false)
             || data_get($productMeta, 'fallback_category_code') === 'PROMO-ESLENMEMIS-KATEGORI-BEKLEYEN') {
-            $badges[] = 'Kategori Bekliyor';
-            $badges[] = 'Kategori eksik';
+            $badges[] = 'Kategori eÅŸleÅŸmemiÅŸ';
+            $badges[] = 'Kategori uyarÄ±sÄ±';
             $messages[] = 'Bu ürünün standart kategori eşlemesi bekliyor; ürün yine teklif aramasında kullanılabilir.';
         }
 
@@ -2754,3 +2754,4 @@ class PromotionQuoteController extends Controller
             : 'Tedarikçi Ürünü';
     }
 }
+

@@ -167,7 +167,7 @@
             <div class="pd-summary-row"><span>Kategori eşlenmiş ürün</span><span class="font-medium">{{ number_format($stats['category_mapped_products'], 0, '.', '.') }}</span></div>
             <div class="pd-summary-row"><span>Kategori eksik</span><span class="font-medium">{{ number_format($stats['category_missing'], 0, '.', '.') }}</span></div>
             <div class="pd-summary-row"><span>Fallback kategoriye düşen</span><span class="font-medium">{{ number_format($stats['fallback_category_products'], 0, '.', '.') }}</span></div>
-            <div class="pd-summary-row"><span>Kategori bekliyor ama görünür</span><span class="font-medium">{{ number_format($stats['category_pending_visible'], 0, '.', '.') }}</span></div>
+            <div class="pd-summary-row"><span>Kategori eşleşmemiş ama görünür</span><span class="font-medium">{{ number_format($stats['category_pending_visible'], 0, '.', '.') }}</span></div>
             <div class="pd-summary-row"><span>Kategori nedeniyle bloklanan</span><span class="font-medium">{{ number_format($stats['category_blocked_products'], 0, '.', '.') }}</span></div>
             <div class="pd-summary-row"><span>Fiyat eksik</span><span class="font-medium">{{ number_format($stats['price_missing'], 0, '.', '.') }}</span></div>
             <div class="pd-summary-row"><span>Projection blocked</span><span class="font-medium">{{ number_format($stats['projection_blocked'], 0, '.', '.') }}</span></div>

@@ -58,9 +58,9 @@ class ProductHubDeltaFreshnessActionsUiTest extends TestCase
         $card = $this->extractSourceCard($response->getContent(), $source->id);
         $this->assertStringContainsString('Katalog Tazeliği', $card);
         $this->assertStringContainsString('Normal fiyat/stok değişimleri sessiz akışta ilerlemeli', $card);
-        $this->assertStringContainsString('Fiyat/Stok Güncelle', $card);
+        $this->assertStringContainsString('Ürünleri Senkronize Et', $card);
         $this->assertStringContainsString('Sadece Tara', $card);
-        $this->assertStringContainsString('Projection Onar', $card);
+        $this->assertStringContainsString('Satış Listesi Onar', $card);
         $this->assertStringContainsString('Katalogda var, teklifte kapalı', $card);
     }
 
@@ -74,7 +74,7 @@ class ProductHubDeltaFreshnessActionsUiTest extends TestCase
 
         $response->assertOk();
         $card = $this->extractSourceCard($response->getContent(), $source->id);
-        $this->assertStringContainsString('data-primary-action="Fiyat/Stok Güncelle"', $card);
+        $this->assertStringContainsString('data-primary-action="Ürünleri Senkronize Et"', $card);
     }
 
     public function test_delta_dry_run_route_calls_service_without_persisting_run(): void

@@ -52,7 +52,7 @@ class ProductDataHubUnmappedCategoryProjectionTest extends TestCase
         $this->assertSame($fallback->id, $catalogProduct->standard_category_id);
         $this->assertSame('category_pending', $catalogProduct->catalog_status);
         $this->assertTrue((bool) data_get($catalogProduct->meta, 'category_missing_warning'));
-        $this->assertContains('Kategori eksik', data_get($catalogProduct->meta, 'warning_snapshot', []));
+        $this->assertContains('Genel kategori henüz bağlanmadı', data_get($catalogProduct->meta, 'warning_snapshot', []));
         $this->assertTrue($catalogProduct->visible_in_catalog);
         $this->assertTrue($catalogProduct->visible_in_quote);
         $this->assertDatabaseMissing('supplier_sources', ['source_name' => 'TMP']);
@@ -74,8 +74,8 @@ class ProductDataHubUnmappedCategoryProjectionTest extends TestCase
             ->get('/admin/catalog?q=YN-UNMAPPED-1')
             ->assertOk()
             ->assertSeeText('YN-UNMAPPED-1')
-            ->assertSeeText('Kategori Bekliyor')
-            ->assertSeeText('Kategori eksik');
+            ->assertSeeText('Kategori eşleşmemiş')
+            ->assertSeeText('Kategori uyarısı');
 
         $searchResponse = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
@@ -83,8 +83,8 @@ class ProductDataHubUnmappedCategoryProjectionTest extends TestCase
             ->assertOk()
             ->assertJsonFragment(['product_code' => 'YN-UNMAPPED-1']);
 
-        $this->assertContains('Kategori Bekliyor', $searchResponse->json('0.warning_badges'));
-        $this->assertContains('Kategori eksik', $searchResponse->json('0.warning_badges'));
+        $this->assertContains('Kategori eşleşmemiş', $searchResponse->json('0.warning_badges'));
+        $this->assertContains('Kategori uyarısı', $searchResponse->json('0.warning_badges'));
     }
 
     public function test_source_access_closed_keeps_unmapped_product_hidden(): void
@@ -157,8 +157,8 @@ class ProductDataHubUnmappedCategoryProjectionTest extends TestCase
         $this->assertSame('category_pending', $catalogProduct->catalog_status);
         $this->assertTrue($catalogProduct->visible_in_catalog);
         $this->assertTrue($catalogProduct->visible_in_quote);
-        $this->assertContains('Kategori Bekliyor', data_get($catalogProduct->meta, 'warning_snapshot', []));
-        $this->assertContains('Kategori önerisi review bekliyor', data_get($catalogProduct->meta, 'warning_snapshot', []));
+        $this->assertContains('Kategori eşleşmemiş', data_get($catalogProduct->meta, 'warning_snapshot', []));
+        $this->assertContains('Kategori uyarısı', data_get($catalogProduct->meta, 'warning_snapshot', []));
     }
 
     public function test_project_unmapped_products_command_is_dry_run_safe_and_requires_confirm(): void
