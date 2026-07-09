@@ -11,6 +11,9 @@ class Order extends Model
 {
     use HasFactory;
 
+    public const COPY_TYPE_REVISION = 'revision';
+    public const COPY_TYPE_REPEAT_ORDER = 'repeat_order';
+
     public const CUSTOMER_APPROVAL_NOT_SENT = 'not_sent';
     public const CUSTOMER_APPROVAL_WAITING = 'waiting';
     public const CUSTOMER_APPROVAL_APPROVED = 'approved';
@@ -32,6 +35,11 @@ class Order extends Model
         'document_number',
         'source_quote_id',
         'source_quote_number',
+        'source_order_id',
+        'copy_type',
+        'revision_number',
+        'copied_by_user_id',
+        'copied_at',
         'customer_company_id',
         'status',
         'workflow_status',
@@ -62,7 +70,9 @@ class Order extends Model
         'order_family' => 'string',
         'order_mode' => 'string',
         'document_type' => 'string',
+        'copy_type' => 'string',
         'status' => 'string',
+        'revision_number' => 'integer',
         'customer_approval_status' => 'string',
         'customer_approval_source' => 'string',
         'quote_date' => 'date',
@@ -72,6 +82,7 @@ class Order extends Model
         'delivery_type_id' => 'integer',
         'show_print_price_details_to_customer' => 'boolean',
         'last_sent_at' => 'datetime',
+        'copied_at' => 'datetime',
         'approved_at' => 'datetime',
         'rejected_at' => 'datetime',
         'revision_requested_at' => 'datetime',
@@ -190,6 +201,16 @@ class Order extends Model
         return $this->hasMany(Order::class, 'source_quote_id');
     }
 
+    public function sourceOrder()
+    {
+        return $this->belongsTo(Order::class, 'source_order_id');
+    }
+
+    public function copiedQuoteDrafts()
+    {
+        return $this->hasMany(Order::class, 'source_order_id');
+    }
+
     public function quoteSendSnapshots(): HasMany
     {
         return $this->hasMany(QuoteSendSnapshot::class, 'quote_id');
@@ -221,6 +242,11 @@ class Order extends Model
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function copiedByUser()
+    {
+        return $this->belongsTo(User::class, 'copied_by_user_id');
     }
 
     /**
@@ -327,6 +353,42 @@ class Order extends Model
                 $this->convertedOrders()->exists()
             )
         );
+    }
+
+    public function isRevisionDraft(): bool
+    {
+        return $this->isQuote() && $this->copy_type === self::COPY_TYPE_REVISION;
+    }
+
+    public function isRepeatOrderDraft(): bool
+    {
+        return $this->isQuote() && $this->copy_type === self::COPY_TYPE_REPEAT_ORDER;
+    }
+
+    public function copyTypeLabel(): ?string
+    {
+        if ($this->isRevisionDraft()) {
+            return 'Revize ' . max(1, (int) $this->revision_number);
+        }
+
+        if ($this->isRepeatOrderDraft()) {
+            return 'Tekrar Sipariş';
+        }
+
+        return null;
+    }
+
+    public function copyTypeWarning(): ?string
+    {
+        if ($this->isRevisionDraft()) {
+            return 'Bu kayıt sipariş revizyon taslağıdır. Orijinal sipariş doğrudan değiştirilmez.';
+        }
+
+        if ($this->isRepeatOrderDraft()) {
+            return 'Bu kayıt eski siparişten oluşturulan yeni teklif taslağıdır. Eski siparişin operasyon ve finans geçmişi kopyalanmaz.';
+        }
+
+        return null;
     }
 
     public function safeCustomerApprovalStatusLabel(): string
