@@ -516,12 +516,22 @@ class PromotionQuoteController extends Controller
         ];
     }
 
-    private function buildSendSuccessMessage(Order $quote): string
+    private function buildSendSuccessMessage(Order $quote, ?string $sentChannel = null): string
     {
+        if ($sentChannel === 'email') {
+            return 'E-posta önizlemesi oluşturuldu. Bu işlem müşteriye mail göndermez.';
+        }
+
+        if ($sentChannel === 'whatsapp_link') {
+            return 'WhatsApp mesaj linki oluşturuldu. Public onay linki hazır.';
+        }
+
         $summary = $this->buildSendNotificationSummary($quote);
         $segments = ['Gönderim kaydı oluşturuldu.'];
 
-        if (($summary['email']['status_code'] ?? null) === NotificationLog::STATUS_PREVIEW) {
+        if (($summary['email']['status_code'] ?? null) === NotificationLog::STATUS_SENT) {
+            $segments = ['Teklif müşteriye e-posta olarak gönderildi.'];
+        } elseif (($summary['email']['status_code'] ?? null) === NotificationLog::STATUS_PREVIEW) {
             $segments[] = 'E-posta bu ortamda önizleme olarak kaydedildi.';
         } elseif (($summary['email']['status_code'] ?? null) === NotificationLog::STATUS_SKIPPED) {
             $segments[] = 'E-posta kaydı alıcı bilgisi veya ayar eksikliği nedeniyle atlandı.';
@@ -596,15 +606,20 @@ class PromotionQuoteController extends Controller
             'sent_channel' => 'nullable|in:manual,email,whatsapp_link',
         ]);
 
+        $primaryContact = $quote->customer?->getPrimaryContact();
+        $resolvedEmail = $validated['contact_email'] ?? ($primaryContact?->email ?: ($quote->customer?->email ?: null));
+        $resolvedPhone = $validated['contact_phone'] ?? ($primaryContact?->mobile ?: ($primaryContact?->phone ?: ($quote->customer?->mobile ?: ($quote->customer?->phone ?: null))));
+        $resolvedName = $validated['contact_name'] ?? ($primaryContact?->name ?: ($quote->customer?->legal_name ?: null));
+
         return [
-            'contact_name' => $validated['contact_name'] ?? ($quote->customer?->legal_name ?: null),
-            'contact_email' => $validated['contact_email'] ?? ($quote->customer?->email ?: null),
-            'contact_phone' => $validated['contact_phone'] ?? ($quote->customer?->mobile ?: ($quote->customer?->phone ?: null)),
+            'contact_name' => $resolvedName,
+            'contact_email' => $resolvedEmail,
+            'contact_phone' => $resolvedPhone,
             'expires_in_days' => $validated['expires_in_days'] ?? 7,
             'sent_channel' => $validated['sent_channel'] ?? 'manual',
-            'sent_to_name' => $validated['contact_name'] ?? ($quote->customer?->legal_name ?: null),
-            'sent_to_email' => $validated['contact_email'] ?? ($quote->customer?->email ?: null),
-            'sent_to_phone' => $validated['contact_phone'] ?? ($quote->customer?->mobile ?: ($quote->customer?->phone ?: null)),
+            'sent_to_name' => $resolvedName,
+            'sent_to_email' => $resolvedEmail,
+            'sent_to_phone' => $resolvedPhone,
         ];
     }
 
@@ -2162,20 +2177,21 @@ class PromotionQuoteController extends Controller
         }
 
         if (! $this->tenantWhatsappLinkService->toWhatsappDialString($recipientPhone)) {
-            return back()->withErrors(['error' => 'WhatsApp için geçerli bir cep telefonu bulunmuyor.']);
+            return back()->withErrors(['error' => 'WhatsApp linki oluşturulamadı. Müşteri WhatsApp/telefon numarası bulunamadı.']);
         }
 
         $publicUrl = route('public.quotes.approval.show', ['token' => $latestApprovalRequest->token]);
-        $quoteNumber = $quote->document_number ?: 'teklifiniz';
         $customerName = $latestApprovalRequest->contact_name ?: ($quote->customer?->legal_name ?: 'Müşterimiz');
 
         try {
             $result = $this->tenantWhatsappLinkService->createManualLink($tenant, [
                 'customer_name' => $customerName,
                 'recipient_phone' => $recipientPhone,
-                'message_type' => TenantWhatsappLinkService::TYPE_GENERAL,
-                'message' => "{$quoteNumber} numaralı teklifinizi inceleyip onaylayabilirsiniz: {$publicUrl}",
+                'message_type' => TenantWhatsappLinkService::TYPE_QUOTE_LINK,
                 'public_link' => $publicUrl,
+                'quote_number' => (string) ($quote->document_number ?: ''),
+                'related_type' => $quote->getMorphClass(),
+                'related_id' => $quote->id,
             ], $request->user());
         } catch (\InvalidArgumentException $exception) {
             return back()->withErrors(['error' => $exception->getMessage()]);
@@ -2263,18 +2279,67 @@ class PromotionQuoteController extends Controller
             abort(404);
         }
 
+        $sentChannel = 'manual';
+        $result = null;
+
         try {
             $recipientData = $this->normalizeSendRecipientData($request, $quote->loadMissing('customer'));
-            $this->quoteApprovalService->sendToCustomer($quote, $recipientData, Auth::user());
+            $sentChannel = (string) ($recipientData['sent_channel'] ?? 'manual');
+
+            if ($sentChannel === 'manual' && ! filled($recipientData['contact_email'] ?? null)) {
+                return back()->withErrors(['error' => 'Müşteri e-posta adresi olmadığı için teklif maili gönderilemedi.']);
+            }
+
+            if ($sentChannel === 'email') {
+                $this->quoteApprovalService->sendToCustomer($quote, array_merge($recipientData, [
+                    'force_email_preview' => true,
+                ]), Auth::user());
+            } elseif ($sentChannel === 'whatsapp_link') {
+                if (! filled($recipientData['contact_phone'] ?? null)) {
+                    return back()->withErrors(['error' => 'WhatsApp linki oluşturulamadı. Müşteri WhatsApp/telefon numarası bulunamadı.']);
+                }
+
+                if (! $this->tenantWhatsappLinkService->toWhatsappDialString($recipientData['contact_phone'])) {
+                    return back()->withErrors(['error' => 'WhatsApp linki oluşturulamadı. Müşteri WhatsApp/telefon numarası bulunamadı.']);
+                }
+
+                $approvalRequest = $this->quoteApprovalService->sendToCustomer($quote, array_merge($recipientData, [
+                    'skip_email_send' => true,
+                    'skip_whatsapp_dispatch' => true,
+                ]), Auth::user());
+
+                $result = $this->tenantWhatsappLinkService->createManualLink($tenant, [
+                    'customer_name' => $recipientData['contact_name'] ?? ($quote->customer?->legal_name ?: 'Müşterimiz'),
+                    'recipient_phone' => $recipientData['contact_phone'],
+                    'message_type' => TenantWhatsappLinkService::TYPE_QUOTE_LINK,
+                    'public_link' => route('public.quotes.approval.show', ['token' => $approvalRequest->token]),
+                    'quote_number' => (string) ($quote->document_number ?: ''),
+                    'related_type' => $quote->getMorphClass(),
+                    'related_id' => $quote->id,
+                ], $request->user());
+            } else {
+                $this->quoteApprovalService->sendToCustomer($quote, $recipientData, Auth::user());
+            }
+        } catch (\InvalidArgumentException $exception) {
+            return back()->withErrors(['error' => $exception->getMessage()]);
         } catch (\RuntimeException $exception) {
             return back()->withErrors(['error' => $exception->getMessage()]);
         }
 
         $quote = $quote->fresh(['latestQuoteApprovalRequest']);
 
-        return redirect()
+        $redirect = redirect()
             ->route('admin.promotion-quotes.show', $quote)
-            ->with('success', $this->buildSendSuccessMessage($quote));
+            ->with('success', $this->buildSendSuccessMessage($quote, $sentChannel));
+
+        if ($sentChannel === 'whatsapp_link' && is_array($result)) {
+            $redirect->with('whatsapp_result', [
+                'url' => $result['url'],
+                'phone' => $result['phone'],
+            ]);
+        }
+
+        return $redirect;
     }
 
     /**
