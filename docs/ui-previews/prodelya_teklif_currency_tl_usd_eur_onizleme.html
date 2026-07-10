@@ -6,23 +6,22 @@
     <title>Prodelya Teklif Currency TL USD EUR Onizleme</title>
     <style>
         :root {
-            --bg: #f4f6fa;
+            --bg: #f4f6f9;
             --panel: #ffffff;
-            --line: #dbe3ef;
-            --line-soft: #e9eef6;
+            --line: #dde4ee;
+            --line-soft: #ebf0f6;
             --text: #1f2937;
             --muted: #64748b;
             --blue: #2563eb;
-            --blue-soft: #eef4ff;
-            --green: #15803d;
-            --green-soft: #edf9f0;
+            --blue-soft: #eff5ff;
+            --green: #166534;
+            --green-soft: #edf8ef;
             --amber: #b45309;
-            --amber-soft: #fff7e8;
+            --amber-soft: #fff6e7;
             --red: #b91c1c;
-            --red-soft: #fef2f2;
-            --slate-soft: #f8fafc;
-            --shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
-            --radius: 10px;
+            --red-soft: #fff1f2;
+            --card-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
+            --radius: 6px;
         }
 
         * { box-sizing: border-box; }
@@ -37,24 +36,22 @@
             line-height: 1.45;
         }
 
-        button, input, select, textarea {
-            font: inherit;
-        }
+        button, input, select, textarea { font: inherit; }
 
         .app {
-            max-width: 1480px;
+            max-width: 1440px;
             margin: 0 auto;
-            padding: 16px 16px 96px;
+            padding: 14px 14px 72px;
         }
 
         .topbar,
         .card,
-        .summary-card,
-        .scenario-box {
+        .sticky-card,
+        .scenario-panel {
             background: var(--panel);
             border: 1px solid var(--line);
             border-radius: var(--radius);
-            box-shadow: var(--shadow);
+            box-shadow: var(--card-shadow);
         }
 
         .topbar {
@@ -62,50 +59,39 @@
             justify-content: space-between;
             gap: 16px;
             padding: 14px 16px;
-            margin-bottom: 14px;
-        }
-
-        .eyebrow {
-            display: inline-flex;
-            align-items: center;
-            padding: 4px 8px;
-            border-radius: 999px;
-            background: var(--slate-soft);
-            color: var(--muted);
-            font-size: 12px;
-            font-weight: 700;
+            margin-bottom: 10px;
         }
 
         h1 {
-            margin: 8px 0 4px;
-            font-size: 28px;
-            line-height: 1.1;
-            letter-spacing: -0.02em;
+            margin: 0 0 4px;
+            font-size: 24px;
+            line-height: 1.15;
             font-weight: 600;
+            letter-spacing: -0.02em;
         }
 
-        .subtitle {
+        .subtle {
             color: var(--muted);
-            max-width: 820px;
         }
 
-        .topbar-actions {
+        .top-actions,
+        .action-row,
+        .chip-row {
             display: flex;
             gap: 8px;
             flex-wrap: wrap;
-            align-items: flex-start;
-            justify-content: flex-end;
+            align-items: center;
         }
 
         .btn {
-            min-height: 36px;
-            padding: 8px 12px;
-            border-radius: 8px;
+            min-height: 34px;
             border: 1px solid var(--line);
+            border-radius: 5px;
             background: #fff;
             color: var(--text);
+            padding: 7px 11px;
             cursor: pointer;
-            font-weight: 700;
+            font-weight: 600;
         }
 
         .btn.primary {
@@ -114,195 +100,91 @@
             color: #fff;
         }
 
-        .btn.light {
-            background: var(--slate-soft);
+        .btn.soft {
+            background: #f8fafc;
         }
 
-        .note {
-            margin-bottom: 12px;
+        .btn:disabled {
+            opacity: .55;
+            cursor: not-allowed;
+        }
+
+        .chip {
+            display: inline-flex;
+            align-items: center;
+            min-height: 24px;
+            border-radius: 999px;
+            padding: 3px 8px;
+            font-size: 12px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .chip.blue { background: var(--blue-soft); color: #1d4ed8; }
+        .chip.green { background: var(--green-soft); color: var(--green); }
+        .chip.amber { background: var(--amber-soft); color: var(--amber); }
+        .chip.red { background: var(--red-soft); color: var(--red); }
+        .chip.gray { background: #f8fafc; color: #475569; border: 1px solid var(--line-soft); }
+
+        .info {
+            margin-bottom: 10px;
             padding: 10px 12px;
             border-left: 3px solid var(--blue);
             background: #fff;
-            border-radius: 8px;
+            border-radius: 5px;
             color: #475569;
-            box-shadow: var(--shadow);
-            font-size: 13px;
+        }
+
+        .scenario-panel {
+            margin-bottom: 12px;
+            overflow: hidden;
+        }
+
+        .scenario-toggle {
+            width: 100%;
+            padding: 10px 12px;
+            border: 0;
+            border-bottom: 1px solid var(--line);
+            background: #f8fafc;
+            text-align: left;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .scenario-body {
+            padding: 12px;
+        }
+
+        .scenario-grid,
+        .meta-grid,
+        .item-main-grid,
+        .sub-grid,
+        .layout {
+            display: grid;
+            gap: 10px;
         }
 
         .layout {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) 320px;
-            gap: 14px;
+            grid-template-columns: minmax(0, 1fr) 318px;
             align-items: start;
         }
 
-        .stack {
+        .left-stack,
+        .right-stack {
             display: grid;
-            gap: 14px;
+            gap: 12px;
         }
 
-        .card {
+        .scenario-grid {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+
+        .card,
+        .sticky-card {
             padding: 14px;
         }
 
         .section-head {
-            display: flex;
-            align-items: flex-start;
-            justify-content: space-between;
-            gap: 12px;
-            margin-bottom: 12px;
-        }
-
-        .section-title {
-            margin: 0;
-            font-size: 17px;
-            font-weight: 600;
-        }
-
-        .section-subtitle {
-            margin: 4px 0 0;
-            color: var(--muted);
-            font-size: 13px;
-        }
-
-        .badge-row,
-        .token-row,
-        .action-row {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-        }
-
-        .badge {
-            display: inline-flex;
-            align-items: center;
-            min-height: 28px;
-            padding: 5px 9px;
-            border-radius: 999px;
-            border: 1px solid transparent;
-            font-size: 12px;
-            font-weight: 700;
-            white-space: nowrap;
-        }
-
-        .badge.blue { background: var(--blue-soft); color: #1d4ed8; }
-        .badge.green { background: var(--green-soft); color: var(--green); }
-        .badge.amber { background: var(--amber-soft); color: var(--amber); }
-        .badge.red { background: var(--red-soft); color: var(--red); }
-        .badge.gray { background: var(--slate-soft); color: #475569; border-color: var(--line-soft); }
-
-        .scenario-box {
-            padding: 12px;
-        }
-
-        .scenario-grid {
-            display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
-            gap: 10px;
-        }
-
-        .field label {
-            display: block;
-            margin-bottom: 5px;
-            color: #7c8aa0;
-            font-size: 11px;
-            font-weight: 700;
-            letter-spacing: 0.04em;
-            text-transform: uppercase;
-        }
-
-        .control,
-        .input,
-        .fake-select,
-        textarea {
-            width: 100%;
-            min-height: 38px;
-            border: 1px solid var(--line);
-            border-radius: 8px;
-            background: #fff;
-            color: #334155;
-            padding: 8px 10px;
-        }
-
-        textarea {
-            min-height: 74px;
-            resize: vertical;
-        }
-
-        .muted {
-            color: var(--muted);
-        }
-
-        .micro {
-            font-size: 12px;
-        }
-
-        .meta-grid {
-            display: grid;
-            grid-template-columns: 1.4fr 1fr 1fr 1fr 1.1fr;
-            gap: 10px;
-        }
-
-        .customer-search-box,
-        .search-results,
-        .quote-item,
-        .print-row,
-        .helper-row,
-        .timeline,
-        .currency-state {
-            border: 1px solid var(--line);
-            border-radius: 10px;
-            background: #fff;
-        }
-
-        .customer-search-box {
-            padding: 12px;
-            background: #f8fbff;
-        }
-
-        .search-control {
-            display: grid;
-            grid-template-columns: 1fr auto;
-            gap: 10px;
-            align-items: end;
-        }
-
-        .search-results {
-            margin-top: 8px;
-            padding: 6px;
-            max-height: 190px;
-            overflow-y: auto;
-            background: #fff;
-        }
-
-        .search-item {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) auto;
-            gap: 8px;
-            align-items: center;
-            width: 100%;
-            padding: 10px;
-            border: 1px solid var(--line-soft);
-            border-radius: 8px;
-            background: #fff;
-            text-align: left;
-        }
-
-        .search-item + .search-item {
-            margin-top: 6px;
-        }
-
-        .search-item-title {
-            font-weight: 700;
-            margin-bottom: 3px;
-        }
-
-        .search-item-meta {
-            color: var(--muted);
-            font-size: 12px;
-        }
-
-        .item-header {
             display: flex;
             justify-content: space-between;
             gap: 10px;
@@ -310,216 +192,316 @@
             margin-bottom: 10px;
         }
 
-        .item-title {
-            font-size: 15px;
+        .section-head h2 {
+            margin: 0;
+            font-size: 17px;
+            font-weight: 600;
+        }
+
+        .section-head p {
+            margin: 3px 0 0;
+            font-size: 13px;
+            color: var(--muted);
+        }
+
+        .field label {
+            display: block;
+            margin-bottom: 4px;
+            font-size: 11px;
+            color: #7b8799;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
             font-weight: 700;
         }
 
-        .item-code {
-            color: var(--muted);
-            font-size: 12px;
-            margin-top: 4px;
+        .control,
+        .surface,
+        .input,
+        textarea {
+            width: 100%;
+            min-height: 36px;
+            border: 1px solid var(--line);
+            border-radius: 5px;
+            background: #fff;
+            color: #334155;
+            padding: 8px 10px;
         }
 
-        .quote-item {
-            padding: 12px;
-        }
-
-        .item-grid {
-            display: grid;
-            grid-template-columns: 2.2fr .8fr 1fr .8fr 1fr;
-            gap: 10px;
-            align-items: end;
-        }
-
-        .inline-input {
+        .surface {
             display: flex;
             align-items: center;
+            justify-content: space-between;
             gap: 8px;
-            min-height: 38px;
+        }
+
+        .meta-grid {
+            grid-template-columns: 1.4fr 1fr 1fr 1fr 1.2fr;
+        }
+
+        .search-area {
             border: 1px solid var(--line);
-            border-radius: 8px;
-            padding: 8px 10px;
-            background: #fff;
-        }
-
-        .inline-input input {
-            width: 100%;
-            border: 0;
-            outline: 0;
-            padding: 0;
-        }
-
-        .price-strip {
-            margin-top: 10px;
-            border: 1px solid var(--line-soft);
-            border-radius: 8px;
+            border-radius: 6px;
             background: #fbfdff;
             padding: 10px;
         }
 
-        .price-grid {
+        .search-row {
             display: grid;
-            grid-template-columns: repeat(6, minmax(0, 1fr));
-            gap: 10px;
-        }
-
-        .price-cell {
-            min-width: 0;
-        }
-
-        .price-cell strong {
-            display: block;
-            font-size: 13px;
-            font-weight: 700;
-            color: #0f172a;
-        }
-
-        .price-cell span {
-            display: block;
-            color: var(--muted);
-            font-size: 12px;
-            margin-bottom: 4px;
-        }
-
-        .inline-status {
-            margin-top: 8px;
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-            align-items: center;
-        }
-
-        .disclosure {
-            margin-top: 8px;
-            padding-top: 8px;
-            border-top: 1px dashed var(--line);
-        }
-
-        .print-row,
-        .helper-row {
-            margin-top: 10px;
-            padding: 10px;
-            background: #fcfcfd;
-        }
-
-        .sub-grid {
-            display: grid;
-            grid-template-columns: 1.3fr .9fr .9fr .9fr .9fr;
+            grid-template-columns: 1fr auto;
             gap: 10px;
             align-items: end;
         }
 
-        .summary-card {
-            position: sticky;
-            top: 16px;
-            padding: 14px;
+        .search-dropdown {
+            margin-top: 8px;
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            background: #fff;
+            max-height: 210px;
+            overflow-y: auto;
+            display: none;
         }
 
-        .summary-stack {
+        .search-dropdown.open { display: block; }
+
+        .search-result {
+            padding: 10px;
+            border-bottom: 1px solid var(--line-soft);
             display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
             gap: 10px;
+            align-items: center;
+        }
+
+        .search-result:last-child { border-bottom: 0; }
+
+        .search-title {
+            font-weight: 600;
+            margin-bottom: 3px;
+        }
+
+        .search-meta {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .quote-item {
+            border-top: 1px solid var(--line-soft);
+            padding-top: 12px;
+            margin-top: 12px;
+        }
+
+        .quote-item:first-of-type {
+            border-top: 0;
+            padding-top: 0;
+            margin-top: 0;
+        }
+
+        .item-header {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            align-items: flex-start;
+        }
+
+        .item-title {
+            font-size: 15px;
+            font-weight: 600;
+        }
+
+        .item-note {
+            margin-top: 4px;
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .item-main-grid {
+            grid-template-columns: 2fr .75fr 1fr .75fr 1fr;
+            align-items: end;
+            margin-top: 10px;
+        }
+
+        .input-inline {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-height: 36px;
+            border: 1px solid var(--line);
+            border-radius: 5px;
+            padding: 7px 10px;
+            background: #fff;
+        }
+
+        .input-inline input {
+            width: 100%;
+            border: 0;
+            outline: 0;
+            padding: 0;
+            min-width: 0;
+        }
+
+        .compact-strip {
+            margin-top: 10px;
+            padding: 9px 10px;
+            border-top: 1px solid var(--line-soft);
+            background: #fbfcfe;
+            color: #334155;
+            font-size: 13px;
+        }
+
+        .compact-strip .muted {
+            color: var(--muted);
+        }
+
+        .detail-toggle {
+            margin-top: 6px;
+            border: 0;
+            padding: 0;
+            background: transparent;
+            color: var(--blue);
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .detail-panel {
+            margin-top: 8px;
+            padding: 9px 10px;
+            border: 1px solid var(--line-soft);
+            border-radius: 5px;
+            background: #fff;
+            display: none;
+        }
+
+        .detail-panel.open { display: block; }
+
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .detail-cell span,
+        .summary-row span,
+        .line-label {
+            color: var(--muted);
+        }
+
+        .detail-cell strong {
+            display: block;
+            margin-top: 3px;
+            font-weight: 600;
+            color: #0f172a;
+        }
+
+        .sub-card {
+            margin-top: 9px;
+            border: 1px solid var(--line-soft);
+            border-radius: 5px;
+            padding: 9px 10px;
+            background: #fcfcfd;
+        }
+
+        .sub-grid {
+            grid-template-columns: 1.2fr .8fr .8fr .9fr .8fr;
+            align-items: end;
+        }
+
+        .safe-ops {
+            margin-top: 8px;
+            font-size: 12px;
+            color: #475569;
+            background: #f8fafc;
+            border: 1px solid var(--line-soft);
+            border-radius: 5px;
+            padding: 7px 9px;
+        }
+
+        .sticky-card {
+            position: sticky;
+            top: 14px;
         }
 
         .summary-row {
             display: flex;
             justify-content: space-between;
             gap: 8px;
-            align-items: center;
+            padding: 7px 0;
+            border-bottom: 1px solid var(--line-soft);
         }
 
-        .summary-row strong {
-            font-size: 14px;
-        }
+        .summary-row:last-child { border-bottom: 0; }
+        .summary-row.total strong { font-size: 16px; }
 
-        .summary-row.total {
-            padding-top: 10px;
-            border-top: 1px solid var(--line-soft);
-        }
-
-        .timeline,
-        .currency-state {
+        .status-box {
+            margin-top: 10px;
+            border: 1px solid var(--line-soft);
+            border-radius: 5px;
             padding: 10px;
+            background: #fcfdff;
         }
 
-        .timeline-row + .timeline-row,
-        .currency-state + .currency-state {
-            margin-top: 8px;
-            padding-top: 8px;
-            border-top: 1px solid var(--line-soft);
+        .status-box h3 {
+            margin: 0 0 4px;
+            font-size: 14px;
+            font-weight: 600;
         }
 
-        .status-card {
-            display: flex;
-            justify-content: space-between;
-            gap: 12px;
-            align-items: flex-start;
+        .timeline {
+            border: 1px solid var(--line-soft);
+            border-radius: 5px;
+            padding: 10px;
+            background: #fff;
         }
 
-        .status-card strong {
+        .timeline + .timeline { margin-top: 8px; }
+
+        .timeline strong {
             display: block;
             margin-bottom: 3px;
+            font-weight: 600;
         }
 
-        .hidden {
-            display: none !important;
+        .hidden { display: none !important; }
+
+        .tech-note {
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px dashed var(--line);
+            font-size: 12px;
+            color: var(--muted);
         }
 
-        .ops-only { display: none; }
-
-        .warning-box {
-            padding: 10px 12px;
-            border-radius: 8px;
-            border: 1px solid #f6d8a8;
-            background: #fffaf2;
-            color: #8a4b08;
-        }
-
-        .footer-actions {
-            margin-top: 14px;
-            display: flex;
-            justify-content: space-between;
-            gap: 10px;
-            flex-wrap: wrap;
-            align-items: center;
-        }
-
-        @media (max-width: 1200px) {
-            .price-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-            .meta-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        }
-
-        @media (max-width: 980px) {
+        @media (max-width: 1100px) {
             .layout,
             .scenario-grid,
-            .search-control,
-            .item-grid,
+            .meta-grid,
+            .item-main-grid,
             .sub-grid,
-            .meta-grid {
+            .detail-grid,
+            .search-row {
                 grid-template-columns: 1fr;
             }
 
-            .summary-card {
+            .sticky-card {
                 position: static;
             }
+        }
+
+        @media (max-width: 430px) {
+            .app {
+                padding: 10px 10px 56px;
+            }
+
+            h1 { font-size: 21px; }
 
             .topbar {
                 flex-direction: column;
             }
 
-            .topbar-actions {
+            .top-actions {
                 justify-content: flex-start;
             }
-
-            .price-grid {
-                grid-template-columns: repeat(2, minmax(0, 1fr));
-            }
-        }
-
-        @media (max-width: 640px) {
-            .app { padding: 10px 10px 72px; }
-            h1 { font-size: 23px; }
-            .price-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -527,764 +509,754 @@
     <div class="app">
         <div class="topbar">
             <div>
-                <div class="eyebrow">Preview / multi_currency / teklif oluşturma</div>
                 <h1>Promosyon Teklifi Oluştur</h1>
-                <p class="subtitle">Bu standalone önizleme mevcut teklif hazırlama akışını koruyarak TRY, USD ve EUR kaynaklı ürünlerin sade ve güvenli biçimde nasıl anlaşılacağını gösterir. Demo verileri örnektir; production submit veya canlı kur çağrısı içermez.</p>
+                <div class="subtle">Mevcut teklif formu akışı korunarak TRY, USD ve EUR kaynaklı ürünlerin belge para birimine göre nasıl tutarlı gösterileceğini anlatan standalone önizleme.</div>
             </div>
-            <div class="topbar-actions">
-                <button class="btn light" type="button">Vazgeç</button>
+            <div class="top-actions">
+                <button class="btn soft" type="button">Vazgeç</button>
                 <button class="btn" type="button">Taslak Kaydet</button>
                 <button class="btn primary" type="button">Teklifi Kaydet</button>
             </div>
         </div>
 
-        <div class="note">Önizleme senaryosu küçük bir demo alanı içerir. Amaç yeni bir teklif sistemi tasarlamak değil, mevcut form içinde para birimi davranışını kullanıcıya sade biçimde göstermektir.</div>
+        <div class="info">Bu sayfa preview demonstrasyonudur. Production form hiyerarşisini referans alır; canlı kur çağrısı, gerçek submit, gerçek tenant ayar paneli veya aktif manuel kur özelliği içermez.</div>
+
+        <section class="scenario-panel">
+            <button class="scenario-toggle" type="button" id="scenario-toggle">Önizleme Senaryosu</button>
+            <div class="scenario-body" id="scenario-body">
+                <div class="scenario-grid">
+                    <div class="field">
+                        <label for="module-state">Modül</label>
+                        <select id="module-state" class="control">
+                            <option value="enabled">Çoklu para birimi açık</option>
+                            <option value="disabled">Çoklu para birimi kapalı</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="role-state">Rol</label>
+                        <select id="role-state" class="control">
+                            <option value="finance">Finans yetkili</option>
+                            <option value="operations">Operasyon kullanıcısı</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="doc-currency">Belge para birimi</label>
+                        <select id="doc-currency" class="control">
+                            <option value="TRY">TL</option>
+                            <option value="USD">USD</option>
+                            <option value="EUR">EUR</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="rate-state">Kur durumu</label>
+                        <select id="rate-state" class="control">
+                            <option value="current">Güncel</option>
+                            <option value="fallback">Önceki iş günü</option>
+                            <option value="stale">Eski</option>
+                            <option value="missing">Kur bulunamadı</option>
+                            <option value="unsupported">Desteklenmeyen para birimi</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="tech-note">Teknik not: `multi_currency` modül anahtarı bu preview’da kullanıcı yüzeyine taşınmaz. Manuel kur yeteneği mevcut contract’ta pasif olduğundan burada yalnız planlı not olarak ele alınır.</div>
+            </div>
+        </section>
 
         <div class="layout">
-            <main class="stack">
-                <section class="scenario-box">
-                    <div class="section-head">
-                        <div>
-                            <p class="section-title">Önizleme Senaryosu</p>
-                            <p class="section-subtitle">Modül, rol, belge para birimi ve kur durumu demoları production kontrol paneli değildir.</p>
-                        </div>
-                        <div class="badge-row">
-                            <span class="badge gray">Canonical module key: <strong>&nbsp;multi_currency</strong></span>
-                        </div>
-                    </div>
-                    <div class="scenario-grid">
-                        <div class="field">
-                            <label for="module-state">Modül</label>
-                            <select id="module-state" class="control">
-                                <option value="enabled">multi_currency açık</option>
-                                <option value="disabled">multi_currency kapalı</option>
-                            </select>
-                        </div>
-                        <div class="field">
-                            <label for="role-state">Rol</label>
-                            <select id="role-state" class="control">
-                                <option value="finance">Finans yetkili</option>
-                                <option value="operations">Operasyon kullanıcısı</option>
-                            </select>
-                        </div>
-                        <div class="field">
-                            <label for="doc-currency">Belge para birimi</label>
-                            <select id="doc-currency" class="control">
-                                <option value="TL">TL</option>
-                                <option value="USD">USD</option>
-                                <option value="EUR">EUR</option>
-                            </select>
-                        </div>
-                        <div class="field">
-                            <label for="rate-state">Kur durumu</label>
-                            <select id="rate-state" class="control">
-                                <option value="current">Güncel</option>
-                                <option value="fallback">Önceki iş günü</option>
-                                <option value="stale">Eski</option>
-                                <option value="manual">Manuel</option>
-                                <option value="missing">Bulunamadı</option>
-                                <option value="unsupported">Unsupported</option>
-                            </select>
-                        </div>
-                    </div>
-                </section>
-
+            <main class="left-stack">
                 <section class="card">
                     <div class="section-head">
                         <div>
-                            <p class="section-title">Müşteri ve teklif bilgileri</p>
-                            <p class="section-subtitle">Mevcut teklif formu hissini koruyan kompakt üst bilgi alanı.</p>
+                            <h2>Müşteri ve teklif bilgileri</h2>
+                            <p>Mevcut formun müşteri seçimi, tarih alanları ve belge para birimi mantığı korunur.</p>
                         </div>
-                        <div class="badge-row">
-                            <span class="badge blue">Taslak teklif</span>
-                            <span class="badge gray" id="module-chip">multi_currency açık</span>
-                        </div>
-                    </div>
-
-                    <div class="customer-search-box">
-                        <div class="search-control">
-                            <div class="field">
-                                <label>Müşteri ara</label>
-                                <input class="input" value="Saklı Deniz Kurumsal Hediye" aria-label="Müşteri ara">
-                            </div>
-                            <button class="btn light" type="button">+ Hızlı Müşteri Ekle</button>
-                        </div>
-                        <div class="search-results">
-                            <div class="search-item">
-                                <div>
-                                    <div class="search-item-title">Saklı Deniz Kurumsal Hediye</div>
-                                    <div class="search-item-meta">İstanbul / Cari aktif / Demo müşteri kartı</div>
-                                </div>
-                                <span class="badge green">Seçili</span>
-                            </div>
-                            <div class="search-item">
-                                <div>
-                                    <div class="search-item-title">Mavi Hat Promosyon</div>
-                                    <div class="search-item-meta">Alternatif demo müşteri / hızlı karşılaştırma</div>
-                                </div>
-                                <button class="btn" type="button">Seç</button>
-                            </div>
+                        <div class="chip-row">
+                            <span class="chip gray" id="module-brief">Çoklu para birimi açık</span>
+                            <span class="chip blue" id="doc-currency-brief">Belge para birimi: TL</span>
                         </div>
                     </div>
 
-                    <div class="meta-grid" style="margin-top: 12px;">
+                    <div class="meta-grid">
                         <div class="field">
                             <label>Müşteri</label>
-                            <div class="fake-select">Saklı Deniz Kurumsal Hediye</div>
+                            <div class="surface">Saklı Deniz Kurumsal Hediye</div>
                         </div>
                         <div class="field">
                             <label>Teklif tarihi</label>
-                            <div class="fake-select">10.07.2026</div>
+                            <div class="surface">10.07.2026</div>
                         </div>
                         <div class="field">
                             <label>Geçerlilik tarihi</label>
-                            <div class="fake-select">17.07.2026</div>
+                            <div class="surface">17.07.2026</div>
                         </div>
                         <div class="field">
                             <label>Belge para birimi</label>
-                            <div class="fake-select" id="doc-currency-readout">TL</div>
+                            <div class="surface" id="doc-currency-readout">TL</div>
                         </div>
                         <div class="field">
                             <label>Kur politikası</label>
-                            <div class="fake-select" id="policy-readout">USD/EUR ürünler güvenli biçimde TL karşılığına çevrilir</div>
+                            <div class="surface" id="policy-readout">USD/EUR ürünler belge para birimine tutarlı dönüştürülür</div>
                         </div>
                     </div>
 
-                    <div class="token-row" style="margin-top: 12px;">
-                        <span class="badge blue" id="refresh-chip">Son kur güncelleme: 10.07.2026 11:10</span>
-                        <span class="badge gray" id="doc-capability-chip">USD/EUR belge seçimi kullanılabilir</span>
-                        <span class="badge amber hidden" id="module-disabled-chip">Bu paket yalnız TL teklif oluşturur</span>
-                    </div>
-                </section>
-
-                <section class="card">
-                    <div class="section-head">
-                        <div>
-                            <p class="section-title">Ürün arama ve seçme</p>
-                            <p class="section-subtitle">Arama kutusu, scrollable sonuç listesi ve teklif satırına kısa yol mantığı korunur.</p>
-                        </div>
-                    </div>
-                    <div class="search-results">
-                        <div class="search-item">
-                            <div>
-                                <div class="search-item-title">Metal Tükenmez Kalem</div>
-                                <div class="search-item-meta finance-only">Tedarikçi: Atlas Promo / Kaynak fiyat: 3,50 USD / Tahmini TL maliyet: 151,20 TL / Stok: 4.800 / Kur tarihi: 10.07.2026</div>
-                                <div class="search-item-meta ops-only">Satış için hazır demo ürün / Stok: 4.800 / Hızlı ekle</div>
-                            </div>
-                            <button class="btn primary" type="button">Teklife Ekle</button>
-                        </div>
-                        <div class="search-item">
-                            <div>
-                                <div class="search-item-title">Premium Termos</div>
-                                <div class="search-item-meta finance-only">Tedarikçi: Kuzey Gifts / Kaynak fiyat: 8,00 EUR / Tahmini TL maliyet: 348,80 TL / Stok: 1.260 / Kur tarihi: 10.07.2026</div>
-                                <div class="search-item-meta ops-only">Güvenli satış bilgisi / Stok: 1.260 / Hızlı ekle</div>
-                            </div>
-                            <button class="btn" type="button">Teklife Ekle</button>
-                        </div>
-                        <div class="search-item">
-                            <div>
-                                <div class="search-item-title">Plastik Tükenmez Kalem</div>
-                                <div class="search-item-meta">Kaynak fiyat: 9,20 TL / Dönüşüm gerekmiyor / Stok: 13.400</div>
-                            </div>
-                            <button class="btn" type="button">Teklife Ekle</button>
-                        </div>
+                    <div class="chip-row" style="margin-top:10px;">
+                        <span class="chip blue" id="last-rate-chip">Son kur güncelleme: 10.07.2026 11:10</span>
+                        <span class="chip amber hidden" id="tl-package-chip">Bu paket yalnız TL teklif oluşturur</span>
                     </div>
                 </section>
 
                 <section class="card">
                     <div class="section-head">
                         <div>
-                            <p class="section-title">Ürün kalemleri</p>
-                            <p class="section-subtitle">Satış birim fiyatı ana alan olarak kalır; kur ve maliyet bilgisi ikincil alt satırda tutulur.</p>
-                        </div>
-                        <div class="action-row">
-                            <button class="btn light" type="button" id="preserve-rate-button">Mevcut Kuru Koru</button>
-                            <button class="btn primary" type="button" id="refresh-rate-button">Kuru Güncelle</button>
+                            <h2>Ürün arama ve seçme</h2>
+                            <p>Arama input’u, scrollable dropdown ve seçilince kapanan demo davranışı korunur.</p>
                         </div>
                     </div>
-
-                    <article class="quote-item" data-item="usd">
-                        <div class="item-header">
-                            <div>
-                                <div class="item-title">1. Metal Tükenmez Kalem</div>
-                                <div class="item-code">Ürün satırı / kaynak para birimi USD / V1 ana kullanım: belge TRY, tedarikçi fiyatı USD</div>
+                    <div class="search-area">
+                        <div class="search-row">
+                            <div class="field">
+                                <label for="product-search">Ürün ara</label>
+                                <input id="product-search" class="input" value="kalem" autocomplete="off">
                             </div>
-                            <span class="badge blue">USD kaynaklı</span>
+                            <button class="btn soft" type="button" id="toggle-search-results">Sonuçları Göster</button>
                         </div>
-                        <div class="item-grid">
-                            <div class="field">
-                                <label>Ürün</label>
-                                <div class="fake-select">Metal Tükenmez Kalem / Atlas Promo</div>
-                            </div>
-                            <div class="field">
-                                <label>Adet</label>
-                                <div class="fake-select">2.000</div>
-                            </div>
-                            <div class="field">
-                                <label>Satış birim fiyatı</label>
-                                <div class="inline-input"><input id="sales-usd" value="185,00" aria-label="USD kaynaklı ürün satış fiyatı"><span>TL</span></div>
-                            </div>
-                            <div class="field">
-                                <label>KDV</label>
-                                <div class="fake-select">%20</div>
-                            </div>
-                            <div class="field">
-                                <label>Toplam</label>
-                                <div class="fake-select" id="line-total-usd">370.000,00 TL</div>
-                            </div>
-                        </div>
-                        <div class="price-strip">
-                            <div class="price-grid">
-                                <div class="price-cell finance-only">
-                                    <span>Kaynak fiyat</span>
-                                    <strong id="usd-source-price">3,50 USD</strong>
-                                </div>
-                                <div class="price-cell finance-only">
-                                    <span>Kur</span>
-                                    <strong id="usd-rate">43,20</strong>
-                                </div>
-                                <div class="price-cell finance-only">
-                                    <span>Kur tarihi</span>
-                                    <strong id="usd-rate-date">10.07.2026</strong>
-                                </div>
-                                <div class="price-cell finance-only">
-                                    <span>Tahmini alış maliyeti</span>
-                                    <strong id="usd-base-price">151,20 TL</strong>
-                                </div>
-                                <div class="price-cell">
-                                    <span>Önerilen satış fiyatı</span>
-                                    <strong id="usd-suggested">185,00 TL</strong>
-                                </div>
-                                <div class="price-cell">
-                                    <span>Manuel fiyat durumu</span>
-                                    <strong id="usd-manual-state">Manuel fiyat</strong>
-                                </div>
-                            </div>
-                            <div class="inline-status">
-                                <span class="badge green" id="usd-rate-badge">TCMB Döviz Satış / güncel</span>
-                                <span class="badge blue">Kur güncellemesi satış fiyatını değiştirmez</span>
-                                <span class="badge amber hidden" id="usd-manual-rate-note">Manuel kur yalnız yetkili senaryoda gösterim notudur</span>
-                            </div>
-                            <div class="disclosure micro muted" id="usd-extra-note">Sistem önerisi korunuyor. Kullanıcı satış birim fiyatını ayrı yönetir.</div>
-                        </div>
-                        <div class="print-row">
-                            <div class="sub-grid">
-                                <div class="field">
-                                    <label>Baskı</label>
-                                    <div class="fake-select">UV Baskı / Tek taraf</div>
-                                </div>
-                                <div class="field">
-                                    <label>Baskı adedi</label>
-                                    <div class="fake-select">2.000</div>
-                                </div>
-                                <div class="field">
-                                    <label>Baskı birim fiyatı</label>
-                                    <div class="fake-select">2,40 TL</div>
-                                </div>
-                                <div class="field">
-                                    <label>Baskı toplamı</label>
-                                    <div class="fake-select">4.800,00 TL</div>
-                                </div>
-                                <div class="field">
-                                    <label>Not</label>
-                                    <div class="fake-select">TL örneği / currency motoru kapsam dışı</div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="helper-row">
-                            <div class="sub-grid">
-                                <div class="field">
-                                    <label>Ara eleman</label>
-                                    <div class="fake-select">Karton kutu</div>
-                                </div>
-                                <div class="field">
-                                    <label>Adet</label>
-                                    <div class="fake-select">2.000</div>
-                                </div>
-                                <div class="field">
-                                    <label>Birim</label>
-                                    <div class="fake-select">1,40 TL</div>
-                                </div>
-                                <div class="field">
-                                    <label>Toplam</label>
-                                    <div class="fake-select">2.800,00 TL</div>
-                                </div>
-                                <div class="field">
-                                    <label>KDV</label>
-                                    <div class="fake-select">%20</div>
-                                </div>
-                            </div>
-                        </div>
-                    </article>
-
-                    <article class="quote-item" data-item="eur">
-                        <div class="item-header">
-                            <div>
-                                <div class="item-title">2. Premium Termos</div>
-                                <div class="item-code">Ürün satırı / kaynak para birimi EUR / TRY belge örneği içinde sade gösterim</div>
-                            </div>
-                            <span class="badge blue">EUR kaynaklı</span>
-                        </div>
-                        <div class="item-grid">
-                            <div class="field">
-                                <label>Ürün</label>
-                                <div class="fake-select">Premium Termos / Kuzey Gifts</div>
-                            </div>
-                            <div class="field">
-                                <label>Adet</label>
-                                <div class="fake-select">600</div>
-                            </div>
-                            <div class="field">
-                                <label>Satış birim fiyatı</label>
-                                <div class="inline-input"><input id="sales-eur" value="429,00" aria-label="EUR kaynaklı ürün satış fiyatı"><span>TL</span></div>
-                            </div>
-                            <div class="field">
-                                <label>KDV</label>
-                                <div class="fake-select">%20</div>
-                            </div>
-                            <div class="field">
-                                <label>Toplam</label>
-                                <div class="fake-select">257.400,00 TL</div>
-                            </div>
-                        </div>
-                        <div class="price-strip">
-                            <div class="price-grid">
-                                <div class="price-cell finance-only">
-                                    <span>Kaynak fiyat</span>
-                                    <strong id="eur-source-price">8,00 EUR</strong>
-                                </div>
-                                <div class="price-cell finance-only">
-                                    <span>Kur</span>
-                                    <strong id="eur-rate">43,60</strong>
-                                </div>
-                                <div class="price-cell finance-only">
-                                    <span>Kur tarihi</span>
-                                    <strong id="eur-rate-date">10.07.2026</strong>
-                                </div>
-                                <div class="price-cell finance-only">
-                                    <span>Tahmini alış maliyeti</span>
-                                    <strong id="eur-base-price">348,80 TL</strong>
-                                </div>
-                                <div class="price-cell">
-                                    <span>Önerilen satış fiyatı</span>
-                                    <strong id="eur-suggested">429,00 TL</strong>
-                                </div>
-                                <div class="price-cell">
-                                    <span>Fiyat durumu</span>
-                                    <strong>Sistem önerisi korunuyor</strong>
-                                </div>
-                            </div>
-                            <div class="inline-status">
-                                <span class="badge green" id="eur-rate-badge">TCMB Döviz Satış / güncel</span>
-                                <span class="badge gray">Belge TRY olsa da kaynak EUR kalabilir</span>
-                            </div>
-                        </div>
-                    </article>
-
-                    <article class="quote-item" data-item="try">
-                        <div class="item-header">
-                            <div>
-                                <div class="item-title">3. Plastik Tükenmez Kalem</div>
-                                <div class="item-code">TRY kaynaklı ürün / dönüşüm gerekmiyor / operasyonda güvenli görünüm</div>
-                            </div>
-                            <span class="badge gray">TRY kaynaklı</span>
-                        </div>
-                        <div class="item-grid">
-                            <div class="field">
-                                <label>Ürün</label>
-                                <div class="fake-select">Plastik Tükenmez Kalem / Yerel Tedarik</div>
-                            </div>
-                            <div class="field">
-                                <label>Adet</label>
-                                <div class="fake-select">5.000</div>
-                            </div>
-                            <div class="field">
-                                <label>Satış birim fiyatı</label>
-                                <div class="inline-input"><input value="12,50" aria-label="TRY kaynaklı ürün satış fiyatı"><span>TL</span></div>
-                            </div>
-                            <div class="field">
-                                <label>KDV</label>
-                                <div class="fake-select">%20</div>
-                            </div>
-                            <div class="field">
-                                <label>Toplam</label>
-                                <div class="fake-select">62.500,00 TL</div>
-                            </div>
-                        </div>
-                        <div class="price-strip">
-                            <div class="price-grid">
-                                <div class="price-cell finance-only">
-                                    <span>Kaynak fiyat</span>
-                                    <strong>9,20 TL</strong>
-                                </div>
-                                <div class="price-cell finance-only">
-                                    <span>Kur</span>
-                                    <strong>Gerek yok</strong>
-                                </div>
-                                <div class="price-cell finance-only">
-                                    <span>Kur tarihi</span>
-                                    <strong>Aynı para birimi</strong>
-                                </div>
-                                <div class="price-cell">
-                                    <span>Tahmini alış maliyeti</span>
-                                    <strong>9,20 TL</strong>
-                                </div>
-                                <div class="price-cell">
-                                    <span>Önerilen satış fiyatı</span>
-                                    <strong>12,50 TL</strong>
-                                </div>
-                                <div class="price-cell">
-                                    <span>Durum</span>
-                                    <strong>Dönüşüm gerekmiyor</strong>
-                                </div>
-                            </div>
-                        </div>
-                    </article>
+                        <div class="search-dropdown open" id="search-dropdown"></div>
+                    </div>
                 </section>
 
                 <section class="card">
                     <div class="section-head">
                         <div>
-                            <p class="section-title">KDV ve notlar</p>
-                            <p class="section-subtitle">Mevcut form yoğunluğu korunur; currency bölümü formun tamamını domine etmez.</p>
+                            <h2>Ürün kalemleri</h2>
+                            <p>Ana satış birim fiyatı görünür kalır; kur detayı kompakt şerit ve açılır alan içinde toplanır.</p>
+                        </div>
+                    </div>
+                    <div id="quote-items"></div>
+                </section>
+
+                <section class="card">
+                    <div class="section-head">
+                        <div>
+                            <h2>KDV ve notlar</h2>
+                            <p>Belge para birimi değişse bile KDV ve toplam alanları aynı sözleşme üzerinden yeniden hesaplanır.</p>
                         </div>
                     </div>
                     <div class="meta-grid">
                         <div class="field">
                             <label>KDV gösterimi</label>
-                            <div class="fake-select">KDV dahil satış görünümü</div>
+                            <div class="surface">KDV dahil satış görünümü</div>
                         </div>
                         <div class="field">
                             <label>Belge notu</label>
-                            <div class="fake-select">Kur görünümü yalnız demo veriyle hazırlanmıştır</div>
-                        </div>
-                        <div class="field">
-                            <label>Sipariş notu</label>
-                            <div class="fake-select">Siparişe dönüşümde teklif snapshotı taşınır</div>
+                            <div class="surface">Demo veri / canlı kur çağrısı yok</div>
                         </div>
                         <div class="field">
                             <label>Gönderim sonrası</label>
-                            <div class="fake-select">Kur snapshotı kilitlenir, revizyon gerekir</div>
+                            <div class="surface">Kullanılan kur snapshotı kilitlenir</div>
                         </div>
                         <div class="field">
-                            <label>Kısa bilgi</label>
-                            <div class="fake-select">Kur bulunamazsa yanlış TL fiyat üretilmez</div>
+                            <label>Siparişe dönüşüm</label>
+                            <div class="surface">Teklif snapshotı siparişe taşınır</div>
+                        </div>
+                        <div class="field">
+                            <label>Kısa uyarı</label>
+                            <div class="surface">Kur yoksa yanlış değer üretilmez</div>
                         </div>
                     </div>
                 </section>
             </main>
 
-            <aside class="stack">
-                <section class="summary-card">
+            <aside class="right-stack">
+                <section class="sticky-card">
                     <div class="section-head">
                         <div>
-                            <p class="section-title">Teklif Özeti</p>
-                            <p class="section-subtitle">Sağ sticky panel masaüstünde yerinde kalır, dar ekranda alta iner.</p>
+                            <h2>Teklif Özeti</h2>
+                            <p>Sağ sticky yapı korunur; yanlış kârlılık toplamları kaldırılmıştır.</p>
                         </div>
                     </div>
-                    <div class="summary-stack">
-                        <div class="summary-row"><span>Ürün toplamı</span><strong>689.900,00 <span class="summary-currency">TL</span></strong></div>
-                        <div class="summary-row"><span>Baskı toplamı</span><strong>4.800,00 <span class="summary-currency">TL</span></strong></div>
-                        <div class="summary-row"><span>Ara eleman toplamı</span><strong>2.800,00 <span class="summary-currency">TL</span></strong></div>
-                        <div class="summary-row"><span>KDV</span><strong>139.500,00 <span class="summary-currency">TL</span></strong></div>
-                        <div class="summary-row total"><span>Genel toplam</span><strong>837.000,00 <span class="summary-currency">TL</span></strong></div>
+                    <div id="summary-box"></div>
+                </section>
+
+                <section class="card">
+                    <div class="section-head">
+                        <div>
+                            <h2>Kur ve Para Birimi</h2>
+                            <p>Kur aksiyonları tek noktadadır. Duruma göre görünürlük değişir.</p>
+                        </div>
                     </div>
-                    <div class="token-row" style="margin-top: 12px;">
-                        <span class="badge blue" id="summary-doc-currency">Belge para birimi: TL</span>
-                        <span class="badge amber" id="summary-warning">Kur uyarısı yok</span>
-                    </div>
-                    <div class="price-strip finance-only" style="margin-top: 12px;">
-                        <div class="summary-row"><span>Tahmini maliyet</span><strong>594.600,00 TL</strong></div>
-                        <div class="summary-row"><span>Tahmini brüt fark</span><strong>95.300,00 TL</strong></div>
+                    <div class="status-box">
+                        <h3 id="rate-title">Kur güncel</h3>
+                        <div class="subtle" id="rate-desc">TCMB Döviz Satış kuru kullanılıyor. Satış alanları belge para birimiyle tutarlı hesaplanır.</div>
+                        <div class="chip-row" style="margin-top:8px;">
+                            <span class="chip green" id="rate-chip">Güncel</span>
+                            <span class="chip gray" id="passive-manual-chip">Manuel kur: planlı / pasif</span>
+                        </div>
+                        <div class="action-row" style="margin-top:10px;" id="rate-actions"></div>
+                        <div class="tech-note">Manuel kur aktif buton olarak sunulmaz. Mevcut contract doğrulamasında `can_use_manual_rate = false`.</div>
                     </div>
                 </section>
 
                 <section class="card">
                     <div class="section-head">
                         <div>
-                            <p class="section-title">Currency durum / işlem alanı</p>
-                            <p class="section-subtitle">Ana aksiyonlar sınırlı; detaylar sade bilgi notu olarak kalır.</p>
-                        </div>
-                    </div>
-                    <div class="currency-state">
-                        <div class="status-card">
-                            <div>
-                                <strong id="state-title">Kur güncel</strong>
-                                <div class="micro muted" id="state-description">TCMB Döviz Satış kuru kullanılıyor. Hesaplanan TL maliyet güvenli biçimde gösterilir.</div>
-                            </div>
-                            <span class="badge green" id="state-chip">Güncel</span>
-                        </div>
-                    </div>
-                    <div class="currency-state">
-                        <div class="action-row">
-                            <button class="btn primary" type="button">Kuru Güncelle</button>
-                            <button class="btn light" type="button">Mevcut Kuru Koru</button>
-                        </div>
-                        <div class="disclosure micro muted" style="margin-top: 10px;">
-                            <strong>İkincil detay:</strong> Kur Detayı ve Manuel Kur Kullan alanları burada ikincil ağırlıkla gösterilir. Bu önizlemede manuel kur aksiyonu mevcut backend contract nedeniyle pasif senaryo notu olarak tutulur.
-                        </div>
-                    </div>
-                    <div class="warning-box hidden" id="manual-rate-contract-note">Mevcut contract doğrulamasında <strong>can_use_manual_rate=false</strong>. Bu nedenle “Manuel” kur durumu yalnız kullanıcı deneyimi yerleşimini göstermek için pasif senaryo olarak sunulur.</div>
-                </section>
-
-                <section class="card">
-                    <div class="section-head">
-                        <div>
-                            <p class="section-title">Durum davranışları</p>
-                            <p class="section-subtitle">Büyük workflow kartları yerine kısa operasyon notları.</p>
+                            <h2>Teklif durum davranışları</h2>
+                            <p>Büyük workflow kartları yerine kısa operasyon notları.</p>
                         </div>
                     </div>
                     <div class="timeline">
-                        <div class="timeline-row">
-                            <strong>Taslak teklif</strong>
-                            <div class="micro muted">Kur güncellenebilir, mevcut kur korunabilir, satış fiyatı değiştirilebilir.</div>
-                        </div>
-                        <div class="timeline-row">
-                            <strong>Gönderilmiş teklif</strong>
-                            <div class="micro muted">Kullanılan kur snapshotı kilitlenir. Otomatik yeniden fiyatlandırma yapılmaz, gerekirse revizyon gerekir.</div>
-                        </div>
-                        <div class="timeline-row">
-                            <strong>Siparişe dönüşmüş teklif</strong>
-                            <div class="micro muted">Teklif snapshotı siparişe taşınır; yeni kurla otomatik yeniden fiyatlandırılmaz.</div>
-                        </div>
+                        <strong>Taslak teklif</strong>
+                        <div class="subtle">Kur güncellenebilir. Satış fiyatı değiştirilebilir.</div>
                     </div>
-                </section>
-
-                <section class="card">
-                    <div class="section-head">
-                        <div>
-                            <p class="section-title">Görünüm farkı</p>
-                            <p class="section-subtitle">Finans ve operasyon rolleri aynı form içinde ayrılır.</p>
-                        </div>
+                    <div class="timeline">
+                        <strong>Gönderilmiş teklif</strong>
+                        <div class="subtle">Kullanılan kur snapshotı kilitlenir. Değişiklik için revizyon gerekir.</div>
                     </div>
-                    <div class="token-row">
-                        <span class="badge blue finance-only">Finans: source fiyat, kur, tarih, fallback/stale uyarısı görünür</span>
-                        <span class="badge gray ops-only">Operasyon: yalnız güvenli satış alanları görünür</span>
+                    <div class="timeline">
+                        <strong>Siparişe dönüşmüş teklif</strong>
+                        <div class="subtle">Teklif snapshotı siparişe taşınır. Yeni kurla otomatik yeniden fiyatlandırılmaz.</div>
                     </div>
                 </section>
             </aside>
-        </div>
-
-        <div class="footer-actions">
-            <div class="micro muted">Demo davranışı: belge para birimi ve kur durumu değişse de manuel satış fiyatı ezilmez. Kur bulunamadığında yanlış TL fiyat üretilmez.</div>
-            <div class="action-row">
-                <button class="btn light" type="button">Alternatif preview iste</button>
-                <button class="btn primary" type="button">Bu yaklaşım production için aday olabilir</button>
-            </div>
         </div>
     </div>
 
     <script>
         (function () {
-            const moduleSelect = document.getElementById('module-state');
-            const roleSelect = document.getElementById('role-state');
-            const docCurrencySelect = document.getElementById('doc-currency');
-            const rateSelect = document.getElementById('rate-state');
-            const refreshButton = document.getElementById('refresh-rate-button');
-            const preserveButton = document.getElementById('preserve-rate-button');
-            const salesUsdInput = document.getElementById('sales-usd');
-            const salesEurInput = document.getElementById('sales-eur');
+            const FX = { USD: 43.2, EUR: 43.6 };
+            const VAT_RATE = 0.20;
 
-            const stateMap = {
+            const stateTexts = {
                 current: {
                     title: 'Kur güncel',
-                    desc: 'TCMB Döviz Satış kuru kullanılıyor. Hesaplanan TL maliyet güvenli biçimde gösterilir.',
-                    chip: 'Güncel',
-                    chipClass: 'green',
-                    warning: 'Kur uyarısı yok',
-                    rateUsd: '43,20',
-                    baseUsd: '151,20 TL',
-                    suggestedUsd: '185,00 TL',
-                    rateEur: '43,60',
-                    baseEur: '348,80 TL',
-                    suggestedEur: '429,00 TL',
-                    rateDate: '10.07.2026',
-                    refresh: 'Son kur güncelleme: 10.07.2026 11:10',
-                    extra: 'Sistem önerisi korunuyor. Kullanıcı satış birim fiyatını ayrı yönetir.'
+                    desc: 'TCMB Döviz Satış kuru kullanılıyor. Satış alanları belge para birimiyle tutarlı hesaplanır.',
+                    chip: ['green', 'Güncel'],
+                    lastRate: 'Son kur güncelleme: 10.07.2026 11:10'
                 },
                 fallback: {
-                    title: 'Son geçerli iş günü kuru kullanılıyor',
-                    desc: 'İstenen tarih için kur bulunamadı. Son geçerli iş günü kuru ile güvenli dönüşüm yapıldı.',
-                    chip: 'Önceki iş günü',
-                    chipClass: 'amber',
-                    warning: '1 satır fallback kur kullanıyor',
-                    rateUsd: '43,05',
-                    baseUsd: '150,68 TL',
-                    suggestedUsd: '184,40 TL',
-                    rateEur: '43,35',
-                    baseEur: '346,80 TL',
-                    suggestedEur: '426,50 TL',
-                    rateDate: '09.07.2026',
-                    refresh: 'Son kur güncelleme: 09.07.2026 18:00',
-                    extra: 'Son geçerli iş günü kuru kullanılıyor. Kullanılan tarih açıkça gösterilir.'
+                    title: 'Önceki iş günü kuru kullanılıyor',
+                    desc: 'İstenen gün için kur bulunamadı. Son geçerli iş günü kuru ile güvenli hesaplama yapılıyor.',
+                    chip: ['amber', 'Önceki iş günü'],
+                    lastRate: 'Son kur güncelleme: 09.07.2026 18:00'
                 },
                 stale: {
-                    title: 'Kur güncelliğini kontrol edin',
-                    desc: 'Dönüşüm yapılabildi ancak kur tazeliği için dikkat uyarısı gösteriliyor.',
-                    chip: 'Eski kur',
-                    chipClass: 'amber',
-                    warning: '2 satır stale kur uyarısı taşıyor',
-                    rateUsd: '42,70',
-                    baseUsd: '149,45 TL',
-                    suggestedUsd: '182,80 TL',
-                    rateEur: '42,95',
-                    baseEur: '343,60 TL',
-                    suggestedEur: '421,90 TL',
-                    rateDate: '07.07.2026',
-                    refresh: 'Son kur güncelleme: 07.07.2026 17:30',
-                    extra: 'Kur güncelliğini kontrol edin. Manuel satış fiyatı korunmaya devam eder.'
-                },
-                manual: {
-                    title: 'Manuel kur senaryosu',
-                    desc: 'Bu preview, manuel kur yerleşimini gösterir; mevcut contract doğrulamasında can_use_manual_rate=false olduğu için aksiyon pasif not olarak sunulur.',
-                    chip: 'Manuel',
-                    chipClass: 'amber',
-                    warning: 'Manuel kur senaryosu yalnız yetkili görünüm notu',
-                    rateUsd: '43,10',
-                    baseUsd: '150,85 TL',
-                    suggestedUsd: '184,70 TL',
-                    rateEur: '43,40',
-                    baseEur: '347,20 TL',
-                    suggestedEur: '427,30 TL',
-                    rateDate: '10.07.2026',
-                    refresh: 'Manuel kur giriş örneği / demo',
-                    extra: 'Kur override yapan kişi ve gerekçe operasyon görünümüne taşınmaz.'
+                    title: 'Kur eski olabilir',
+                    desc: 'Hesaplama yapılabildi ancak kur güncelliği için dikkat uyarısı gösteriliyor.',
+                    chip: ['amber', 'Eski'],
+                    lastRate: 'Son kur güncelleme: 07.07.2026 17:30'
                 },
                 missing: {
                     title: 'Kur bulunamadı',
-                    desc: 'Otomatik TL maliyeti hesaplanamadı. Satış fiyatı alanı yanlış değerle doldurulmaz.',
-                    chip: 'Bulunamadı',
-                    chipClass: 'red',
-                    warning: 'Kur bulunamadı: yanlış TL fiyat üretilmedi',
-                    rateUsd: '-',
-                    baseUsd: 'Hesaplanamadı',
-                    suggestedUsd: 'Öneri yok',
-                    rateEur: '-',
-                    baseEur: 'Hesaplanamadı',
-                    suggestedEur: 'Öneri yok',
-                    rateDate: 'Kur yok',
-                    refresh: 'Kur bulunamadı / tekrar deneyin',
-                    extra: 'Kur girin veya daha sonra tekrar deneyin. 1 USD = 1 TL gibi davranılmaz.'
+                    desc: 'Otomatik dönüşüm yapılamadı. Satış fiyatı alanı yanlış değerle doldurulmaz.',
+                    chip: ['red', 'Kur yok'],
+                    lastRate: 'Kur bulunamadı / yeniden deneyin'
                 },
                 unsupported: {
-                    title: 'Kaynak para birimi çözülemedi',
-                    desc: 'Unsupported veya missing currency senaryosunda otomatik dönüşüm yapılmaz, ürün yanlışlıkla TL gibi gösterilmez.',
-                    chip: 'Unsupported',
-                    chipClass: 'red',
-                    warning: 'Unsupported currency: otomatik dönüşüm kapalı',
-                    rateUsd: '-',
-                    baseUsd: 'Dönüşüm yok',
-                    suggestedUsd: 'Öneri yok',
-                    rateEur: '-',
-                    baseEur: 'Dönüşüm yok',
-                    suggestedEur: 'Öneri yok',
-                    rateDate: 'Çözülemedi',
-                    refresh: 'Currency status: unsupported',
-                    extra: 'Kaynak para birimi çözülemedi. Ürün yanlışlıkla TL olarak gösterilmez.'
+                    title: 'Desteklenmeyen para birimi',
+                    desc: 'Kaynak para birimi çözülemedi. Otomatik dönüşüm yapılmaz ve yanlış TL değer üretilmez.',
+                    chip: ['red', 'Desteklenmiyor'],
+                    lastRate: 'Para birimi durumu: desteklenmiyor'
                 }
             };
 
-            function setBadgeClass(element, type) {
-                element.className = 'badge ' + type;
+            const items = [
+                {
+                    id: 'pen-metal',
+                    title: 'Metal Tükenmez Kalem',
+                    supplier: 'Atlas Promo',
+                    quantity: 2000,
+                    sourcePrice: 3.5,
+                    sourceCurrency: 'USD',
+                    baseCostTry: 151.20,
+                    suggestedTry: 185,
+                    defaultTry: 185,
+                    vatRate: VAT_RATE,
+                    printTotalTry: 4800,
+                    helperTotalTry: 2800,
+                    printLabel: 'UV Baskı / Tek taraf',
+                    helperLabel: 'Karton kutu',
+                    stock: '4.800',
+                    isManual: true,
+                    manualTryValue: 185
+                },
+                {
+                    id: 'thermos',
+                    title: 'Premium Termos',
+                    supplier: 'Kuzey Gifts',
+                    quantity: 600,
+                    sourcePrice: 8,
+                    sourceCurrency: 'EUR',
+                    baseCostTry: 348.80,
+                    suggestedTry: 429,
+                    defaultTry: 429,
+                    vatRate: VAT_RATE,
+                    printTotalTry: 0,
+                    helperTotalTry: 0,
+                    printLabel: 'Baskı yok',
+                    helperLabel: 'Ara eleman yok',
+                    stock: '1.260',
+                    isManual: false,
+                    manualTryValue: 429
+                },
+                {
+                    id: 'pen-plastic',
+                    title: 'Plastik Tükenmez Kalem',
+                    supplier: 'Yerel Tedarik',
+                    quantity: 5000,
+                    sourcePrice: 9.2,
+                    sourceCurrency: 'TRY',
+                    baseCostTry: 9.20,
+                    suggestedTry: 12.5,
+                    defaultTry: 12.5,
+                    vatRate: VAT_RATE,
+                    printTotalTry: 0,
+                    helperTotalTry: 0,
+                    printLabel: 'Baskı eklenmedi',
+                    helperLabel: 'Ara eleman yok',
+                    stock: '13.400',
+                    isManual: false,
+                    manualTryValue: 12.5
+                }
+            ];
+
+            const searchResults = [
+                { title: 'Metal Tükenmez Kalem', financeMeta: 'Atlas Promo · 3,50 USD · Tahmini TL maliyet 151,20 · Stok 4.800', opsMeta: 'Satışa uygun demo ürün · Stok 4.800' },
+                { title: 'Premium Termos', financeMeta: 'Kuzey Gifts · 8,00 EUR · Tahmini TL maliyet 348,80 · Stok 1.260', opsMeta: 'Satışa uygun demo ürün · Stok 1.260' },
+                { title: 'Plastik Tükenmez Kalem', financeMeta: 'Yerel Tedarik · 9,20 TL · Stok 13.400', opsMeta: 'Satışa uygun demo ürün · Stok 13.400' }
+            ];
+
+            const moduleSelect = document.getElementById('module-state');
+            const roleSelect = document.getElementById('role-state');
+            const docCurrencySelect = document.getElementById('doc-currency');
+            const rateStateSelect = document.getElementById('rate-state');
+            const quoteItems = document.getElementById('quote-items');
+            const summaryBox = document.getElementById('summary-box');
+            const searchDropdown = document.getElementById('search-dropdown');
+            const searchInput = document.getElementById('product-search');
+            const toggleSearchResultsButton = document.getElementById('toggle-search-results');
+            const scenarioBody = document.getElementById('scenario-body');
+
+            function currencyLabel(code) {
+                return code === 'TRY' ? 'TL' : code;
             }
 
-            function updateRole() {
-                const finance = roleSelect.value === 'finance';
-                document.querySelectorAll('.finance-only').forEach((node) => {
-                    node.classList.toggle('hidden', !finance);
-                });
-                document.querySelectorAll('.ops-only').forEach((node) => {
-                    node.classList.toggle('hidden', finance);
-                });
-            }
-
-            function updateModuleState() {
-                const enabled = moduleSelect.value === 'enabled';
-                const selectedDocCurrency = enabled ? docCurrencySelect.value : 'TL';
-                docCurrencySelect.disabled = !enabled;
-                if (!enabled) {
-                    docCurrencySelect.value = 'TL';
+            function formatMoney(value, currency) {
+                if (value === null || Number.isNaN(value)) {
+                    return 'Hesaplanamadı';
                 }
 
-                document.getElementById('module-chip').textContent = enabled ? 'multi_currency açık' : 'multi_currency kapalı';
-                document.getElementById('module-disabled-chip').classList.toggle('hidden', enabled);
-                document.getElementById('doc-capability-chip').textContent = enabled
-                    ? 'USD/EUR belge seçimi kullanılabilir'
-                    : 'Belge para birimi yalnız TL';
-                document.getElementById('policy-readout').textContent = enabled
-                    ? 'USD/EUR ürünler güvenli biçimde TL karşılığına çevrilir'
-                    : 'Bu paket yalnız TL teklif oluşturur';
-                document.getElementById('doc-currency-readout').textContent = selectedDocCurrency;
-                document.getElementById('summary-doc-currency').textContent = 'Belge para birimi: ' + selectedDocCurrency;
-                document.querySelectorAll('.summary-currency').forEach((node) => {
-                    node.textContent = selectedDocCurrency;
-                });
+                return value.toLocaleString('tr-TR', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                }) + ' ' + currencyLabel(currency);
             }
 
-            function updateRateState() {
-                const cfg = stateMap[rateSelect.value];
-                const chip = document.getElementById('state-chip');
-                document.getElementById('state-title').textContent = cfg.title;
-                document.getElementById('state-description').textContent = cfg.desc;
-                chip.textContent = cfg.chip;
-                setBadgeClass(chip, cfg.chipClass);
-                document.getElementById('summary-warning').textContent = cfg.warning;
-                document.getElementById('refresh-chip').textContent = cfg.refresh;
-                document.getElementById('usd-rate').textContent = cfg.rateUsd;
-                document.getElementById('usd-base-price').textContent = cfg.baseUsd;
-                document.getElementById('usd-suggested').textContent = cfg.suggestedUsd;
-                document.getElementById('usd-rate-date').textContent = cfg.rateDate;
-                document.getElementById('eur-rate').textContent = cfg.rateEur;
-                document.getElementById('eur-base-price').textContent = cfg.baseEur;
-                document.getElementById('eur-suggested').textContent = cfg.suggestedEur;
-                document.getElementById('eur-rate-date').textContent = cfg.rateDate;
-                document.getElementById('usd-extra-note').textContent = cfg.extra;
+            function convertTryToDoc(valueTry, docCurrency) {
+                if (valueTry === null) {
+                    return null;
+                }
 
-                const usdRateBadge = document.getElementById('usd-rate-badge');
-                const eurRateBadge = document.getElementById('eur-rate-badge');
-                setBadgeClass(usdRateBadge, cfg.chipClass);
-                setBadgeClass(eurRateBadge, cfg.chipClass);
-                usdRateBadge.textContent = cfg.chip === 'Güncel' ? 'TCMB Döviz Satış / güncel' : cfg.chip;
-                eurRateBadge.textContent = cfg.chip === 'Güncel' ? 'TCMB Döviz Satış / güncel' : cfg.chip;
+                if (docCurrency === 'TRY') {
+                    return valueTry;
+                }
 
-                const manualNoteVisible = rateSelect.value === 'manual';
-                document.getElementById('manual-rate-contract-note').classList.toggle('hidden', !manualNoteVisible);
-                document.getElementById('usd-manual-rate-note').classList.toggle('hidden', !manualNoteVisible);
+                if (docCurrency === 'USD') {
+                    return valueTry / FX.USD;
+                }
+
+                return valueTry / FX.EUR;
             }
 
-            function preserveManualPrice() {
-                const current = rateSelect.value;
-                updateRateState();
-                if (current === 'missing' || current === 'unsupported') {
-                    document.getElementById('usd-manual-state').textContent = 'Manuel fiyat korunuyor';
+            function parseLocaleNumber(value) {
+                return Number(String(value).replace(/\./g, '').replace(',', '.'));
+            }
+
+            function getState() {
+                return {
+                    moduleEnabled: moduleSelect.value === 'enabled',
+                    isFinance: roleSelect.value === 'finance',
+                    docCurrency: docCurrencySelect.value,
+                    rateState: rateStateSelect.value
+                };
+            }
+
+            function detailVisible(state) {
+                return state.moduleEnabled && state.isFinance;
+            }
+
+            function applyStateRestrictions() {
+                const state = getState();
+
+                if (!state.moduleEnabled) {
+                    docCurrencySelect.value = 'TRY';
+                    docCurrencySelect.disabled = true;
                 } else {
-                    document.getElementById('usd-manual-state').textContent = 'Manuel fiyat';
+                    docCurrencySelect.disabled = false;
+                }
+
+                document.getElementById('module-brief').textContent = state.moduleEnabled ? 'Çoklu para birimi açık' : 'Çoklu para birimi kapalı';
+                document.getElementById('doc-currency-brief').textContent = 'Belge para birimi: ' + currencyLabel(docCurrencySelect.value);
+                document.getElementById('doc-currency-readout').textContent = currencyLabel(docCurrencySelect.value);
+                document.getElementById('policy-readout').textContent = state.moduleEnabled
+                    ? 'USD/EUR ürünler belge para birimine tutarlı dönüştürülür'
+                    : 'Bu paket yalnız TL teklif oluşturur';
+                document.getElementById('tl-package-chip').classList.toggle('hidden', state.moduleEnabled);
+            }
+
+            function effectiveSourceDisplay(item, state) {
+                if (!detailVisible(state)) {
+                    return null;
+                }
+
+                if (state.rateState === 'unsupported' && item.sourceCurrency !== 'TRY') {
+                    return 'Desteklenmeyen para birimi';
+                }
+
+                return formatMoney(item.sourcePrice, item.sourceCurrency);
+            }
+
+            function getRateDescriptor(state, item) {
+                if (!detailVisible(state)) {
+                    return null;
+                }
+
+                if (item.sourceCurrency === 'TRY') {
+                    return 'Dönüşüm gerekmiyor';
+                }
+
+                if (state.rateState === 'missing') {
+                    return 'Kur bulunamadı';
+                }
+
+                if (state.rateState === 'unsupported') {
+                    return 'Desteklenmeyen para birimi';
+                }
+
+                return item.sourceCurrency === 'USD'
+                    ? FX.USD.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                    : FX.EUR.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            }
+
+            function computeItemModel(item, state) {
+                const docCurrency = docCurrencySelect.value;
+                const sourceBlocked = !detailVisible(state);
+                const missingLike = (state.rateState === 'missing' || state.rateState === 'unsupported') && item.sourceCurrency !== 'TRY';
+                const sourceLine = effectiveSourceDisplay(item, state);
+                const suggestedTry = missingLike ? null : item.suggestedTry;
+                const manualTry = item.isManual ? item.manualTryValue : null;
+                const activeSaleTry = manualTry !== null ? manualTry : suggestedTry;
+                const saleUnitDoc = activeSaleTry === null ? null : convertTryToDoc(activeSaleTry, docCurrency);
+                const lineTotalTry = activeSaleTry === null ? null : activeSaleTry * item.quantity;
+                const printDoc = convertTryToDoc(item.printTotalTry, docCurrency);
+                const helperDoc = convertTryToDoc(item.helperTotalTry, docCurrency);
+                const lineDoc = lineTotalTry === null ? null : convertTryToDoc(lineTotalTry, docCurrency);
+                const vatDoc = lineDoc === null ? null : (lineDoc + printDoc + helperDoc) * item.vatRate;
+                const detailBaseCost = missingLike ? null : item.baseCostTry;
+                const suggestedDoc = suggestedTry === null ? null : convertTryToDoc(suggestedTry, docCurrency);
+
+                return {
+                    item,
+                    sourceBlocked,
+                    sourceLine,
+                    rateLabel: getRateDescriptor(state, item),
+                    rateDate: missingLike ? 'Kur yok' : (state.rateState === 'fallback' ? '09.07.2026' : state.rateState === 'stale' ? '07.07.2026' : '10.07.2026'),
+                    detailBaseCost,
+                    suggestedDoc,
+                    saleUnitDoc,
+                    lineDoc,
+                    printDoc,
+                    helperDoc,
+                    vatDoc,
+                    isManual: item.isManual,
+                    missingLike
+                };
+            }
+
+            function renderSearchResults() {
+                const state = getState();
+                const query = searchInput.value.trim().toLowerCase();
+                const filtered = searchResults.filter((entry) => entry.title.toLowerCase().includes(query));
+                searchDropdown.innerHTML = filtered.map((entry, index) => {
+                    const meta = detailVisible(state) ? entry.financeMeta : entry.opsMeta;
+                    return `
+                        <div class="search-result">
+                            <div>
+                                <div class="search-title">${entry.title}</div>
+                                <div class="search-meta">${meta}</div>
+                            </div>
+                            <button class="btn ${index === 0 ? 'primary' : 'soft'}" type="button" data-result-title="${entry.title}">Teklife Ekle</button>
+                        </div>
+                    `;
+                }).join('');
+
+                if (!filtered.length) {
+                    searchDropdown.innerHTML = '<div class="search-result"><div><div class="search-title">Sonuç bulunamadı</div><div class="search-meta">Farklı bir anahtar kelime deneyin.</div></div></div>';
                 }
             }
 
-            moduleSelect.addEventListener('change', updateModuleState);
-            roleSelect.addEventListener('change', updateRole);
-            docCurrencySelect.addEventListener('change', updateModuleState);
-            rateSelect.addEventListener('change', preserveManualPrice);
-            refreshButton.addEventListener('click', function () {
-                preserveManualPrice();
-            });
-            preserveButton.addEventListener('click', function () {
-                document.getElementById('usd-manual-state').textContent = 'Manuel fiyat korunuyor';
-                document.getElementById('usd-extra-note').textContent = 'Kullanıcı satış fiyatı korunur. Mevcut kur snapshotı yalnız maliyet/öneri tarafında sabit kalır.';
-            });
+            function summaryHtml(models) {
+                const docCurrency = docCurrencySelect.value;
+                const totals = models.reduce((carry, model) => {
+                    carry.products += model.lineDoc || 0;
+                    carry.prints += model.printDoc || 0;
+                    carry.helpers += model.helperDoc || 0;
+                    carry.vat += model.vatDoc || 0;
+                    return carry;
+                }, { products: 0, prints: 0, helpers: 0, vat: 0 });
+                const general = totals.products + totals.prints + totals.helpers + totals.vat;
+                const warningText = stateTexts[rateStateSelect.value].chip[1] === 'Güncel'
+                    ? 'Kur uyarısı yok'
+                    : stateTexts[rateStateSelect.value].chip[1];
 
-            salesUsdInput.addEventListener('input', function () {
-                document.getElementById('usd-manual-state').textContent = 'Manuel fiyat korunuyor';
-            });
+                return `
+                    <div class="summary-row"><span>Ürün toplamı</span><strong>${formatMoney(totals.products, docCurrency)}</strong></div>
+                    <div class="summary-row"><span>Baskı toplamı</span><strong>${formatMoney(totals.prints, docCurrency)}</strong></div>
+                    <div class="summary-row"><span>Ara eleman toplamı</span><strong>${formatMoney(totals.helpers, docCurrency)}</strong></div>
+                    <div class="summary-row"><span>KDV</span><strong>${formatMoney(totals.vat, docCurrency)}</strong></div>
+                    <div class="summary-row total"><span>Genel toplam</span><strong>${formatMoney(general, docCurrency)}</strong></div>
+                    <div class="chip-row" style="margin-top:10px;">
+                        <span class="chip blue">Belge para birimi: ${currencyLabel(docCurrency)}</span>
+                        <span class="chip ${stateTexts[rateStateSelect.value].chip[0]}">${warningText}</span>
+                    </div>
+                `;
+            }
 
-            salesEurInput.addEventListener('input', function () {
-                document.getElementById('eur-suggested').textContent = '429,00 TL';
-            });
+            function itemHtml(model, state) {
+                const detailAllowed = detailVisible(state);
+                const docCurrency = docCurrencySelect.value;
+                const opsSafeText = model.isManual ? 'Satış fiyatı manuel korunuyor.' : 'Güvenli satış görünümü.';
+                const compact = detailAllowed
+                    ? (
+                        model.item.sourceCurrency === 'TRY'
+                            ? `${model.sourceLine} kaynak fiyat · Dönüşüm gerekmiyor · Önerilen satış ${formatMoney(model.suggestedDoc, docCurrency)}`
+                            : (
+                                model.missingLike
+                                    ? `${model.sourceLine || 'Kaynak para birimi'} · Tahmini maliyet hesaplanamadı · Önerilen satış hesaplanamadı`
+                                    : `${model.sourceLine} × ${model.rateLabel} = ${formatMoney(model.detailBaseCost, 'TRY')} tahmini maliyet · Önerilen satış ${formatMoney(model.suggestedDoc, docCurrency)} · Kur ${model.rateDate}`
+                            )
+                    )
+                    : (model.isManual ? 'Satış fiyatı manuel korunuyor.' : 'Güvenli satış görünümü korunuyor.');
 
-            updateRole();
-            updateModuleState();
-            updateRateState();
+                return `
+                    <article class="quote-item" data-item-id="${model.item.id}">
+                        <div class="item-header">
+                            <div>
+                                <div class="item-title">${model.item.title}</div>
+                                <div class="item-note">Tedarikçi: ${model.item.supplier} · Stok: ${model.item.stock}</div>
+                            </div>
+                            <span class="chip gray">${model.item.sourceCurrency === 'TRY' ? 'TRY kaynaklı' : model.item.sourceCurrency + ' kaynaklı'}</span>
+                        </div>
+
+                        <div class="item-main-grid">
+                            <div class="field">
+                                <label>Ürün</label>
+                                <div class="surface">${model.item.title}</div>
+                            </div>
+                            <div class="field">
+                                <label>Adet</label>
+                                <div class="surface">${model.item.quantity.toLocaleString('tr-TR')}</div>
+                            </div>
+                            <div class="field">
+                                <label>Satış birim fiyatı</label>
+                                <div class="input-inline">
+                                    <input data-sale-input="${model.item.id}" value="${model.saleUnitDoc === null ? '' : model.saleUnitDoc.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}">
+                                    <span>${currencyLabel(docCurrency)}</span>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label>KDV</label>
+                                <div class="surface">%20</div>
+                            </div>
+                            <div class="field">
+                                <label>Toplam</label>
+                                <div class="surface">${formatMoney(model.lineDoc, docCurrency)}</div>
+                            </div>
+                        </div>
+
+                        <div class="compact-strip">
+                            <div>${compact}</div>
+                            ${detailAllowed ? `<button class="detail-toggle" type="button" data-detail-toggle="${model.item.id}">Kur detayı</button>` : ''}
+                            ${detailAllowed ? `
+                                <div class="detail-panel" id="detail-${model.item.id}">
+                                    <div class="detail-grid">
+                                        <div class="detail-cell">
+                                            <span>Kaynak fiyat</span>
+                                            <strong>${model.sourceLine || 'Gizli'}</strong>
+                                        </div>
+                                        <div class="detail-cell">
+                                            <span>Kur</span>
+                                            <strong>${model.rateLabel || 'Gizli'}</strong>
+                                        </div>
+                                        <div class="detail-cell">
+                                            <span>Kur tarihi</span>
+                                            <strong>${model.rateDate}</strong>
+                                        </div>
+                                        <div class="detail-cell">
+                                            <span>Tahmini alış maliyeti</span>
+                                            <strong>${formatMoney(model.detailBaseCost, 'TRY')}</strong>
+                                        </div>
+                                        <div class="detail-cell">
+                                            <span>Önerilen satış</span>
+                                            <strong>${formatMoney(model.suggestedDoc, docCurrency)}</strong>
+                                        </div>
+                                        <div class="detail-cell">
+                                            <span>Fiyat durumu</span>
+                                            <strong>${model.isManual ? 'Manuel fiyat' : 'Sistem önerisi'}</strong>
+                                        </div>
+                                    </div>
+                                </div>
+                            ` : `<div class="safe-ops">${opsSafeText}</div>`}
+                        </div>
+
+                        <div class="sub-card">
+                            <div class="sub-grid">
+                                <div class="field">
+                                    <label>Baskı</label>
+                                    <div class="surface">${model.item.printLabel}</div>
+                                </div>
+                                <div class="field">
+                                    <label>Baskı toplamı</label>
+                                    <div class="surface">${formatMoney(model.printDoc, docCurrency)}</div>
+                                </div>
+                                <div class="field">
+                                    <label>Ara eleman</label>
+                                    <div class="surface">${model.item.helperLabel}</div>
+                                </div>
+                                <div class="field">
+                                    <label>Ara eleman toplamı</label>
+                                    <div class="surface">${formatMoney(model.helperDoc, docCurrency)}</div>
+                                </div>
+                                <div class="field">
+                                    <label>Satır KDV</label>
+                                    <div class="surface">${formatMoney(model.vatDoc, docCurrency)}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </article>
+                `;
+            }
+
+            function renderItems() {
+                const state = getState();
+                const models = items.map((item) => computeItemModel(item, state));
+                quoteItems.innerHTML = models.map((model) => itemHtml(model, state)).join('');
+                summaryBox.innerHTML = summaryHtml(models);
+            }
+
+            function renderRateBox() {
+                const state = getState();
+                const meta = stateTexts[state.rateState];
+                const rateTitle = document.getElementById('rate-title');
+                const rateDesc = document.getElementById('rate-desc');
+                const rateChip = document.getElementById('rate-chip');
+                const rateActions = document.getElementById('rate-actions');
+                document.getElementById('last-rate-chip').textContent = meta.lastRate;
+
+                rateTitle.textContent = meta.title;
+                rateDesc.textContent = meta.desc;
+                rateChip.className = 'chip ' + meta.chip[0];
+                rateChip.textContent = meta.chip[1];
+
+                if (state.rateState === 'current') {
+                    rateActions.innerHTML = '<span class="chip green">Kur güncel</span>';
+                    return;
+                }
+
+                if (state.rateState === 'missing') {
+                    rateActions.innerHTML = '<button class="btn primary" type="button" id="refresh-rate-main">Kur bilgisini yenile</button>';
+                    return;
+                }
+
+                if (state.rateState === 'fallback' || state.rateState === 'stale') {
+                    rateActions.innerHTML = '<button class="btn primary" type="button" id="refresh-rate-main">Kuru Güncelle</button><button class="btn soft" type="button" id="keep-rate-main">Mevcut Kuru Koru</button>';
+                    return;
+                }
+
+                rateActions.innerHTML = '<span class="chip red">Otomatik dönüşüm kapalı</span>';
+            }
+
+            function renderAll() {
+                applyStateRestrictions();
+                renderSearchResults();
+                renderItems();
+                renderRateBox();
+            }
+
+            function bindEvents() {
+                moduleSelect.addEventListener('change', renderAll);
+                roleSelect.addEventListener('change', renderAll);
+                docCurrencySelect.addEventListener('change', renderAll);
+                rateStateSelect.addEventListener('change', renderAll);
+
+                searchInput.addEventListener('input', function () {
+                    searchDropdown.classList.add('open');
+                    renderSearchResults();
+                });
+
+                toggleSearchResultsButton.addEventListener('click', function () {
+                    searchDropdown.classList.toggle('open');
+                });
+
+                document.getElementById('scenario-toggle').addEventListener('click', function () {
+                    scenarioBody.classList.toggle('hidden');
+                });
+
+                document.addEventListener('click', function (event) {
+                    const toggle = event.target.closest('[data-detail-toggle]');
+                    if (toggle) {
+                        const id = toggle.getAttribute('data-detail-toggle');
+                        document.getElementById('detail-' + id).classList.toggle('open');
+                        return;
+                    }
+
+                    const resultButton = event.target.closest('[data-result-title]');
+                    if (resultButton) {
+                        searchInput.value = resultButton.getAttribute('data-result-title');
+                        searchDropdown.classList.remove('open');
+                        return;
+                    }
+
+                    if (event.target.id === 'refresh-rate-main') {
+                        rateStateSelect.value = 'current';
+                        renderAll();
+                        return;
+                    }
+
+                    if (event.target.id === 'keep-rate-main') {
+                        renderRateBox();
+                        return;
+                    }
+                });
+
+                document.addEventListener('input', function (event) {
+                    const target = event.target.closest('[data-sale-input]');
+                    if (!target) {
+                        return;
+                    }
+
+                    const itemId = target.getAttribute('data-sale-input');
+                    const item = items.find((entry) => entry.id === itemId);
+                    if (!item) {
+                        return;
+                    }
+
+                    const parsed = parseLocaleNumber(target.value);
+                    if (Number.isNaN(parsed)) {
+                        return;
+                    }
+
+                    const docCurrency = docCurrencySelect.value;
+                    const tryValue = docCurrency === 'TRY'
+                        ? parsed
+                        : (docCurrency === 'USD' ? parsed * FX.USD : parsed * FX.EUR);
+
+                    item.manualTryValue = Math.round(tryValue * 100) / 100;
+                    item.isManual = true;
+                    renderItems();
+                });
+            }
+
+            bindEvents();
+            renderAll();
         }());
     </script>
 </body>

@@ -113,7 +113,7 @@ Preview küçük demo seçici ile şu durumları gösterir:
 - stale kur
 - manuel kur senaryosu
 - kur bulunamadı
-- unsupported currency
+- desteklenmeyen para birimi
 
 ## 14. Manuel fiyat koruma davranışı
 USD kaynaklı ana örnekte satış birim fiyatı kullanıcı tarafından değiştirilebilir tutuldu. “Kuru Güncelle” davranışı önerilen fiyat ve maliyet bilgisini yenileyebilir; ancak manuel satış fiyatını ezmez. “Mevcut Kuru Koru” akışında da satış alanı korunur.
@@ -205,3 +205,119 @@ Kullanıcı preview’ı açıkça onaylarsa sonraki faz:
 `Prodelya_V1 10.16.4 — Quote Currency Conversion and Snapshot Implementation`
 
 Bu rapor kapsamında production implementation başlatılmadı.
+
+## 24. Revizyon bölümü — 10.16.3-R1
+İlk preview değerlendirmesi sonrası production implementation’a geçmeden önce ikinci bir preview revizyonu yapıldı. Revizyonun temel gerekçesi, belge para birimi değiştiğinde yalnız etiketlerin değil hesapların da tutarlı biçimde değişmesi ve rol/modül güvenliğinin daha sert uygulanmasıydı.
+
+### 24.1 İlk preview değerlendirme sonucu
+İlk sürümde ana kurgu doğruydu; ancak aşağıdaki konular implementation öncesi yanıltıcı kalıyordu:
+
+- belge para birimi seçildiğinde sayısal alanların tam dönüşmemesi
+- modül kapalıyken ayrıntılı currency bilgisinin görünmeye devam etmesi
+- operasyon görünümünde maliyet bağlamı sızıntısı
+- sağ panelde tutarsız tahmini maliyet ve brüt fark alanları
+- aynı kur aksiyonlarının iki farklı yerde tekrar etmesi
+
+### 24.2 Düzeltilen belge currency hesaplama davranışı
+Revize preview’da tek demo kur sözleşmesi kullanıldı:
+
+- `1 USD = 43,20 TRY`
+- `1 EUR = 43,60 TRY`
+
+Belge para birimi TL, USD veya EUR seçildiğinde aşağıdaki alanlar tutarlı biçimde yeniden hesaplanır:
+
+- satış birim fiyatları
+- ürün satır toplamları
+- baskı toplamları
+- ara eleman toplamları
+- KDV
+- genel toplam
+
+Kaynak tedarikçi fiyatı kendi orijinal para biriminde bırakıldı. Tahmini tenant base maliyeti ise yalnız finans görünümünde TL olarak korunur.
+
+### 24.3 Modül kapalı güvenliği
+`multi_currency` kapalıyken preview şu güvenli davranışa çekildi:
+
+- belge para birimi TL’ye sabitlenir
+- USD/EUR seçimi pasif olur
+- source price gizlenir
+- source currency ayrıntısı gizlenir
+- applied rate ve rate tarihi gizlenir
+- manuel kur aksiyonu gösterilmez
+- kullanıcı yalnız güvenli TL teklif görünümünü görür
+
+Finans rolü seçili olsa bile modül kapalı tenant görünümünde advanced currency detail açılmaz.
+
+### 24.4 Operasyon maliyet gizliliği
+Operasyon görünümünde bütün ürün tipleri için aşağıdakiler gizlendi:
+
+- kaynak fiyat
+- kaynak para birimi maliyet bağlamı
+- tahmini alış maliyeti
+- uygulanan kur
+- kur tarihi
+- kur kaynağı
+- tedarikçi maliyet bilgisi
+- tahmini maliyet ve brüt fark
+- manuel kur actor/gerekçe
+
+Özellikle TRY ürünlerde görünen kaynak fiyat ve tahmini alış maliyeti sızıntısı kaldırıldı.
+
+### 24.5 Finans toplamı düzeltmesi
+Sağ paneldeki `Tahmini maliyet` ve `Tahmini brüt fark` satırları tamamen kaldırıldı. Bu preview kârlılık ekranına dönüştürülmedi; yalnız ürün toplamı, baskı toplamı, ara eleman toplamı, KDV ve genel toplam bırakıldı.
+
+### 24.6 Tek kur aksiyon alanı
+Kur aksiyonları yalnız sağ sticky `Kur ve Para Birimi` alanında tutuldu. Ürün kalemleri başlığındaki tekrar kaldırıldı.
+
+- güncel kur: yalnız durum bilgisi
+- fallback/stale: `Kuru Güncelle` ve `Mevcut Kuru Koru`
+- missing: `Kur bilgisini yenile`
+- desteklenmeyen para birimi: aksiyon yerine pasif uyarı
+
+### 24.7 Manuel kur pasif contract
+Backend contract doğrulaması değişmedi:
+
+- `can_use_manual_rate = false`
+
+Bu nedenle manuel kur aktif production yeteneği gibi gösterilmedi. Scenario alanında yalnız planlı/pasif notu korundu; ana form içinde aktif `Manuel Kur Kullan` butonu gösterilmedi.
+
+### 24.8 Türkçe terminoloji temizliği
+Kullanıcı-facing yüzeyde teknik İngilizce ifadeler temizlendi:
+
+- `Kur ve Para Birimi` kullanıldı
+- `Desteklenmeyen para birimi` kullanıldı
+- `Para birimi durumu` ifadesi Türkçeleştirildi
+- teknik modül anahtarı ana formdan kaldırıldı
+
+### 24.9 Kompakt currency detail yaklaşımı
+Önceki 6 kolonlu geniş price strip kaldırıldı. Yeni yaklaşım:
+
+- finans görünümünde tek satırlık kompakt açıklama şeridi
+- küçük `Kur detayı` aç/kapat alanı
+- operasyon görünümünde yalnız güvenli satış uyarısı
+- ana satış birim fiyatı alanı her zaman görünür
+
+Bu sayede form currency dashboard gibi değil, teklif formu gibi kalır.
+
+### 24.10 Responsive iyileştirme
+430px dar ekran kabul kriterine göre preview sadeleştirildi:
+
+- sağ özet alta iner
+- ürün ana alanları tek kolona düşebilir
+- kur şeridi kompakt kalır
+- 6 ayrı price-cell blok yaklaşımı kaldırıldı
+- kur detayı kapalı başlar
+- satış fiyatı ve satır toplamı görünür kalır
+
+### 24.11 Production’a taşınmayacak preview-only parçalar
+Aşağıdaki preview parçaları production’a aynen taşınmayacaktır:
+
+- standalone topbar’ın aynen kopyalanması
+- `Preview / multi_currency / teklif oluşturma` benzeri önizleme üst etiketi
+- uzun preview açıklama metni
+- senaryo panelinin teknik demo biçimi
+
+Production layout zaten kendi sayfa başlığını üretiyorsa ikinci bir topbar/h1 kopyalanmayacaktır.
+
+### 24.12 Kullanıcı onayı
+Revize preview tamamlandı. Bu noktada hâlâ açık kullanıcı onayı beklenmektedir. Onay olmadan `10.16.4` implementation fazına geçilmemelidir.
