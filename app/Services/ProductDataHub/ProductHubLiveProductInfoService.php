@@ -7,6 +7,7 @@ use App\Models\TenantAccount;
 use App\Models\TenantCatalogProduct;
 use App\Models\TenantCatalogProductVariant;
 use App\Models\TenantSupplierAccess;
+use Illuminate\Contracts\Auth\Authenticatable;
 
 class ProductHubLiveProductInfoService
 {
@@ -14,10 +15,11 @@ class ProductHubLiveProductInfoService
 
     public function __construct(
         private readonly ProductHubSellableTruthService $sellableTruthService,
+        private readonly ProductHubCurrencyService $productHubCurrencyService,
     ) {
     }
 
-    public function resolve(TenantAccount $tenant, array $input): array
+    public function resolve(TenantAccount $tenant, array $input, ?Authenticatable $user = null): array
     {
         $validation = $this->validateInput($input);
 
@@ -142,6 +144,12 @@ class ProductHubLiveProductInfoService
             && ($currentStock === null || $currentStock > 0);
 
         $message = $this->resolvePublicMessage($isSellable, $warnings);
+        $priceSnapshot = (array) data_get($variant?->meta, 'price_snapshot', data_get($product->meta, 'price_snapshot', []));
+        $currencyPayload = $this->productHubCurrencyService->buildBrowserCurrencyPayload(
+            $tenant,
+            $user,
+            (array) data_get($priceSnapshot, 'currency_snapshot', $priceSnapshot)
+        );
 
         return [
             'status' => 200,
@@ -167,6 +175,24 @@ class ProductHubLiveProductInfoService
                 'alternative_available' => false,
                 'public_safe_message' => $message,
                 'warnings' => $warnings,
+                'source_price' => $currencyPayload['source_price'],
+                'source_currency' => $currencyPayload['source_currency'],
+                'base_price' => $currencyPayload['base_price'],
+                'base_currency' => $currencyPayload['base_currency'],
+                'conversion_available' => $currencyPayload['conversion_available'],
+                'conversion_status' => $currencyPayload['conversion_status'],
+                'applied_rate' => $currencyPayload['applied_rate'],
+                'rate_date' => $currencyPayload['rate_date'],
+                'rate_source' => $currencyPayload['rate_source'],
+                'rate_type' => $currencyPayload['rate_type'],
+                'is_fallback_rate' => $currencyPayload['is_fallback_rate'],
+                'is_stale_rate' => $currencyPayload['is_stale_rate'],
+                'currency_origin' => $currencyPayload['currency_origin'],
+                'currency_status' => $currencyPayload['currency_status'],
+                'multi_currency_enabled' => $currencyPayload['multi_currency_enabled'],
+                'can_view_currency_details' => $currencyPayload['can_view_currency_details'],
+                'can_use_foreign_document_currency' => $currencyPayload['can_use_foreign_document_currency'],
+                'can_use_manual_rate' => $currencyPayload['can_use_manual_rate'],
             ],
         ];
     }

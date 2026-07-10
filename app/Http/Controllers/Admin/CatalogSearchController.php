@@ -7,6 +7,7 @@ use App\Models\Supplier;
 use App\Models\TenantSupplierAccess;
 use App\Models\TenantCatalogProduct;
 use App\Services\ProductDataHub\ProductHubSellableTruthService;
+use App\Services\ProductDataHub\ProductHubCurrencyService;
 use App\Services\ProductDataHub\SupplierWarningLabelService;
 use App\Services\TenantResolver;
 use Illuminate\Http\JsonResponse;
@@ -18,6 +19,7 @@ class CatalogSearchController extends Controller
         private readonly TenantResolver $tenantResolver,
         private readonly SupplierWarningLabelService $supplierWarningLabelService,
         private readonly ProductHubSellableTruthService $sellableTruthService,
+        private readonly ProductHubCurrencyService $productHubCurrencyService,
     ) {
     }
 
@@ -93,7 +95,7 @@ class CatalogSearchController extends Controller
 
                 return collect($supplierIds)->intersect($allowedSupplierIds)->isNotEmpty();
             })
-            ->flatMap(fn (TenantCatalogProduct $product) => $this->expandSellableSearchResults($product, $queryText, $onlyQuoteVisible))
+            ->flatMap(fn (TenantCatalogProduct $product) => $this->expandSellableSearchResults($tenant, $request->user(), $product, $queryText, $onlyQuoteVisible))
             ->sortBy(fn (array $entry) => $this->resolveSearchRank($entry, $queryText))
             ->take(20)
             ->map(fn (array $entry) => $this->stripTenantHiddenGroupFields($entry))
@@ -102,7 +104,7 @@ class CatalogSearchController extends Controller
         return response()->json($results);
     }
 
-    private function expandSellableSearchResults(TenantCatalogProduct $product, string $queryText, bool $onlyQuoteVisible): array
+    private function expandSellableSearchResults($tenant, $user, TenantCatalogProduct $product, string $queryText, bool $onlyQuoteVisible): array
     {
         $variants = $product->variants
             ->filter(fn ($variant) => (bool) $variant->is_active && (bool) $variant->visible_in_catalog)
@@ -117,7 +119,7 @@ class CatalogSearchController extends Controller
                 return [];
             }
 
-            return [$this->serializeSellableProduct($product)];
+            return [$this->serializeSellableProduct($tenant, $user, $product)];
         }
 
         $matchesParent = $queryText === '' || $this->matchesParentSearch($product, $queryText);
@@ -134,13 +136,13 @@ class CatalogSearchController extends Controller
 
                 return true;
             })
-            ->map(fn ($variant) => $this->serializeSellableVariant($product, $variant))
+            ->map(fn ($variant) => $this->serializeSellableVariant($tenant, $user, $product, $variant))
             ->sortBy(fn (array $entry) => $this->resolveSearchRank($entry, $queryText))
             ->values()
             ->all();
     }
 
-    private function serializeSellableProduct(TenantCatalogProduct $product): array
+    private function serializeSellableProduct($tenant, $user, TenantCatalogProduct $product): array
     {
         $truth = $this->sellableTruthService->resolve($product);
         $warningFlag = (bool) ($product->standardProduct?->warning_flag ?? data_get($product->meta, 'warning_flag', false));
@@ -168,6 +170,12 @@ class CatalogSearchController extends Controller
         ]);
         $warningSummary = implode(' • ', array_slice($productWarnings['badges'], 0, 3));
         $warningTone = in_array('Kırmızı Ürün', $productWarnings['badges'], true) ? 'red' : 'amber';
+        $browserPriceSnapshot = $this->productHubCurrencyService->sanitizePriceSnapshotForBrowser($productPriceSnapshot, $tenant, $user);
+        $currencyPayload = $this->productHubCurrencyService->buildBrowserCurrencyPayload(
+            $tenant,
+            $user,
+            (array) data_get($productPriceSnapshot, 'currency_snapshot', $productPriceSnapshot)
+        );
 
         return [
             'id' => $product->id,
@@ -203,6 +211,24 @@ class CatalogSearchController extends Controller
             'warning_summary' => $warningSummary,
             'warning_tone' => $warningSummary !== '' ? $warningTone : null,
             'category_name' => $product->category_display_name,
+            'source_price' => $currencyPayload['source_price'],
+            'source_currency' => $currencyPayload['source_currency'],
+            'base_price' => $currencyPayload['base_price'],
+            'base_currency' => $currencyPayload['base_currency'],
+            'conversion_available' => $currencyPayload['conversion_available'],
+            'conversion_status' => $currencyPayload['conversion_status'],
+            'applied_rate' => $currencyPayload['applied_rate'],
+            'rate_date' => $currencyPayload['rate_date'],
+            'rate_source' => $currencyPayload['rate_source'],
+            'rate_type' => $currencyPayload['rate_type'],
+            'is_fallback_rate' => $currencyPayload['is_fallback_rate'],
+            'is_stale_rate' => $currencyPayload['is_stale_rate'],
+            'currency_origin' => $currencyPayload['currency_origin'],
+            'currency_status' => $currencyPayload['currency_status'],
+            'multi_currency_enabled' => $currencyPayload['multi_currency_enabled'],
+            'can_view_currency_details' => $currencyPayload['can_view_currency_details'],
+            'can_use_foreign_document_currency' => $currencyPayload['can_use_foreign_document_currency'],
+            'can_use_manual_rate' => $currencyPayload['can_use_manual_rate'],
             'source_summary' => $product->source_summary,
             'product_snapshot' => [
                 'tenant_catalog_product_id' => $product->id,
@@ -222,8 +248,8 @@ class CatalogSearchController extends Controller
                 'warning_summary' => $warningSummary,
                 'warning_tone' => $warningSummary !== '' ? $warningTone : null,
             ],
-            'price_snapshot' => array_merge($productPriceSnapshot, [
-                'list_price' => (float) (data_get($productPriceSnapshot, 'list_price') ?? $product->display_price ?? 0),
+            'price_snapshot' => array_merge($browserPriceSnapshot, [
+                'list_price' => (float) (data_get($browserPriceSnapshot, 'list_price') ?? $product->display_price ?? 0),
                 'warning_badges' => $productWarnings['badges'],
                 'warning_messages' => $productWarnings['messages'],
                 'net_price_warning' => (bool) data_get($product->meta, 'net_price_warning', false),
@@ -244,7 +270,7 @@ class CatalogSearchController extends Controller
         ];
     }
 
-    private function serializeSellableVariant(TenantCatalogProduct $product, $variant): array
+    private function serializeSellableVariant($tenant, $user, TenantCatalogProduct $product, $variant): array
     {
         $truth = $this->sellableTruthService->resolve($product, $variant);
         $supplierName = $this->isLocalProduct($product)
@@ -272,6 +298,12 @@ class CatalogSearchController extends Controller
         $visibleInQuote = ($truth['quote_visibility_status'] ?? 'visible') === 'visible';
         $warningSummary = implode(' • ', array_slice($warnings['badges'], 0, 3));
         $warningTone = in_array('Kırmızı Ürün', $warnings['badges'], true) ? 'red' : 'amber';
+        $browserPriceSnapshot = $this->productHubCurrencyService->sanitizePriceSnapshotForBrowser($priceSnapshot, $tenant, $user);
+        $currencyPayload = $this->productHubCurrencyService->buildBrowserCurrencyPayload(
+            $tenant,
+            $user,
+            (array) data_get($priceSnapshot, 'currency_snapshot', $priceSnapshot)
+        );
 
         return [
             'id' => $product->id,
@@ -307,6 +339,24 @@ class CatalogSearchController extends Controller
             'warning_summary' => $warningSummary,
             'warning_tone' => $warningSummary !== '' ? $warningTone : null,
             'category_name' => $product->category_display_name,
+            'source_price' => $currencyPayload['source_price'],
+            'source_currency' => $currencyPayload['source_currency'],
+            'base_price' => $currencyPayload['base_price'],
+            'base_currency' => $currencyPayload['base_currency'],
+            'conversion_available' => $currencyPayload['conversion_available'],
+            'conversion_status' => $currencyPayload['conversion_status'],
+            'applied_rate' => $currencyPayload['applied_rate'],
+            'rate_date' => $currencyPayload['rate_date'],
+            'rate_source' => $currencyPayload['rate_source'],
+            'rate_type' => $currencyPayload['rate_type'],
+            'is_fallback_rate' => $currencyPayload['is_fallback_rate'],
+            'is_stale_rate' => $currencyPayload['is_stale_rate'],
+            'currency_origin' => $currencyPayload['currency_origin'],
+            'currency_status' => $currencyPayload['currency_status'],
+            'multi_currency_enabled' => $currencyPayload['multi_currency_enabled'],
+            'can_view_currency_details' => $currencyPayload['can_view_currency_details'],
+            'can_use_foreign_document_currency' => $currencyPayload['can_use_foreign_document_currency'],
+            'can_use_manual_rate' => $currencyPayload['can_use_manual_rate'],
             'source_summary' => $variant->source_summary ?: $product->source_summary,
             'product_snapshot' => [
                 'tenant_catalog_product_id' => $product->id,
@@ -326,8 +376,8 @@ class CatalogSearchController extends Controller
                 'warning_summary' => $warningSummary,
                 'warning_tone' => $warningSummary !== '' ? $warningTone : null,
             ],
-            'price_snapshot' => array_merge($priceSnapshot, [
-                'list_price' => (float) (data_get($priceSnapshot, 'list_price') ?? $variant->display_price ?? $product->display_price ?? 0),
+            'price_snapshot' => array_merge($browserPriceSnapshot, [
+                'list_price' => (float) (data_get($browserPriceSnapshot, 'list_price') ?? $variant->display_price ?? $product->display_price ?? 0),
                 'warning_badges' => $warnings['badges'],
                 'warning_messages' => $warnings['messages'],
                 'net_price_warning' => (bool) data_get($variant->meta, 'net_price_warning', false),

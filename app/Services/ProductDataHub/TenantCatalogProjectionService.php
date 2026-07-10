@@ -20,7 +20,8 @@ class TenantCatalogProjectionService
     private array $sourcePolicyCache = [];
 
     public function __construct(
-        private readonly FallbackCategoryService $fallbackCategoryService
+        private readonly FallbackCategoryService $fallbackCategoryService,
+        private readonly ProductHubCurrencyService $productHubCurrencyService,
     ) {
     }
 
@@ -194,7 +195,7 @@ class TenantCatalogProjectionService
     {
         $access = $this->resolveTenantSupplierAccess($tenant, $product);
         $hasVariants = $product->relationLoaded('variants') ? $product->variants->isNotEmpty() : $product->variants()->exists();
-        $basePrice = (float) ($product->min_purchase_price ?? 0);
+        $basePrice = $this->toNullableFloat($product->min_purchase_price);
         $priceMultiplier = $access['price_multiplier'];
         $safeStock = $access['safe_stock_quantity'];
         $supplierStock = (float) ($product->total_stock_quantity ?? 0);
@@ -214,7 +215,11 @@ class TenantCatalogProjectionService
             $projectedCategoryId = $fallbackCategory->id;
         }
 
-        $listPriceSnapshot = data_get($product->meta, 'price_snapshot.list_price', $product->min_purchase_price);
+        $standardPriceSnapshot = (array) data_get($product->meta, 'price_snapshot', []);
+        $productCurrencySnapshot = $this->productHubCurrencyService->buildProjectionCurrencySnapshot($tenant, $standardPriceSnapshot);
+        $projectedBasePrice = $this->toNullableFloat($productCurrencySnapshot['base_price'] ?? $basePrice);
+        $projectedDisplayPrice = $this->calculateDisplayPrice($projectedBasePrice, $priceMultiplier);
+        $listPriceSnapshot = $projectedDisplayPrice;
         $imageSnapshot = [
             'image_url' => $primaryStandardImage?->image_url ?: $product->image_url ?: ($legacyImages[0] ?? null),
             'gallery_images' => $standardImages->pluck('image_url')->all() ?: ($product->image_url ? [$product->image_url] : []),
@@ -241,9 +246,9 @@ class TenantCatalogProjectionService
                 'product_url' => $product->product_url,
                 'detail_url' => $product->detail_url,
                 'description' => $product->description,
-                'display_price' => $this->calculateDisplayPrice($basePrice, $priceMultiplier),
-                'sale_price' => $this->calculateDisplayPrice($basePrice, $priceMultiplier),
-                'currency' => $product->currency ?: 'TL',
+                'display_price' => $projectedDisplayPrice,
+                'sale_price' => $projectedDisplayPrice,
+                'currency' => $productCurrencySnapshot['base_currency'] ?? ($product->currency ?: 'TL'),
                 'total_stock_quantity' => $visibleStock + $localStock,
                 'local_stock_quantity' => $localStock,
                 'supplier_stock_quantity' => $visibleStock,
@@ -287,7 +292,19 @@ class TenantCatalogProjectionService
                     'pricing_policy_type' => data_get($product->meta, 'price_snapshot.pricing_policy_type'),
                     'supplier_warning_flag' => (bool) data_get($product->meta, 'price_snapshot.supplier_warning_flag', false),
                     'supplier_warning_type' => data_get($product->meta, 'price_snapshot.supplier_warning_type'),
-                    'price_snapshot' => data_get($product->meta, 'price_snapshot'),
+                    'price_snapshot' => array_merge($standardPriceSnapshot, [
+                        'list_price' => $projectedDisplayPrice,
+                        'base_price' => $projectedBasePrice,
+                        'base_currency' => $productCurrencySnapshot['base_currency'] ?? null,
+                        'source_price' => $productCurrencySnapshot['source_price'] ?? data_get($standardPriceSnapshot, 'source_price'),
+                        'source_currency' => $productCurrencySnapshot['source_currency'] ?? data_get($standardPriceSnapshot, 'source_currency'),
+                        'source_list_price' => data_get($standardPriceSnapshot, 'source_list_price'),
+                        'source_net_price' => data_get($standardPriceSnapshot, 'source_net_price'),
+                        'source_purchase_price' => data_get($standardPriceSnapshot, 'source_purchase_price'),
+                        'currency_origin' => $productCurrencySnapshot['currency_origin'] ?? data_get($standardPriceSnapshot, 'currency_origin'),
+                        'currency_status' => $productCurrencySnapshot['currency_status'] ?? data_get($standardPriceSnapshot, 'currency_status'),
+                        'currency_snapshot' => $productCurrencySnapshot,
+                    ]),
                     'list_price_snapshot' => $listPriceSnapshot,
                     'stock_snapshot' => [
                         'stock_quantity' => (int) round($visibleStock + $localStock),
@@ -320,6 +337,9 @@ class TenantCatalogProjectionService
     public function projectVariant(TenantAccount $tenant, TenantCatalogProduct $catalogProduct, StandardProductVariant $variant): TenantCatalogProductVariant
     {
         $basePrice = (float) ($variant->min_purchase_price ?? $catalogProduct->display_price ?? 0);
+        $variantStandardPriceSnapshot = (array) data_get($variant->meta, 'price_snapshot', []);
+        $variantCurrencySnapshot = $this->productHubCurrencyService->buildProjectionCurrencySnapshot($tenant, $variantStandardPriceSnapshot);
+        $projectedVariantBasePrice = $this->toNullableFloat($variantCurrencySnapshot['base_price'] ?? $basePrice);
         $priceMultiplier = (float) ($catalogProduct->price_multiplier ?? 1);
         $safeStock = (int) ($catalogProduct->safe_stock_quantity ?? 0);
         $supplierStock = (float) ($variant->stock_quantity ?? 0);
@@ -338,8 +358,8 @@ class TenantCatalogProjectionService
                 'variant_color' => $variant->variant_color,
                 'variant_size' => $variant->variant_size,
                 'image_url' => $variant->image_url ?: $catalogProduct->image_url,
-                'display_price' => $this->calculateDisplayPrice($basePrice, $priceMultiplier),
-                'currency' => $catalogProduct->currency ?: 'TL',
+                'display_price' => $this->calculateDisplayPrice($projectedVariantBasePrice, $priceMultiplier),
+                'currency' => $variantCurrencySnapshot['base_currency'] ?? ($catalogProduct->currency ?: 'TL'),
                 'stock_quantity' => $visibleStock + $localStock,
                 'local_stock_quantity' => $localStock,
                 'supplier_stock_quantity' => $visibleStock,
@@ -355,7 +375,19 @@ class TenantCatalogProjectionService
                     'pricing_policy_type' => data_get($variant->meta, 'price_snapshot.pricing_policy_type'),
                     'supplier_warning_flag' => (bool) data_get($variant->meta, 'price_snapshot.supplier_warning_flag', false),
                     'supplier_warning_type' => data_get($variant->meta, 'price_snapshot.supplier_warning_type'),
-                    'price_snapshot' => data_get($variant->meta, 'price_snapshot'),
+                    'price_snapshot' => array_merge($variantStandardPriceSnapshot, [
+                        'list_price' => $this->calculateDisplayPrice($projectedVariantBasePrice, $priceMultiplier),
+                        'base_price' => $projectedVariantBasePrice,
+                        'base_currency' => $variantCurrencySnapshot['base_currency'] ?? null,
+                        'source_price' => $variantCurrencySnapshot['source_price'] ?? data_get($variantStandardPriceSnapshot, 'source_price'),
+                        'source_currency' => $variantCurrencySnapshot['source_currency'] ?? data_get($variantStandardPriceSnapshot, 'source_currency'),
+                        'source_list_price' => data_get($variantStandardPriceSnapshot, 'source_list_price'),
+                        'source_net_price' => data_get($variantStandardPriceSnapshot, 'source_net_price'),
+                        'source_purchase_price' => data_get($variantStandardPriceSnapshot, 'source_purchase_price'),
+                        'currency_origin' => $variantCurrencySnapshot['currency_origin'] ?? data_get($variantStandardPriceSnapshot, 'currency_origin'),
+                        'currency_status' => $variantCurrencySnapshot['currency_status'] ?? data_get($variantStandardPriceSnapshot, 'currency_status'),
+                        'currency_snapshot' => $variantCurrencySnapshot,
+                    ]),
                     'gallery_images' => data_get($variant->meta, 'gallery_images', []),
                     'variant_attributes' => $variant->variant_attributes,
                     'is_parent' => false,
@@ -531,12 +563,25 @@ class TenantCatalogProjectionService
         ];
     }
 
-    public function calculateDisplayPrice($basePrice, $priceMultiplier): float
+    public function calculateDisplayPrice($basePrice, $priceMultiplier): ?float
     {
-        $basePrice = (float) ($basePrice ?? 0);
+        if ($basePrice === null || $basePrice === '') {
+            return null;
+        }
+
+        $basePrice = (float) $basePrice;
         $priceMultiplier = (float) ($priceMultiplier ?: 1);
 
         return round($basePrice * $priceMultiplier, 4);
+    }
+
+    private function toNullableFloat(mixed $value): ?float
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return is_numeric($value) ? (float) $value : null;
     }
 
     public function calculateVisibleStock($stock, $safeStock): float

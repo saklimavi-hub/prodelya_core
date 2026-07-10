@@ -16,7 +16,8 @@ use Illuminate\Support\Str;
 class StandardProductBuilderService
 {
     public function __construct(
-        private readonly ProductCodeNormalizerService $normalizer
+        private readonly ProductCodeNormalizerService $normalizer,
+        private readonly ProductHubCurrencyService $productHubCurrencyService,
     ) {
     }
 
@@ -200,6 +201,9 @@ class StandardProductBuilderService
         ]);
 
         $baseListPrice = data_get($rawProduct->normalized_payload, 'list_price');
+        $productCurrencyContract = (array) data_get($rawProduct->normalized_payload, 'currency_contract', []);
+        $productSourceCurrency = $productCurrencyContract['source_currency'] ?? $rawProduct->currency ?? $rawProduct->source_currency;
+        $productSourcePrice = $productCurrencyContract['source_price'] ?? $rawProduct->source_price;
 
         $product->forceFill([
             'tenant_account_id' => $rawProduct->tenant_account_id,
@@ -220,7 +224,7 @@ class StandardProductBuilderService
             'product_url' => $rawProduct->product_url ?: $rawProduct->detail_url,
             'detail_url' => $rawProduct->detail_url ?: $rawProduct->product_url,
             'vat_rate' => $rawProduct->vat_rate,
-            'currency' => $rawProduct->currency ?: $rawProduct->source_currency ?: 'TL',
+            'currency' => $productSourceCurrency,
             'min_purchase_price' => $baseListPrice,
             'max_purchase_price' => $baseListPrice,
             'total_stock_quantity' => $rawProduct->stock_quantity,
@@ -252,6 +256,13 @@ class StandardProductBuilderService
                     'pricing_policy_type' => data_get($rawProduct->normalized_payload, 'pricing_policy_type'),
                     'supplier_warning_flag' => (bool) data_get($rawProduct->normalized_payload, 'supplier_warning_flag', false),
                     'supplier_warning_type' => data_get($rawProduct->normalized_payload, 'supplier_warning_type'),
+                    'source_price' => $productSourcePrice,
+                    'source_currency' => $productSourceCurrency,
+                    'source_list_price' => $productCurrencyContract['source_list_price'] ?? null,
+                    'source_net_price' => $productCurrencyContract['source_net_price'] ?? null,
+                    'source_purchase_price' => $productCurrencyContract['source_purchase_price'] ?? null,
+                    'currency_origin' => $productCurrencyContract['currency_origin'] ?? null,
+                    'currency_status' => $productCurrencyContract['currency_status'] ?? null,
                     'gallery_images' => data_get($rawProduct->normalized_payload, 'gallery_images', []),
                 ],
             ],
@@ -273,6 +284,7 @@ class StandardProductBuilderService
                         'applied_at' => data_get($rawProduct->normalized_payload, 'category_override_applied_at'),
                     ],
                     'warnings' => $rawProduct->warnings ?? [],
+                    'currency_snapshot' => $productCurrencyContract,
                     'stock_snapshot' => [
                         'stock_quantity' => $rawProduct->stock_quantity ?? data_get($rawProduct->normalized_payload, 'stock_quantity'),
                         'total_variant_stock_quantity' => data_get($rawProduct->normalized_payload, 'total_variant_stock_quantity'),
@@ -281,17 +293,25 @@ class StandardProductBuilderService
                     'price_snapshot' => [
                         'purchase_price' => $rawProduct->purchase_price,
                         'list_price' => data_get($rawProduct->normalized_payload, 'list_price'),
-                    'closed_list_price' => data_get($rawProduct->normalized_payload, 'closed_list_price'),
-                    'net_price' => data_get($rawProduct->normalized_payload, 'net_price'),
-                    'discount_rate' => data_get($rawProduct->normalized_payload, 'discount_rate'),
-                    'alternative_price' => data_get($rawProduct->normalized_payload, 'alternative_price'),
-                    'usd_price' => data_get($rawProduct->normalized_payload, 'usd_price'),
-                    'net_price_warning' => (bool) data_get($rawProduct->normalized_payload, 'net_price_warning', false),
-                    'price_policy_warning' => (bool) data_get($rawProduct->normalized_payload, 'price_policy_warning', false),
-                    'pricing_policy_type' => data_get($rawProduct->normalized_payload, 'pricing_policy_type'),
-                    'supplier_warning_flag' => (bool) data_get($rawProduct->normalized_payload, 'supplier_warning_flag', false),
-                    'supplier_warning_type' => data_get($rawProduct->normalized_payload, 'supplier_warning_type'),
-                ],
+                        'closed_list_price' => data_get($rawProduct->normalized_payload, 'closed_list_price'),
+                        'net_price' => data_get($rawProduct->normalized_payload, 'net_price'),
+                        'discount_rate' => data_get($rawProduct->normalized_payload, 'discount_rate'),
+                        'alternative_price' => data_get($rawProduct->normalized_payload, 'alternative_price'),
+                        'usd_price' => data_get($rawProduct->normalized_payload, 'usd_price'),
+                        'source_price' => $productSourcePrice,
+                        'source_currency' => $productSourceCurrency,
+                        'source_list_price' => $productCurrencyContract['source_list_price'] ?? null,
+                        'source_net_price' => $productCurrencyContract['source_net_price'] ?? null,
+                        'source_purchase_price' => $productCurrencyContract['source_purchase_price'] ?? null,
+                        'currency_origin' => $productCurrencyContract['currency_origin'] ?? null,
+                        'currency_status' => $productCurrencyContract['currency_status'] ?? null,
+                        'currency_snapshot' => $productCurrencyContract,
+                        'net_price_warning' => (bool) data_get($rawProduct->normalized_payload, 'net_price_warning', false),
+                        'price_policy_warning' => (bool) data_get($rawProduct->normalized_payload, 'price_policy_warning', false),
+                        'pricing_policy_type' => data_get($rawProduct->normalized_payload, 'pricing_policy_type'),
+                        'supplier_warning_flag' => (bool) data_get($rawProduct->normalized_payload, 'supplier_warning_flag', false),
+                        'supplier_warning_type' => data_get($rawProduct->normalized_payload, 'supplier_warning_type'),
+                    ],
                 'gallery_images' => data_get($rawProduct->normalized_payload, 'gallery_images', []),
                 'gallery_source_fields' => data_get($rawProduct->normalized_payload, 'gallery_source_fields', []),
                 'warnings' => $rawProduct->warnings ?? [],
@@ -320,6 +340,9 @@ class StandardProductBuilderService
 
         $variantDisplayPrice = data_get($rawVariant->normalized_payload, 'list_price', data_get($rawProduct->normalized_payload, 'list_price'));
         $variantPurchasePrice = data_get($rawVariant->normalized_payload, 'purchase_price', $rawProduct->purchase_price);
+        $variantCurrencyContract = (array) data_get($rawVariant->normalized_payload, 'currency_contract', data_get($rawProduct->normalized_payload, 'currency_contract', []));
+        $variantSourceCurrency = $variantCurrencyContract['source_currency'] ?? data_get($rawProduct->normalized_payload, 'currency_contract.source_currency') ?? $rawProduct->currency ?? $rawProduct->source_currency;
+        $variantSourcePrice = $variantCurrencyContract['source_price'] ?? data_get($rawProduct->normalized_payload, 'currency_contract.source_price') ?? $rawProduct->source_price;
         $displayVariantColor = data_get($rawVariant->normalized_payload, 'display_variant_color', $rawVariant->variant_color);
         $displayVariantSize = data_get($rawVariant->normalized_payload, 'display_size', data_get($rawVariant->normalized_payload, 'variant_size', $rawVariant->variant_size));
         $displayVariantAttributes = data_get($rawVariant->normalized_payload, 'display_variant_attributes', $rawVariant->variant_attributes);
@@ -360,12 +383,20 @@ class StandardProductBuilderService
                 'pricing_policy_type' => data_get($rawVariant->normalized_payload, 'pricing_policy_type', data_get($rawProduct->normalized_payload, 'pricing_policy_type')),
                 'supplier_warning_flag' => (bool) data_get($rawVariant->normalized_payload, 'supplier_warning_flag', data_get($rawProduct->normalized_payload, 'supplier_warning_flag', false)),
                 'supplier_warning_type' => data_get($rawVariant->normalized_payload, 'supplier_warning_type', data_get($rawProduct->normalized_payload, 'supplier_warning_type')),
+                'source_price' => $variantSourcePrice,
+                'source_currency' => $variantSourceCurrency,
+                'source_list_price' => $variantCurrencyContract['source_list_price'] ?? null,
+                'source_net_price' => $variantCurrencyContract['source_net_price'] ?? null,
+                'source_purchase_price' => $variantCurrencyContract['source_purchase_price'] ?? null,
+                'currency_origin' => $variantCurrencyContract['currency_origin'] ?? null,
+                'currency_status' => $variantCurrencyContract['currency_status'] ?? null,
                 'gallery_images' => data_get($rawVariant->normalized_payload, 'gallery_images', data_get($rawProduct->normalized_payload, 'gallery_images', [])),
                 'warnings' => $rawVariant->warnings ?? [],
             ],
             'meta' => [
                 'warning_flag' => (bool) ($rawProduct->warning_flag || !empty($rawVariant->warnings)),
                 'warnings' => $rawVariant->warnings ?? [],
+                'currency_snapshot' => $variantCurrencyContract,
                 'stock_snapshot' => [
                     'stock_quantity' => $rawVariant->variant_stock_quantity,
                     'total_variant_stock_quantity' => data_get($rawVariant->normalized_payload, 'total_variant_stock_quantity', data_get($rawProduct->normalized_payload, 'total_variant_stock_quantity')),
@@ -378,6 +409,14 @@ class StandardProductBuilderService
                     'discount_rate' => data_get($rawVariant->normalized_payload, 'discount_rate', data_get($rawProduct->normalized_payload, 'discount_rate')),
                     'alternative_price' => data_get($rawVariant->normalized_payload, 'alternative_price', data_get($rawProduct->normalized_payload, 'alternative_price')),
                     'usd_price' => data_get($rawVariant->normalized_payload, 'usd_price', data_get($rawProduct->normalized_payload, 'usd_price')),
+                    'source_price' => $variantSourcePrice,
+                    'source_currency' => $variantSourceCurrency,
+                    'source_list_price' => $variantCurrencyContract['source_list_price'] ?? null,
+                    'source_net_price' => $variantCurrencyContract['source_net_price'] ?? null,
+                    'source_purchase_price' => $variantCurrencyContract['source_purchase_price'] ?? null,
+                    'currency_origin' => $variantCurrencyContract['currency_origin'] ?? null,
+                    'currency_status' => $variantCurrencyContract['currency_status'] ?? null,
+                    'currency_snapshot' => $variantCurrencyContract,
                     'net_price_warning' => (bool) data_get($rawVariant->normalized_payload, 'net_price_warning', data_get($rawProduct->normalized_payload, 'net_price_warning', false)),
                     'price_policy_warning' => (bool) data_get($rawVariant->normalized_payload, 'price_policy_warning', data_get($rawProduct->normalized_payload, 'price_policy_warning', false)),
                     'pricing_policy_type' => data_get($rawVariant->normalized_payload, 'pricing_policy_type', data_get($rawProduct->normalized_payload, 'pricing_policy_type')),

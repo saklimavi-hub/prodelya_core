@@ -13,6 +13,11 @@ class RawProductStagingService
 {
     private array $tableColumns = [];
 
+    public function __construct(
+        private readonly ProductHubCurrencyService $productHubCurrencyService,
+    ) {
+    }
+
     public function stagePreview(SupplierSource $source, array $previewData): array
     {
         $tenantId = $this->resolveTenantId();
@@ -118,6 +123,26 @@ class RawProductStagingService
             'warnings' => $productData['warnings'] ?? [],
             'extracted_color_source' => $productData['extracted_color_source'] ?? null,
         ], $preservedPayload);
+        $currencyContext = $this->productHubCurrencyService->buildRawCurrencyContext(
+            $source,
+            $normalizedPayload,
+            (array) ($productData['raw_payload'] ?? []),
+            null,
+            null,
+            'product',
+        );
+        $normalizedPayload = array_merge($normalizedPayload, [
+            'currency' => $currencyContext['source_currency'],
+            'currency_contract' => $currencyContext,
+            'source_price' => $currencyContext['source_price'],
+            'source_currency' => $currencyContext['source_currency'],
+            'source_list_price' => $currencyContext['source_list_price'],
+            'source_net_price' => $currencyContext['source_net_price'],
+            'source_purchase_price' => $currencyContext['source_purchase_price'],
+            'currency_origin' => $currencyContext['currency_origin'],
+            'currency_status' => $currencyContext['currency_status'],
+            'currency_input' => $currencyContext['source_currency_input'],
+        ]);
 
         return SupplierProductRaw::query()->updateOrCreate(
             ['import_hash' => $productData['import_hash']],
@@ -133,7 +158,7 @@ class RawProductStagingService
                 'standard_category_id' => $resolvedStandardCategoryId,
                 'stock_quantity' => $resolvedStockQuantity,
                 'purchase_price' => $productData['purchase_price'] ?? null,
-                'currency' => $productData['currency'] ?? null,
+                'currency' => $currencyContext['source_currency'],
                 'vat_rate' => $productData['vat_rate'] ?? null,
                 'image_url' => $productData['image_url'] ?? null,
                 'product_url' => $productData['product_url'] ?? null,
@@ -160,8 +185,8 @@ class RawProductStagingService
                 'source_name' => $resolvedProductName,
                 'source_description' => $productData['description'] ?? null,
                 'source_category' => $productData['supplier_category_name'] ?? null,
-                'source_price' => $productData['list_price'] ?? $productData['purchase_price'] ?? null,
-                'source_currency' => $productData['currency'] ?? null,
+                'source_price' => $currencyContext['source_price'],
+                'source_currency' => $currencyContext['source_currency'],
                 'source_stock' => $resolvedStockQuantity !== null ? (int) round((float) $resolvedStockQuantity) : null,
                 'source_attributes' => $productData['raw_payload'] ?? null,
                 'error_message' => !empty($productData['errors']) ? implode(' | ', $productData['errors']) : null,
@@ -191,6 +216,55 @@ class RawProductStagingService
             ? ($productMap[$relatedProduct['import_hash']] ?? null)
             : null;
 
+        $variantNormalizedPayload = array_merge($variantData['normalized_payload'] ?? [], [
+            'generated_variant_code' => $variantData['generated_variant_code'] ?? null,
+            'variant_image_url' => $variantData['variant_image_url'] ?? null,
+            'parent_image_url' => $variantData['parent_image_url'] ?? null,
+            'stock_quantity' => $variantData['stock_quantity'] ?? null,
+            'variant_stock_quantity' => $variantData['variant_stock_quantity'] ?? null,
+            'total_variant_stock_quantity' => $variantData['total_variant_stock_quantity'] ?? null,
+            'gallery_images' => $variantData['gallery_images'] ?? [],
+            'gallery_source_fields' => $variantData['gallery_source_fields'] ?? [],
+            'image_fallback_used' => (bool) ($variantData['image_fallback_used'] ?? false),
+            'variant_image_source_field' => $variantData['variant_image_source_field'] ?? null,
+            'purchase_price' => $variantData['purchase_price'] ?? null,
+            'list_price' => $variantData['list_price'] ?? null,
+            'usd_price' => $variantData['usd_price'] ?? null,
+            'closed_list_price' => $variantData['closed_list_price'] ?? null,
+            'net_price' => $variantData['net_price'] ?? null,
+            'discount_rate' => $variantData['discount_rate'] ?? null,
+            'alternative_price' => $variantData['alternative_price'] ?? null,
+            'vat_rate' => $variantData['vat_rate'] ?? null,
+            'currency' => $variantData['currency'] ?? null,
+            'net_price_warning' => (bool) ($variantData['net_price_warning'] ?? false),
+            'price_policy_warning' => (bool) ($variantData['price_policy_warning'] ?? false),
+            'pricing_policy_type' => $variantData['pricing_policy_type'] ?? null,
+            'supplier_warning_flag' => (bool) ($variantData['supplier_warning_flag'] ?? false),
+            'supplier_warning_type' => $variantData['supplier_warning_type'] ?? null,
+            'warnings' => $variantData['warnings'] ?? [],
+            'extracted_color_source' => $variantData['extracted_color_source'] ?? null,
+        ]);
+        $variantCurrencyContext = $this->productHubCurrencyService->buildRawCurrencyContext(
+            $source,
+            $variantNormalizedPayload,
+            (array) ($variantData['raw_payload'] ?? []),
+            $rawProduct?->normalized_payload ?? $relatedProduct['normalized_payload'] ?? null,
+            (array) ($relatedProduct['raw_payload'] ?? []),
+            'variant',
+        );
+        $variantNormalizedPayload = array_merge($variantNormalizedPayload, [
+            'currency' => $variantCurrencyContext['source_currency'],
+            'currency_contract' => $variantCurrencyContext,
+            'source_price' => $variantCurrencyContext['source_price'],
+            'source_currency' => $variantCurrencyContext['source_currency'],
+            'source_list_price' => $variantCurrencyContext['source_list_price'],
+            'source_net_price' => $variantCurrencyContext['source_net_price'],
+            'source_purchase_price' => $variantCurrencyContext['source_purchase_price'],
+            'currency_origin' => $variantCurrencyContext['currency_origin'],
+            'currency_status' => $variantCurrencyContext['currency_status'],
+            'currency_input' => $variantCurrencyContext['source_currency_input'],
+        ]);
+
         return SupplierProductVariantRaw::query()->updateOrCreate(
             ['import_hash' => $variantData['import_hash']],
             $this->filterPayloadForExistingColumns('supplier_product_variants_raw', [
@@ -213,34 +287,7 @@ class RawProductStagingService
                 'image_fallback_used' => (bool) ($variantData['image_fallback_used'] ?? false),
                 'generated_variant_code' => $variantData['generated_variant_code'] ?? null,
                 'raw_payload' => $variantData['raw_payload'] ?? null,
-                'normalized_payload' => array_merge($variantData['normalized_payload'] ?? [], [
-                    'generated_variant_code' => $variantData['generated_variant_code'] ?? null,
-                    'variant_image_url' => $variantData['variant_image_url'] ?? null,
-                    'parent_image_url' => $variantData['parent_image_url'] ?? null,
-                    'stock_quantity' => $variantData['stock_quantity'] ?? null,
-                    'variant_stock_quantity' => $variantData['variant_stock_quantity'] ?? null,
-                    'total_variant_stock_quantity' => $variantData['total_variant_stock_quantity'] ?? null,
-                    'gallery_images' => $variantData['gallery_images'] ?? [],
-                    'gallery_source_fields' => $variantData['gallery_source_fields'] ?? [],
-                    'image_fallback_used' => (bool) ($variantData['image_fallback_used'] ?? false),
-                    'variant_image_source_field' => $variantData['variant_image_source_field'] ?? null,
-                    'purchase_price' => $variantData['purchase_price'] ?? null,
-                    'list_price' => $variantData['list_price'] ?? null,
-                    'usd_price' => $variantData['usd_price'] ?? null,
-                    'closed_list_price' => $variantData['closed_list_price'] ?? null,
-                    'net_price' => $variantData['net_price'] ?? null,
-                    'discount_rate' => $variantData['discount_rate'] ?? null,
-                    'alternative_price' => $variantData['alternative_price'] ?? null,
-                    'vat_rate' => $variantData['vat_rate'] ?? null,
-                    'currency' => $variantData['currency'] ?? null,
-                    'net_price_warning' => (bool) ($variantData['net_price_warning'] ?? false),
-                    'price_policy_warning' => (bool) ($variantData['price_policy_warning'] ?? false),
-                    'pricing_policy_type' => $variantData['pricing_policy_type'] ?? null,
-                    'supplier_warning_flag' => (bool) ($variantData['supplier_warning_flag'] ?? false),
-                    'supplier_warning_type' => $variantData['supplier_warning_type'] ?? null,
-                    'warnings' => $variantData['warnings'] ?? [],
-                    'extracted_color_source' => $variantData['extracted_color_source'] ?? null,
-                ]),
+                'normalized_payload' => $variantNormalizedPayload,
                 'identity_hash' => $variantData['identity_hash'] ?? null,
                 'content_hash' => $variantData['content_hash'] ?? null,
                 'price_hash' => $variantData['price_hash'] ?? null,

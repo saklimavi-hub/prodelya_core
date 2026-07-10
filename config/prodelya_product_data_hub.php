@@ -501,4 +501,38 @@ return [
             ],
         ],
     ],
+
+    'currency_contract' => [
+        'statuses' => [
+            'resolved',
+            'missing',
+            'unsupported',
+        ],
+        'origins' => [
+            'variant_field',
+            'product_field',
+            'mapped_field',
+            'source_default',
+            'legacy_default',
+        ],
+        'conversion_statuses' => [
+            'not_required',
+            'converted',
+            'missing_rate',
+            'unsupported_currency',
+            'missing_currency',
+            'missing_source_price',
+            'stale_rate',
+            'conversion_error',
+        ],
+        'legacy_source_defaults' => [
+            'ETKIN' => 'TRY',
+            'YENI-NESIL' => 'TRY',
+            'POZITRON_JSON' => 'USD',
+        ],
+        'detail_permissions' => [
+            'view_order_finance_summary',
+            'view_procurement_purchase_prices',
+        ],
+    ],
 ];

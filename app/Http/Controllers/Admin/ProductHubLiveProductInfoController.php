@@ -28,7 +28,7 @@ class ProductHubLiveProductInfoController extends Controller
             ], 403);
         }
 
-        $result = $this->liveProductInfoService->resolve($tenant, $request->all());
+        $result = $this->liveProductInfoService->resolve($tenant, $request->all(), $request->user());
 
         return response()->json($result['body'], $result['status']);
     }
