@@ -153,7 +153,7 @@ return [
                 ],
                 [
                     'key' => 'collections',
-                    'label' => 'Tahsilatlar',
+                    'label' => 'Finans',
                     'route' => 'admin.finance.index',
                     'active_patterns' => [
                         'admin.finance.*',
@@ -179,6 +179,11 @@ return [
                         'admin.current-accounts.transactions.*',
                     ],
                     'icon' => 'check-circle',
+                    'permission_any' => [
+                        'view_current_account_transactions',
+                        'manage_current_account_transactions',
+                        'cancel_current_account_transactions',
+                    ],
                     'module_key' => 'current_accounts',
                     'status' => 'active',
                     'sort_order' => 30,
@@ -397,13 +402,13 @@ return [
         ],
         [
             'key' => 'super-pdh',
-            'label' => 'ÃœrÃ¼n Veri Merkezi',
+            'label' => 'Ürün Veri Merkezi',
             'type' => 'group',
             'sort_order' => 20,
             'children' => [
                 [
                     'key' => 'super-product-data-hub',
-                    'label' => 'ÃœrÃ¼n Veri Merkezi',
+                    'label' => 'Ürün Veri Merkezi',
                     'type' => 'accordion',
                     'icon' => 'check-circle',
                     'status' => 'active',

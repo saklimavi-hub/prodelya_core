@@ -120,7 +120,7 @@ class TenantProductCatalogMenuSimplificationTest extends TestCase
         $menu = app(AdminMenuService::class)->superAdminMenu($this->adminUser);
         $labels = $this->flattenLabels($menu);
 
-        $this->assertContains('Product Data Hub', $labels);
+        $this->assertContains('Ürün Veri Merkezi', $labels);
         $this->assertContains('Standart Kategori Ağacı', $labels);
     }
 
