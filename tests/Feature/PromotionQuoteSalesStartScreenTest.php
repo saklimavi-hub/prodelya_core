@@ -90,19 +90,18 @@ class PromotionQuoteSalesStartScreenTest extends TestCase
         $response->assertOk();
         $response->assertSee('Promosyon Teklifleri');
         $response->assertSee('Yeni Promosyon Teklifi');
-        $response->assertSeeInOrder(['Hazırlanan Teklifler', '1']);
+        $response->assertSeeInOrder(['Açık Teklifler', '2']);
         $response->assertSeeInOrder(['Onaylananlar', '1']);
         $response->assertSeeInOrder(['Siparişe Dönüşenler', '1']);
         $response->assertDontSee('Taslak');
 
         $response->assertSee($preparedQuote->document_number);
         $response->assertSee($approvedQuote->document_number);
-        $response->assertSee($convertedQuote->document_number);
+        $response->assertDontSee($convertedQuote->document_number);
         $response->assertDontSee('TK-2026-9001');
 
         $response->assertSee('Teklif');
         $response->assertSee('Onaylandı');
-        $response->assertSee('Siparişe Dönüştü');
 
         $response->assertSee('data-testid="quote-'.$preparedQuote->id.'-action-show"', false);
         $response->assertSee('data-testid="quote-'.$preparedQuote->id.'-action-edit"', false);
@@ -112,11 +111,18 @@ class PromotionQuoteSalesStartScreenTest extends TestCase
         $response->assertSee('data-testid="quote-'.$approvedQuote->id.'-action-convert"', false);
         $response->assertSee(route('admin.promotion-quotes.show', $approvedQuote), false);
 
-        $response->assertSee('data-testid="quote-'.$convertedQuote->id.'-connected-order"', false);
-        $response->assertSee($connectedOrder->document_number);
-        $response->assertSee('data-testid="quote-'.$convertedQuote->id.'-action-open-order"', false);
-        $response->assertSee(route('admin.orders.show', $connectedOrder), false);
-        $response->assertDontSee('data-testid="quote-'.$convertedQuote->id.'-action-convert"', false);
+        $convertedResponse = $this->actingAs($this->adminUser)
+            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
+            ->get(route('admin.promotion-quotes.index', ['view' => 'converted']));
+
+        $convertedResponse->assertOk();
+        $convertedResponse->assertSee($convertedQuote->document_number);
+        $convertedResponse->assertSee('Siparişe Dönüştü');
+        $convertedResponse->assertSee('data-testid="quote-'.$convertedQuote->id.'-connected-order"', false);
+        $convertedResponse->assertSee($connectedOrder->document_number);
+        $convertedResponse->assertSee('data-testid="quote-'.$convertedQuote->id.'-action-open-order"', false);
+        $convertedResponse->assertSee(route('admin.orders.show', $connectedOrder), false);
+        $convertedResponse->assertDontSee('data-testid="quote-'.$convertedQuote->id.'-action-convert"', false);
 
         $response->assertDontSee('group_code', false);
         $response->assertDontSee('price_snapshot', false);

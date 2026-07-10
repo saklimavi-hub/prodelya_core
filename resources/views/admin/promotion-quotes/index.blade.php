@@ -10,22 +10,23 @@
         <a href="{{ route('admin.promotion-quotes.create') }}" class="pd-btn pd-btn-primary" data-testid="promotion-quote-create-button">
             Yeni Promosyon Teklifi
         </a>
-        <a href="{{ route('admin.promotion-quotes.index', array_merge(request()->query(), ['status' => 'waiting'])) }}" class="pd-btn pd-btn-light">
-            Müşteri Onayı Bekleyenler
+        <a href="{{ route('admin.promotion-quotes.index', array_merge(request()->query(), ['filter' => 'active'])) }}" class="pd-btn pd-btn-light">
+            Açık Teklifler
         </a>
-        <a href="{{ route('admin.promotion-quotes.index', array_merge(request()->query(), ['status' => 'approved'])) }}" class="pd-btn pd-btn-light">
-            Siparişe Çevrilebilir
+        <a href="{{ route('admin.promotion-quotes.index', array_merge(request()->query(), ['filter' => 'converted'])) }}" class="pd-btn pd-btn-light">
+            Siparişe Dönüşenler
         </a>
     </div>
 @endsection
 
 @section('content')
 @php
+    $activeView = $activeView ?? ($filters['view'] ?? 'active');
     $summaryCards = [
         [
-            'label' => 'Hazırlanan Teklifler',
-            'value' => $stats['total'],
-            'note' => 'Bu tenant için kayıtlı tüm satış teklifleri',
+            'label' => 'Açık Teklifler',
+            'value' => $stats['active'] ?? 0,
+            'note' => 'Günlük takipte kalan ve siparişe dönüşmemiş teklifler',
             'tone' => 'blue',
         ],
         [
@@ -47,6 +48,12 @@
             'tone' => 'green',
         ],
         [
+            'label' => 'Arşiv',
+            'value' => $stats['archived'] ?? 0,
+            'note' => 'İptal, reddedilen veya kapanan teklifler',
+            'tone' => 'purple',
+        ],
+        [
             'label' => 'Onaylananlar',
             'value' => $stats['approved'],
             'note' => 'Onayı tamamlanmış ve işleme hazır kayıtlar',
@@ -58,7 +65,7 @@
 <style>
     .pql-page{display:grid;gap:14px;padding-bottom:24px;font-family:Arial,Helvetica,sans-serif;color:#17233c}
     .pql-card,.pql-stat,.pql-table-card{background:#fff;border:1px solid #e4e8ef;border-radius:8px;box-shadow:0 8px 24px rgba(16,24,40,.055)}
-    .pql-stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+    .pql-stats{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px}
     .pql-stat{padding:12px 13px;min-height:76px}
     .pql-stat-label{font-size:11px;color:#66728a;font-weight:700}
     .pql-stat-value{margin-top:5px;font-size:22px;font-weight:700;letter-spacing:-.03em}
@@ -132,11 +139,12 @@
         <div class="pql-filters-top">
             <div>
                 <h3>Filtreler</h3>
-                <p>Arama ve müşteri onayı durumuna göre listeyi hızlıca daraltın.</p>
+                <p>Açık, dönüşen veya arşiv teklifleri müşteri durumu ile birlikte filtreleyin.</p>
             </div>
         </div>
 
         <form method="GET" action="{{ route('admin.promotion-quotes.index') }}" class="pql-filter-grid">
+            <input type="hidden" name="filter" value="{{ $filters['view'] }}">
             <div class="pql-field">
                 <label>Arama</label>
                 <input type="text" name="search" value="{{ $filters['search'] }}" placeholder="Teklif no veya müşteri">
@@ -172,7 +180,7 @@
             </div>
             <div class="pql-filter-actions">
                 <button type="submit" class="pd-btn pd-btn-primary">Filtrele</button>
-                <a href="{{ route('admin.promotion-quotes.index') }}" class="pd-btn pd-btn-light">Temizle</a>
+                <a href="{{ route('admin.promotion-quotes.index', ['filter' => $filters['view']]) }}" class="pd-btn pd-btn-light">Temizle</a>
             </div>
         </form>
     </section>
@@ -181,21 +189,21 @@
         <div class="pql-table-toolbar">
             <div>
                 <h3>Teklif Listesi</h3>
-                <p>Karar verilecek kayıtlar, müşteri yanıtı ve siparişe dönüş hazırlığı tek bakışta görünür.</p>
+                <p>Aktif görünüm yalnız günlük takipteki teklifleri gösterir. Siparişe dönüşenler ve arşiv ayrı sekmelerde tutulur.</p>
             </div>
             <div class="pql-chips">
-                <a href="{{ route('admin.promotion-quotes.index') }}" class="pql-chip {{ ($filters['status'] ?? '') === '' ? 'is-active' : '' }}">Tümü <em>{{ $stats['total'] }}</em></a>
-                <a href="{{ route('admin.promotion-quotes.index', array_merge(request()->query(), ['status' => 'waiting'])) }}" class="pql-chip {{ ($filters['status'] ?? '') === 'waiting' ? 'is-active' : '' }}">Onay Bekliyor <em>{{ $stats['waiting'] }}</em></a>
-                <a href="{{ route('admin.promotion-quotes.index', array_merge(request()->query(), ['status' => 'revision_requested'])) }}" class="pql-chip {{ ($filters['status'] ?? '') === 'revision_requested' ? 'is-active' : '' }}">Revize <em>{{ $stats['revision_requested'] }}</em></a>
-                <a href="{{ route('admin.promotion-quotes.index', array_merge(request()->query(), ['status' => 'approved'])) }}" class="pql-chip {{ ($filters['status'] ?? '') === 'approved' ? 'is-active' : '' }}">Çevrilebilir <em>{{ $stats['approved'] }}</em></a>
+                <a href="{{ route('admin.promotion-quotes.index', array_merge(request()->query(), ['filter' => 'active'])) }}" class="pql-chip {{ $activeView === 'active' ? 'is-active' : '' }}">Açık Teklifler <em>{{ $summaryCards[0]['value'] }}</em></a>
+                <a href="{{ route('admin.promotion-quotes.index', array_merge(request()->query(), ['filter' => 'converted'])) }}" class="pql-chip {{ $activeView === 'converted' ? 'is-active' : '' }}">Siparişe Dönüşenler <em>{{ $stats['converted'] }}</em></a>
+                <a href="{{ route('admin.promotion-quotes.index', array_merge(request()->query(), ['filter' => 'archived'])) }}" class="pql-chip {{ $activeView === 'archived' ? 'is-active' : '' }}">Arşiv <em>{{ $stats['archived'] ?? 0 }}</em></a>
+                <a href="{{ route('admin.promotion-quotes.index', array_merge(request()->query(), ['filter' => 'all'])) }}" class="pql-chip {{ $activeView === 'all' ? 'is-active' : '' }}">Tümü <em>{{ $stats['total'] }}</em></a>
             </div>
         </div>
 
         <div class="pql-table-wrap">
             @if($quotes->isEmpty())
                 <div class="pql-empty">
-                    <b>Henüz promosyon teklifi yok.</b>
-                    <span>Yeni teklif oluşturup müşteri onayı akışını buradan izleyebilirsiniz.</span>
+                    <b>Bu görünümde teklif bulunamadı.</b>
+                    <span>Filtreleri temizleyin veya farklı teklif görünümüne geçin.</span>
                 </div>
             @else
                 <table class="pql-table">
@@ -203,9 +211,9 @@
                         <tr>
                             <th class="pql-col-quote">Teklif No</th>
                             <th class="pql-col-customer">Müşteri</th>
+                            <th class="pql-col-last">Tarih</th>
                             <th class="pql-col-status">Durum</th>
-                            <th class="pql-col-last">Son Müşteri Hareketi</th>
-                            <th class="pql-col-next">Siparişe Dönüş</th>
+                            <th class="pql-col-next">Son İşlem</th>
                             @if($canViewFinancialData)
                                 <th class="pql-col-total">Toplam</th>
                             @endif
@@ -253,22 +261,19 @@
                                         <span>{{ $quote->customer_response_summary }}</span>
                                     </div>
                                 </td>
+                                <td data-label="Tarih">
+                                    {{ optional($quote->quote_date)->format('d.m.Y') ?: optional($quote->created_at)->format('d.m.Y') }}
+                                </td>
                                 <td data-label="Durum">
                                     <div class="flex flex-col gap-2">
                                         <span class="pql-badge {{ $statusClass }}">{{ $quote->display_status_label }}</span>
                                         <span class="pql-badge {{ $approvalClass }}">{{ $approvalLabel }}</span>
                                     </div>
                                 </td>
-                                <td data-label="Son Müşteri Hareketi">
+                                <td data-label="Son İşlem">
                                     <div class="pql-last">
                                         <b>{{ $quote->last_action_label }}</b>
-                                        <span>{{ optional($quote->updated_at)->format('d.m.Y H:i') }}</span>
-                                    </div>
-                                </td>
-                                <td data-label="Siparişe Dönüş">
-                                    <div class="pql-next">
-                                        <b data-testid="quote-{{ $quote->id }}-process-status">{{ $quote->next_action_label }}</b>
-                                        <span>{{ $connectedOrder ? 'Operasyon başladı' : ($quote->can_convert_from_index ? 'Siparişe çevrilebilir' : 'Karar bekliyor') }}</span>
+                                        <span data-testid="quote-{{ $quote->id }}-process-status">{{ $quote->next_action_label }}</span>
                                     </div>
                                 </td>
                                 @if($canViewFinancialData)

@@ -277,6 +277,62 @@ class Order extends Model
         return $query->where('document_type', 'quote');
     }
 
+    public function scopeConvertedQuotes($query)
+    {
+        return $query
+            ->quotes()
+            ->where(function ($innerQuery) {
+                $innerQuery
+                    ->where('workflow_status', 'quote_converted')
+                    ->orWhereHas('convertedOrders', function ($orderQuery) {
+                        $orderQuery->where('document_type', 'order');
+                    });
+            });
+    }
+
+    public function scopeArchivedQuotes($query)
+    {
+        return $query
+            ->quotes()
+            ->where(function ($innerQuery) {
+                $innerQuery
+                    ->whereIn('status', ['cancelled', 'rejected'])
+                    ->orWhereIn('customer_approval_status', [
+                        self::CUSTOMER_APPROVAL_REJECTED,
+                        self::CUSTOMER_APPROVAL_CANCELLED,
+                        self::CUSTOMER_APPROVAL_EXPIRED,
+                    ]);
+            });
+    }
+
+    public function scopeActiveQuotes($query)
+    {
+        return $query
+            ->quotes()
+            ->where(function ($innerQuery) {
+                $innerQuery
+                    ->whereNull('status')
+                    ->orWhereNotIn('status', ['cancelled', 'rejected']);
+            })
+            ->where(function ($innerQuery) {
+                $innerQuery
+                    ->whereNull('customer_approval_status')
+                    ->orWhereNotIn('customer_approval_status', [
+                        self::CUSTOMER_APPROVAL_REJECTED,
+                        self::CUSTOMER_APPROVAL_CANCELLED,
+                        self::CUSTOMER_APPROVAL_EXPIRED,
+                    ]);
+            })
+            ->where(function ($innerQuery) {
+                $innerQuery
+                    ->where('workflow_status', '!=', 'quote_converted')
+                    ->orWhereNull('workflow_status');
+            })
+            ->whereDoesntHave('convertedOrders', function ($orderQuery) {
+                $orderQuery->where('document_type', 'order');
+            });
+    }
+
     /**
      * Scope to get only orders
      */

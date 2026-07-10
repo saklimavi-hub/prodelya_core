@@ -1031,13 +1031,28 @@ class PromotionQuoteController extends Controller
         $tenant = $this->tenantResolver->getCurrentTenant($request);
         $moduleEnabled = $this->customerQuoteApprovalModuleEnabled($tenant->id);
         $canApproveQuotes = $this->canManageQuoteApprovals($tenant->id);
+        $requestedView = (string) $request->query('filter', $request->query('view', 'active'));
+        $view = $requestedView;
+
+        if (!in_array($view, ['active', 'converted', 'archived', 'all'], true)) {
+            $view = 'active';
+        }
 
         $baseQuery = Order::query()
             ->where('tenant_account_id', $tenant->id)
             ->where('order_family', 'promotion')
             ->where('document_type', 'quote');
 
-        $query = (clone $baseQuery)->with([
+        $query = (clone $baseQuery);
+
+        $query = match ($view) {
+            'converted' => $query->convertedQuotes(),
+            'archived' => $query->archivedQuotes(),
+            'all' => $query->quotes(),
+            default => $query->activeQuotes(),
+        };
+
+        $query->with([
             'customer:id,legal_name',
             'items:id,order_id,has_print',
             'latestQuoteApprovalRequest.sendSnapshot',
@@ -1064,7 +1079,7 @@ class PromotionQuoteController extends Controller
 
             $query->where(function ($innerQuery) use ($status) {
                 if ($status === 'quote_converted') {
-                    $innerQuery->where('workflow_status', 'quote_converted');
+                    $innerQuery->convertedQuotes();
 
                     return;
                 }
@@ -1119,30 +1134,34 @@ class PromotionQuoteController extends Controller
         });
 
         // Statistics
+        $activeStatsQuery = (clone $baseQuery)->activeQuotes();
+
         $stats = [
             'total' => (clone $baseQuery)->count(),
-            'prepared' => (clone $baseQuery)
-                ->where('workflow_status', '!=', 'quote_converted')
+            'active' => (clone $activeStatsQuery)->count(),
+            'prepared' => (clone $activeStatsQuery)
                 ->where(function ($query) {
                     $query->whereNull('customer_approval_status')
                         ->orWhere('customer_approval_status', Order::CUSTOMER_APPROVAL_NOT_SENT);
                 })
                 ->count(),
-            'waiting' => (clone $baseQuery)
+            'waiting' => (clone $activeStatsQuery)
                 ->where('customer_approval_status', Order::CUSTOMER_APPROVAL_WAITING)
                 ->count(),
-            'revision_requested' => (clone $baseQuery)
+            'revision_requested' => (clone $activeStatsQuery)
                 ->where('customer_approval_status', Order::CUSTOMER_APPROVAL_REVISION_REQUESTED)
                 ->count(),
-            'approved' => (clone $baseQuery)
-                ->where('workflow_status', '!=', 'quote_converted')
+            'approved' => (clone $activeStatsQuery)
                 ->where(function ($query) {
                     $query->where('customer_approval_status', Order::CUSTOMER_APPROVAL_APPROVED)
                         ->orWhere('status', 'approved');
                 })
                 ->count(),
             'converted' => (clone $baseQuery)
-                ->where('workflow_status', 'quote_converted')
+                ->convertedQuotes()
+                ->count(),
+            'archived' => (clone $baseQuery)
+                ->archivedQuotes()
                 ->count(),
         ];
 
@@ -1158,7 +1177,10 @@ class PromotionQuoteController extends Controller
             'canViewFinancialData' => Auth::user()?->canViewFinancialData($tenant->id) ?? false,
             'customerQuoteApprovalEnabled' => $moduleEnabled,
             'canApproveQuotes' => $canApproveQuotes,
+            'activeView' => $view,
             'filters' => [
+                'view' => $view,
+                'filter' => $view,
                 'search' => $request->get('search', ''),
                 'status' => $request->get('status', ''),
                 'customer' => $request->get('customer', ''),
