@@ -137,6 +137,7 @@ class OrderController extends Controller
 
         $validated = $request->validate([
             'search' => ['nullable', 'string', 'max:120'],
+            'filter' => ['nullable', 'string', 'max:40'],
             'status' => ['nullable', 'string', 'max:40'],
             'customer_company_id' => ['nullable', 'integer'],
             'date_from' => ['nullable', 'date'],
@@ -144,9 +145,9 @@ class OrderController extends Controller
             'selected_order_id' => ['nullable', 'integer'],
         ]);
 
-        $status = (string) ($validated['status'] ?? 'all');
+        $status = (string) ($validated['filter'] ?? $validated['status'] ?? 'open');
         if (!$canViewFinancialData && $status === 'payment_pending') {
-            $status = 'all';
+            $status = 'open';
         }
 
         $query = Order::query()
@@ -189,8 +190,9 @@ class OrderController extends Controller
         }
 
         $orders = $query->get();
-        $rows = $this->orderListSummaryService->buildRows($orders, $canViewFinancialData);
-        $rows = $this->orderListSummaryService->filterRows($rows, $status, $canViewFinancialData);
+        $allRows = $this->orderListSummaryService->buildRows($orders, $canViewFinancialData);
+        $rows = $this->orderListSummaryService->filterRows($allRows, $status, $canViewFinancialData);
+        $activeRows = $this->orderListSummaryService->filterRows($allRows, 'open', $canViewFinancialData);
 
         $customers = Company::query()
             ->where('tenant_account_id', $tenant->id)
@@ -203,20 +205,30 @@ class OrderController extends Controller
             ->get(['id', 'legal_name']);
 
         $statusOptions = collect([
+            ['value' => 'open', 'label' => 'Aktif Siparişler'],
+            ['value' => 'completed', 'label' => 'Tamamlanan Siparişler'],
             ['value' => 'all', 'label' => 'Tümü'],
-            ['value' => 'open', 'label' => 'Açık Siparişler'],
             ['value' => 'in_operation', 'label' => 'Operasyonda'],
             ['value' => 'delivery_pending', 'label' => 'Teslimat Bekleyen'],
             ['value' => 'payment_pending', 'label' => 'Ödeme Bekleyen', 'requires_finance' => true],
-            ['value' => 'completed', 'label' => 'Tamamlananlar'],
             ['value' => 'problem', 'label' => 'İptal / Problemli'],
         ])->filter(fn (array $option) => $canViewFinancialData || !($option['requires_finance'] ?? false))->values();
 
         $summary = [
-            'total' => $rows->count(),
-            'completed' => $rows->where('is_completed', true)->count(),
-            'open' => $rows->filter(fn (array $row) => !$row['is_cancelled'] && !$row['is_completed'])->count(),
-            'problem' => $rows->filter(fn (array $row) => $row['is_cancelled'] || $row['is_problematic'])->count(),
+            'total' => $allRows->count(),
+            'completed' => $allRows->where('is_completed', true)->count(),
+            'open' => $activeRows->count(),
+            'problem' => $allRows->filter(fn (array $row) => $row['is_cancelled'] || $row['is_problematic'])->count(),
+        ];
+        $tabCounts = [
+            'open' => $this->orderListSummaryService->filterRows($allRows, 'open', $canViewFinancialData)->count(),
+            'completed' => $this->orderListSummaryService->filterRows($allRows, 'completed', $canViewFinancialData)->count(),
+            'all' => $allRows->count(),
+            'in_operation' => $this->orderListSummaryService->filterRows($allRows, 'in_operation', $canViewFinancialData)->count(),
+            'delivery_pending' => $this->orderListSummaryService->filterRows($allRows, 'delivery_pending', $canViewFinancialData)->count(),
+            'payment_pending' => $canViewFinancialData
+                ? $this->orderListSummaryService->filterRows($allRows, 'payment_pending', $canViewFinancialData)->count()
+                : 0,
         ];
 
         $selectedOrderId = (int) ($validated['selected_order_id'] ?? 0);
@@ -234,6 +246,7 @@ class OrderController extends Controller
             'filters' => [
                 'search' => $validated['search'] ?? '',
                 'status' => $status,
+                'filter' => $status,
                 'customer_company_id' => $validated['customer_company_id'] ?? '',
                 'date_from' => $validated['date_from'] ?? '',
                 'date_to' => $validated['date_to'] ?? '',
@@ -245,6 +258,8 @@ class OrderController extends Controller
             'summary' => $summary,
             'selectedRow' => $selectedRow,
             'selectedOrderId' => $selectedOrderId,
+            'queueRows' => $activeRows,
+            'tabCounts' => $tabCounts,
         ]);
     }
 

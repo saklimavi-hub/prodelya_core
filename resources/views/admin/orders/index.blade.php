@@ -11,13 +11,14 @@
         ? json_encode($selectedPanel, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP)
         : '';
 
-    $graphicPending = $rows->filter(fn (array $row) => str_contains(mb_strtolower((string) data_get($row, 'sticky_panel.module_statuses.graphic.label', ''), 'UTF-8'), 'bek'))->count();
-    $procurementPending = $rows->filter(fn (array $row) => str_contains(mb_strtolower((string) data_get($row, 'sticky_panel.module_statuses.procurement.label', ''), 'UTF-8'), 'bek'))->count();
-    $productionPending = $rows->filter(function (array $row) {
+    $queueRows = $queueRows ?? collect();
+    $graphicPending = $queueRows->filter(fn (array $row) => str_contains(mb_strtolower((string) data_get($row, 'sticky_panel.module_statuses.graphic.label', ''), 'UTF-8'), 'bek'))->count();
+    $procurementPending = $queueRows->filter(fn (array $row) => str_contains(mb_strtolower((string) data_get($row, 'sticky_panel.module_statuses.procurement.label', ''), 'UTF-8'), 'bek'))->count();
+    $productionPending = $queueRows->filter(function (array $row) {
         $label = mb_strtolower((string) data_get($row, 'sticky_panel.module_statuses.production.label', ''), 'UTF-8');
         return str_contains($label, 'bek') || str_contains($label, 'blok') || str_contains($label, 'devam');
     })->count();
-    $deliveryPending = $rows->filter(fn (array $row) => str_contains(mb_strtolower((string) data_get($row, 'sticky_panel.module_statuses.delivery.label', ''), 'UTF-8'), 'bek'))->count();
+    $deliveryPending = $queueRows->filter(fn (array $row) => str_contains(mb_strtolower((string) data_get($row, 'sticky_panel.module_statuses.delivery.label', ''), 'UTF-8'), 'bek'))->count();
 
     $orderSummaryCards = [
         ['label' => 'Açık Sipariş', 'value' => $summary['open'] ?? 0, 'note' => 'Aktif operasyonda kalan siparişler', 'tone' => 'blue'],
@@ -28,11 +29,11 @@
     ];
 
     $statusChips = [
+        ['value' => 'open', 'label' => 'Aktif Siparişler'],
+        ['value' => 'completed', 'label' => 'Tamamlanan Siparişler'],
         ['value' => 'all', 'label' => 'Tümü'],
-        ['value' => 'open', 'label' => 'Açık Sipariş'],
         ['value' => 'in_operation', 'label' => 'Operasyonda'],
         ['value' => 'delivery_pending', 'label' => 'Teslimat Bekleyen'],
-        ['value' => 'completed', 'label' => 'Tamamlanan'],
     ];
 
     if ($canViewFinancialData) {
@@ -79,6 +80,7 @@
     .poi-tabs{display:flex;flex-wrap:wrap;gap:6px}
     .poi-tab{display:inline-flex;align-items:center;min-height:28px;padding:0 10px;border:1px solid #dbe2ec;border-radius:5px;background:#fff;color:#475467;font-size:12px;font-weight:700}
     .poi-tab.is-active{background:#eaf1ff;border-color:#bfd2ff;color:#245bc7}
+    .poi-tab em{margin-left:6px;font-style:normal;font-size:11px;padding:1px 5px;border-radius:999px;background:#eef2f7;color:#59657a}
     .poi-table-wrap{overflow-x:auto}
     .poi-table{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed}
     .poi-table th{height:37px;background:#f8fafc;border-bottom:1px solid #edf1f6;color:#59657a;text-align:left;font-size:11px;font-weight:700;padding:0 9px;white-space:nowrap}
@@ -128,12 +130,13 @@
 <div class="poi-page">
     <section class="poi-page-head">
         <div class="poi-page-title">
-            <h2>Daha Verimli Sipariş Takip Ekranı</h2>
-            <p>Liste satırında sadece ana aksiyon bırakıldı; modül geçişleri sağ panel ve sipariş detayında yönetilir.</p>
+            <h2>Siparişler</h2>
+            <p>Aktif siparişleri günlük akıştan yönetin, tamamlanan siparişleri ayrı görünümde inceleyin.</p>
         </div>
         <div class="poi-header-tools">
-            <a href="{{ route('admin.orders.index') }}" class="pd-btn pd-btn-light">Tüm Siparişler</a>
-            <a href="{{ route('admin.orders.index', ['status' => 'open']) }}" class="pd-btn pd-btn-light">Açık Siparişler</a>
+            <a href="{{ route('admin.orders.index', ['filter' => 'all']) }}" class="pd-btn pd-btn-light">Tüm Siparişler</a>
+            <a href="{{ route('admin.orders.index', ['filter' => 'open']) }}" class="pd-btn pd-btn-light">Aktif Siparişler</a>
+            <a href="{{ route('admin.orders.index', ['filter' => 'completed']) }}" class="pd-btn pd-btn-light">Tamamlanan Siparişler</a>
             @if(data_get($selectedRow, 'links.work_form'))
                 <a href="{{ data_get($selectedRow, 'links.work_form') }}" class="pd-btn pd-btn-light">İş Formu</a>
             @endif
@@ -168,7 +171,7 @@
 
             <div class="poi-field">
                 <label>Durum</label>
-                <select name="status">
+                <select name="filter">
                     @foreach($statusOptions as $option)
                         <option value="{{ $option['value'] }}" @selected($filters['status'] === $option['value'])>{{ $option['label'] }}</option>
                     @endforeach
@@ -197,7 +200,7 @@
 
             <div class="poi-filter-actions">
                 <button type="submit" class="pd-btn pd-btn-primary">Filtrele</button>
-                <a href="{{ route('admin.orders.index') }}" class="pd-btn pd-btn-light">Temizle</a>
+                <a href="{{ route('admin.orders.index', ['filter' => 'open']) }}" class="pd-btn pd-btn-light">Temizle</a>
             </div>
         </form>
     </section>
@@ -207,11 +210,11 @@
             <div class="poi-table-top">
                 <div class="poi-table-top-left">
                     <b>Sipariş Listesi</b>
-                    <span>Satırda sadece ana işlem bulunur. İş Formu, Grafik, Tedarik, Üretim, Teslimat ve Finans geçişleri sağ panel ve detay ekranında kalır.</span>
+                    <span>Aktif görünüm günlük iş bekleyen siparişleri gösterir. Tamamlanan siparişler ayrı filtrede tutulur.</span>
                 </div>
                 <div class="poi-tabs">
                     @foreach($statusChips as $chip)
-                        <a href="{{ route('admin.orders.index', array_merge($statusRouteQuery, ['status' => $chip['value']])) }}" class="poi-tab {{ ($filters['status'] ?? 'all') === $chip['value'] ? 'is-active' : '' }}">{{ $chip['label'] }}</a>
+                        <a href="{{ route('admin.orders.index', array_merge($statusRouteQuery, ['filter' => $chip['value']])) }}" class="poi-tab {{ ($filters['status'] ?? 'all') === $chip['value'] ? 'is-active' : '' }}">{{ $chip['label'] }} <em>{{ $tabCounts[$chip['value']] ?? 0 }}</em></a>
                     @endforeach
                 </div>
             </div>
