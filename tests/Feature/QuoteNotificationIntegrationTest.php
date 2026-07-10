@@ -106,8 +106,10 @@ class QuoteNotificationIntegrationTest extends TestCase
         $approvalRequest = $quote->fresh()->latestQuoteApprovalRequest;
 
         $this->assertSame('quote_sent_to_customer', $emailLog->notification_key);
-        $this->assertSame('quote_sent_to_customer', data_get($emailLog->meta_json, 'normalized_event_key'));
+        $this->assertSame('quote_customer_mail', data_get($emailLog->meta_json, 'operation'));
         $this->assertStringNotContainsString((string) $approvalRequest?->token, json_encode($emailLog->meta_json, JSON_UNESCAPED_UNICODE));
+        $this->assertStringNotContainsString('/teklif/onay/', (string) $emailLog->message_preview);
+        $this->assertStringContainsString('[public-onay-linki-gizlendi]', (string) $emailLog->message_preview);
         $this->assertStringNotContainsString('group_code', (string) $emailLog->message_preview);
         $this->assertStringNotContainsString('file_path', (string) $emailLog->message_preview);
         $this->assertStringNotContainsString('physical_path', (string) $emailLog->message_preview);
@@ -116,12 +118,19 @@ class QuoteNotificationIntegrationTest extends TestCase
         $this->assertStringNotContainsString('KDV', (string) $emailLog->message_preview);
         $this->assertStringNotContainsString('Baskı Birim', (string) $emailLog->message_preview);
         $this->assertStringNotContainsString('Baskı Toplam', (string) $emailLog->message_preview);
-        $this->assertStringStartsWith('https://wa.me/', (string) data_get($whatsappLog->meta_json, 'url'));
+        $this->assertStringNotContainsString('/teklif/onay/', (string) $whatsappLog->message_preview);
+        $this->assertStringContainsString('[public-onay-linki-gizlendi]', (string) $whatsappLog->message_preview);
+        $this->assertSame('[public-onay-linki-gizlendi]', data_get($whatsappLog->meta_json, 'url'));
         $this->assertSame('tenant_admin', $internalLog->audience_type);
     }
 
     public function test_quote_send_skips_missing_email_but_keeps_whatsapp_and_internal_and_feature_guard_still_applies(): void
     {
+        CompanyContact::query()
+            ->where('tenant_account_id', $this->tenant->id)
+            ->where('company_id', $this->customer->id)
+            ->delete();
+
         $this->customer->forceFill(['email' => null])->save();
 
         $quote = $this->createQuote('TK-NOTIF-002');
@@ -138,6 +147,9 @@ class QuoteNotificationIntegrationTest extends TestCase
             ]);
 
         $response->assertRedirect(route('admin.promotion-quotes.show', $quote));
+        $response->assertSessionHasErrors([
+            'error' => 'Müşteri e-posta adresi olmadığı için teklif maili gönderilemedi.',
+        ]);
 
         $logs = NotificationLog::query()
             ->where('tenant_account_id', $this->tenant->id)
@@ -145,10 +157,8 @@ class QuoteNotificationIntegrationTest extends TestCase
             ->orderBy('id')
             ->get();
 
-        $this->assertCount(3, $logs);
-        $this->assertTrue($logs->contains(fn (NotificationLog $log) => $log->channel === 'email' && $log->status === NotificationLog::STATUS_SKIPPED));
-        $this->assertTrue($logs->contains(fn (NotificationLog $log) => $log->channel === 'whatsapp_link' && $log->status === NotificationLog::STATUS_LINK_CREATED));
-        $this->assertTrue($logs->contains(fn (NotificationLog $log) => $log->channel === 'internal' && $log->status === NotificationLog::STATUS_SENT));
+        $this->assertCount(0, $logs);
+        $this->assertNull($quote->fresh()->latestQuoteApprovalRequest);
 
         TenantModule::query()
             ->where('tenant_account_id', $this->tenant->id)

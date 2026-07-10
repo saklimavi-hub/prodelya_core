@@ -13,6 +13,8 @@ use Illuminate\View\View;
 
 class NotificationLogController extends Controller
 {
+    private const HIDDEN_PUBLIC_LINK_LABEL = '[public-onay-linki-gizlendi]';
+
     public function __construct(
         protected TenantResolver $tenantResolver,
         protected NotificationEventCatalogService $eventCatalogService,
@@ -173,18 +175,72 @@ class NotificationLogController extends Controller
                     continue;
                 }
 
-                $sanitized[$key] = $this->sanitizeStructured($item);
+                $sanitized[$key] = $this->sanitizeStructuredValueByKey($item, $normalized);
             }
 
             return $sanitized;
         }
 
         if (is_scalar($value)) {
-            $text = preg_replace('/(smtp_password|mail_password|api_key|token|file_path|physical_path|raw_xml|raw_json|pdh_raw|group_code|supplier_cost|subcontractor_cost|profit|[A-Z]:\\\\|\/var\/)/iu', '[hidden]', (string) $value) ?? (string) $value;
+            $text = $this->sanitizeLinkText((string) $value);
+            $text = preg_replace('/(smtp_password|mail_password|api_key|token|file_path|physical_path|raw_xml|raw_json|pdh_raw|group_code|supplier_cost|subcontractor_cost|profit|[A-Z]:\\\\|\/var\/)/iu', '[hidden]', $text) ?? $text;
 
             return Str::limit(trim($text), 500);
         }
 
         return null;
+    }
+
+    private function sanitizeStructuredValueByKey(mixed $value, string $key): mixed
+    {
+        if (is_scalar($value) && $this->isSensitiveLinkMetaKey($key) && $this->containsPublicApprovalLink((string) $value)) {
+            return self::HIDDEN_PUBLIC_LINK_LABEL;
+        }
+
+        return $this->sanitizeStructured($value);
+    }
+
+    private function sanitizeLinkText(string $value): string
+    {
+        if ($this->containsEncodedPublicApprovalLink($value)) {
+            return self::HIDDEN_PUBLIC_LINK_LABEL;
+        }
+
+        $patterns = [
+            '~https?://[^\s"\'<>]*/(?:teklif|grafik)/onay/[A-Za-z0-9_-]+[^\s"\'<>]*~iu',
+            '~/(?:teklif|grafik)/onay/[A-Za-z0-9_-]+(?:[/?][^\s"\'<>]*)?~iu',
+        ];
+
+        foreach ($patterns as $pattern) {
+            $value = preg_replace($pattern, self::HIDDEN_PUBLIC_LINK_LABEL, $value) ?? $value;
+        }
+
+        return $value;
+    }
+
+    private function containsPublicApprovalLink(string $value): bool
+    {
+        return preg_match('~/(?:teklif|grafik)/onay/[A-Za-z0-9_-]+~iu', $value) === 1
+            || $this->containsEncodedPublicApprovalLink($value);
+    }
+
+    private function containsEncodedPublicApprovalLink(string $value): bool
+    {
+        if (!str_contains($value, '%')) {
+            return false;
+        }
+
+        return preg_match('~/(?:teklif|grafik)/onay/[A-Za-z0-9_-]+~iu', rawurldecode($value)) === 1;
+    }
+
+    private function isSensitiveLinkMetaKey(string $key): bool
+    {
+        return in_array($key, [
+            'url',
+            'public_link',
+            'public_quote_url',
+            'public_quote_approval_url',
+            'approval_url',
+        ], true);
     }
 }

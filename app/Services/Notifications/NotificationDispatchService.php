@@ -10,6 +10,8 @@ use App\Services\PhoneNumberNormalizer;
 
 class NotificationDispatchService
 {
+    private const HIDDEN_PUBLIC_LINK_LABEL = '[public-onay-linki-gizlendi]';
+
     public function __construct(
         protected TenantNotificationSettingsService $tenantNotificationSettingsService,
         protected NotificationEventCatalogService $eventCatalogService,
@@ -118,7 +120,7 @@ class NotificationDispatchService
         $normalized = $this->phoneNumberNormalizer->toWhatsappDialString($phone) ?: '';
 
         if ($normalized === '') {
-            throw new \InvalidArgumentException('WhatsApp için geçerli bir cep telefonu bulunmuyor.');
+            throw new \InvalidArgumentException('WhatsApp için geçerli bir telefon numarası bulunmuyor.');
         }
 
         $link = 'https://wa.me/' . $normalized . '?text=' . rawurlencode($message);
@@ -200,6 +202,7 @@ class NotificationDispatchService
         }
 
         $value = strip_tags((string) $value);
+        $value = $this->sanitizeLinkText($value);
         $value = preg_replace('/\s+/u', ' ', $value) ?? $value;
         $value = preg_replace($this->hiddenPattern(), '[hidden]', $value) ?? $value;
         $value = trim($value);
@@ -212,7 +215,7 @@ class NotificationDispatchService
         return $this->sanitizeScalar($value, 500);
     }
 
-    private function sanitizeStructuredValue(mixed $value): mixed
+    private function sanitizeStructuredValue(mixed $value, ?string $parentKey = null): mixed
     {
         if ($value === null) {
             return null;
@@ -228,17 +231,73 @@ class NotificationDispatchService
                     continue;
                 }
 
-                $sanitized[$key] = $this->sanitizeStructuredValue($item);
+                $sanitized[$key] = $this->sanitizeStructuredValue($item, $normalizedKey);
             }
 
             return $sanitized;
         }
 
         if (is_scalar($value)) {
-            return $this->sanitizeScalar((string) $value, 500);
+            $stringValue = (string) $value;
+
+            if ($this->isSensitiveLinkMetaKey($parentKey) && $this->containsPublicApprovalLink($stringValue)) {
+                return self::HIDDEN_PUBLIC_LINK_LABEL;
+            }
+
+            return $this->sanitizeScalar($stringValue, 500);
         }
 
         return null;
+    }
+
+    private function sanitizeLinkText(string $value): string
+    {
+        if ($this->containsEncodedPublicApprovalLink($value)) {
+            return self::HIDDEN_PUBLIC_LINK_LABEL;
+        }
+
+        $patterns = [
+            '~https?://[^\s"\'<>]*/(?:teklif|grafik)/onay/[A-Za-z0-9_-]+[^\s"\'<>]*~iu',
+            '~/(?:teklif|grafik)/onay/[A-Za-z0-9_-]+(?:[/?][^\s"\'<>]*)?~iu',
+        ];
+
+        foreach ($patterns as $pattern) {
+            $value = preg_replace($pattern, self::HIDDEN_PUBLIC_LINK_LABEL, $value) ?? $value;
+        }
+
+        return $value;
+    }
+
+    private function containsPublicApprovalLink(string $value): bool
+    {
+        return preg_match('~/(?:teklif|grafik)/onay/[A-Za-z0-9_-]+~iu', $value) === 1
+            || $this->containsEncodedPublicApprovalLink($value);
+    }
+
+    private function containsEncodedPublicApprovalLink(string $value): bool
+    {
+        if (!str_contains($value, '%')) {
+            return false;
+        }
+
+        $decoded = rawurldecode($value);
+
+        return preg_match('~/(?:teklif|grafik)/onay/[A-Za-z0-9_-]+~iu', $decoded) === 1;
+    }
+
+    private function isSensitiveLinkMetaKey(?string $key): bool
+    {
+        if ($key === null) {
+            return false;
+        }
+
+        return in_array($key, [
+            'url',
+            'public_link',
+            'public_quote_url',
+            'public_quote_approval_url',
+            'approval_url',
+        ], true);
     }
 
     private function hiddenPattern(): string
