@@ -227,7 +227,7 @@ class PromotionQuoteCreateEditUiRegressionTest extends TestCase
 
         $response->assertOk();
         $response->assertSee('Bu kayıt teklif aşamasındadır. Onaylandıktan sonra siparişe çevrilir.');
-        $response->assertSee('Ürün ve Baskı Kalemleri');
+        $response->assertSee('Ürün &amp; Baskı Kalemleri', false);
         $response->assertDontSee('data-testid="quote-convert-cta"', false);
         $response->assertDontSee('data-testid="quote-convert-form"', false);
     }

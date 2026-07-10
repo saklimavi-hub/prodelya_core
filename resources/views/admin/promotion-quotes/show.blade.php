@@ -2,17 +2,7 @@
 
 @section('title', $quote->document_number)
 @section('hide_side_summary', '1')
-@section('page_title', 'Promosyon Teklif Detayı')
-@section('page_subtitle', 'Karar bandı, müşteri onayı ve ürün özeti')
-
-@section('page_actions')
-<div class="flex gap-2">
-    <a href="{{ route('admin.promotion-quotes.index') }}" class="pd-btn pd-btn-light">Teklifleri Listele</a>
-    @if($isConverted && $linkedOrder)
-        <a href="{{ route('admin.orders.show', $linkedOrder) }}" class="pd-btn pd-btn-primary" data-testid="quote-open-order-button">Siparişi Aç</a>
-    @endif
-</div>
-@endsection
+@section('page_topbar_hidden', '1')
 
 @section('content')
 @php
@@ -37,8 +27,8 @@
     };
 
     $approvalStateLabel = match ($approvalState) {
-        Order::CUSTOMER_APPROVAL_WAITING => 'Onay Bekliyor',
-        Order::CUSTOMER_APPROVAL_REVISION_REQUESTED => 'Revize İstendi',
+        Order::CUSTOMER_APPROVAL_WAITING => 'Yanıt Bekleniyor',
+        Order::CUSTOMER_APPROVAL_REVISION_REQUESTED => 'Revize Bekleniyor',
         Order::CUSTOMER_APPROVAL_APPROVED => 'Onaylandı',
         Order::CUSTOMER_APPROVAL_REJECTED => 'Reddedildi',
         default => 'Gönderilmedi',
@@ -54,19 +44,16 @@
         default => 'pd-badge-slate',
     };
 
-    $latestCustomerNote = $latestApprovalRequest?->customer_note;
-    $lastSentChannel = $latestApprovalRequest?->sendSnapshot?->safeSendLabel();
-    $whatsappActionLabel = match (true) {
-        ! $whatsappAvailable => 'WhatsApp kapalı',
-        ! $approvalHelperUrl => 'Önce gönderim oluşturun',
-        ! $recipientPhoneDisplay => 'Telefon yok',
-        ! $whatsappReady => 'Geçerli WhatsApp cep telefonu yok',
-        default => 'Hazır mesaj oluşturulabilir',
-    };
-    $pdfActionLabel = $quotePdfAvailable ? 'Hazır' : 'Ayrı fazda bağlanacak';
+    $lastSentChannel = $latestApprovalRequest?->sendSnapshot?->safeSendLabel() ?: 'Kayıt yok';
     $customerPrintVisibilityLabel = $quote->shouldShowPrintPriceDetailsToCustomer()
-        ? 'Baskı detayları müşteriye görünür'
-        : 'Baskı detayları müşteriye gizli';
+        ? 'Baskı detayı müşteriye görünür'
+        : 'Baskı detayı müşteriye gizli';
+
+    $sendStatusLabel = match (true) {
+        $quote->last_sent_at && ($sendNotificationSummary['email']['status'] ?? null) === 'Gönderildi' => 'Gönderildi',
+        $quote->last_sent_at => 'Hazır',
+        default => 'Hazır değil',
+    };
 
     $decisionHeadline = match (true) {
         $isConverted => 'Bu teklif siparişe dönüştü.',
@@ -84,8 +71,8 @@
         $quote->customer_approval_status === Order::CUSTOMER_APPROVAL_REVISION_REQUESTED => 'Teklifi güncelleyip tekrar göndermeniz bekleniyor.',
         $quote->customer_approval_status === Order::CUSTOMER_APPROVAL_REJECTED => 'Müşteriye yeni bir revizyon veya alternatif göndermeniz gerekebilir.',
         $latestApprovalRequest?->isViewed() => 'Müşteri yanıtı henüz gelmedi; gerekirse tekrar gönderim yapabilirsiniz.',
-        $quote->last_sent_at => 'Gönderim durumu aşağıdaki müşteri onayı kartından izlenebilir.',
-        default => 'Önce müşteriye gönderin veya gerekiyorsa iç onay verin.',
+        $quote->last_sent_at => 'Gönderim durumu ve müşteri hareketi sekmelerden takip edilebilir.',
+        default => 'Önce ürün ve baskı detayını kontrol edin, sonra müşteriye gönderin.',
     };
 
     $convertSummary = match (true) {
@@ -94,346 +81,245 @@
         ! empty($convertIssues) => $convertIssues[0],
         default => 'Müşteri onayı bekleniyor.',
     };
+
+    $quoteShortDescription = $quote->customer?->legal_name
+        ? $quote->customer->legal_name . ' için hazırlanan teklif.'
+        : 'Hazırlanan teklif kaydı.';
+
+    $recentLogRows = collect($notificationLogRows)->take(3)->values();
+    $calculatedProductTotal = (float) $quote->items->sum(fn ($item) => (float) $item->line_total);
+    $calculatedPrintTotal = (float) $quote->items->sum(function ($item) {
+        $itemPrintTotal = (float) $item->print_total;
+
+        if ($itemPrintTotal > 0) {
+            return $itemPrintTotal;
+        }
+
+        return (float) $item->prints->sum(fn ($print) => (float) $print->print_total);
+    });
+    $summaryProductTotal = ((float) $quote->product_total > 0 || $calculatedProductTotal === 0.0)
+        ? (float) $quote->product_total
+        : $calculatedProductTotal;
+    $summaryPrintTotal = ((float) $quote->print_total > 0 || $calculatedPrintTotal === 0.0)
+        ? (float) $quote->print_total
+        : $calculatedPrintTotal;
+    $existingPublicQuoteUrl = $approvalHelperUrl;
+    $initialPreviewMessage = $existingPublicQuoteUrl
+        ? "Merhaba " . (old('contact_name', $latestApprovalRequest?->contact_name ?: ($quote->customer?->legal_name ?: 'Müşterimiz')) ?: 'Müşterimiz') . ",\n\n" . $quote->document_number . " numaralı teklifinizi inceleyebilirsiniz:\n" . $existingPublicQuoteUrl
+        : "Merhaba " . (old('contact_name', $latestApprovalRequest?->contact_name ?: ($quote->customer?->legal_name ?: 'Müşterimiz')) ?: 'Müşterimiz') . ",\n\nPublic onay linki gönderim sonrası hazırlanır. WhatsApp Link kanalında link ayrı satırda tam URL olarak üretilir.";
+    $moneyText = static function ($amount, ?string $currency = null) use ($canViewFinancialData): string {
+        if (! $canViewFinancialData) {
+            return 'Gizli';
+        }
+
+        return number_format((float) $amount, 2, ',', '.') . ($currency ? ' ' . $currency : '');
+    };
+    $quantityText = static function ($amount, ?string $unit = null): string {
+        $value = (float) $amount;
+        $decimals = fmod($value, 1.0) === 0.0 ? 0 : 2;
+        $formatted = number_format($value, $decimals, ',', '.');
+
+        return trim($formatted . ' ' . ($unit ?: 'Adet'));
+    };
+    $quantityDecimalText = static function ($amount): string {
+        return number_format((float) $amount, 2, ',', '.');
+    };
+
+    $selectedChannelIndex = match (old('sent_channel')) {
+        'email' => 1,
+        'whatsapp_link' => 2,
+        default => 0,
+    };
+    $quoteGuideNotice = ($publicQuoteApprovalEnabled ?? false)
+        ? 'WhatsApp Link için e-posta zorunlu değildir. Telefon alanı yeterliyse güvenli gönderim bağlantısı hazırlanır.'
+        : null;
+    $showConvertPlaceholder = ! $isConverted && $itemCount > 0 && ! $canConvert;
+    $quoteAlertMessage = null;
+    $quoteAlertType = null;
+    $quoteAlertTestId = 'quote-alert';
+    $buildLineSignals = static function ($item): array {
+        $productSnapshot = (array) ($item->product_snapshot ?? []);
+        $priceSnapshot = (array) ($item->price_snapshot ?? []);
+        $stockSnapshot = (array) ($item->stock_snapshot ?? []);
+
+        $signals = collect(array_merge(
+            (array) data_get($productSnapshot, 'warning_badges', []),
+            (array) data_get($priceSnapshot, 'warning_badges', []),
+            (array) data_get($stockSnapshot, 'warning_badges', [])
+        ))
+            ->filter(fn ($value) => filled($value))
+            ->map(fn ($value) => trim((string) $value))
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ((string) data_get($stockSnapshot, 'stock_status') === 'out_of_stock' && !$signals->contains('Stok uyarısı')) {
+            $signals->push('Stok uyarısı');
+        }
+
+        if (((bool) data_get($priceSnapshot, 'net_price_warning')) && !$signals->contains('Fiyat kontrolü')) {
+            $signals->push('Fiyat kontrolü');
+        }
+
+        if (((bool) data_get($priceSnapshot, 'price_policy_warning')) && !$signals->contains('Fiyat politikası')) {
+            $signals->push('Fiyat politikası');
+        }
+
+        return $signals->take(4)->all();
+    };
+
+    if (session('success')) {
+        $quoteAlertMessage = session('success');
+        $quoteAlertType = 'success';
+        $quoteAlertTestId = 'quote-alert-success';
+    } elseif (session('error')) {
+        $quoteAlertMessage = session('error');
+        $quoteAlertType = 'error';
+        $quoteAlertTestId = 'quote-alert-error';
+    } elseif ($errors->any()) {
+        $quoteAlertMessage = $errors->first();
+        $quoteAlertType = 'error';
+        $quoteAlertTestId = 'quote-alert-error';
+    } elseif (session('warning')) {
+        $quoteAlertMessage = session('warning');
+        $quoteAlertType = 'warning';
+        $quoteAlertTestId = 'quote-alert-warning';
+    } elseif (! $canViewFinancialData) {
+        $quoteAlertMessage = 'Finansal bilgiler yetkiniz dışında gizlendi.';
+        $quoteAlertType = 'warning';
+        $quoteAlertTestId = 'quote-alert-warning';
+    }
 @endphp
 
-<style>
-    .pqux-page{font-family:Arial,Helvetica,sans-serif;color:#172033}
-    .pqux-flash{padding:12px 14px;border-radius:10px;border:1px solid;margin-bottom:14px;font-size:13px;line-height:1.5}
-    .pqux-flash-success{background:#effaf3;border-color:#b8e3c5;color:#166534}
-    .pqux-flash-error{background:#fff3f3;border-color:#f3c7c7;color:#991b1b}
-    .pqux-page .pqux-band,.pqux-page .pqux-card,.pqux-page .pqux-summary-card{background:#fff;border:1px solid #e4e8ef;border-radius:12px;box-shadow:0 4px 14px rgba(15,23,42,.04)}
-    .pqux-band{padding:18px 20px;margin-bottom:14px}
-    .pqux-band-top{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}
-    .pqux-band-title{font-size:24px;line-height:1.1;font-weight:700;margin:0 0 6px}
-    .pqux-band-subtitle{margin:0;color:#657184;font-size:12px;line-height:1.5;max-width:760px}
-    .pqux-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
-    .pqux-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;align-items:center}
-    .pqux-actions .pd-btn{min-height:36px}
-    .pqux-decision{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-top:14px;padding-top:14px;border-top:1px solid #edf1f6}
-    .pqux-decision h2{margin:0 0 4px;font-size:17px;font-weight:700}
-    .pqux-decision p{margin:0;color:#657184;font-size:12px;line-height:1.5}
-    .pqux-top-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:14px}
-    .pqux-layout{display:grid;grid-template-columns:minmax(0,1.35fr) 360px;gap:14px;align-items:start}
-    .pqux-stack{display:flex;flex-direction:column;gap:14px}
-    .pqux-card{padding:16px}
-    .pqux-card-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:14px}
-    .pqux-card-head h3{margin:0 0 4px;font-size:16px;font-weight:700}
-    .pqux-card-head p{margin:0;color:#657184;font-size:12px;line-height:1.45}
-    .pqux-summary-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-    .pqux-summary-card{padding:13px}
-    .pqux-summary-label{font-size:11px;color:#657184;font-weight:700;margin-bottom:6px}
-    .pqux-summary-value{font-size:16px;font-weight:700;line-height:1.35}
-    .pqux-approval-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-    .pqux-info-box{padding:12px;border:1px solid #eef2f7;border-radius:10px;background:#f8fafc}
-    .pqux-info-label{font-size:11px;font-weight:700;color:#64748b;margin-bottom:5px}
-    .pqux-info-value{font-size:13px;font-weight:600;line-height:1.45;color:#172033}
-    .pqux-info-value.muted{font-weight:500;color:#657184}
-    .pqux-note{margin-top:12px;padding:12px;border-radius:10px;background:#f7faff;border:1px dashed #d7e4f6;color:#506175;font-size:12px;line-height:1.5}
-    .pqux-cta-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
-    .pqux-convert{padding:14px;border:1px solid #eef2f7;border-radius:10px;background:#fbfcfe}
-    .pqux-convert strong{display:block;font-size:13px;font-weight:700;margin-bottom:4px}
-    .pqux-convert span{display:block;color:#657184;font-size:12px;line-height:1.45}
-    .pqux-action-list{display:grid;gap:10px}
-    .pqux-action-box{padding:12px;border:1px solid #eef2f7;border-radius:10px;background:#fbfcfe}
-    .pqux-action-box strong{display:block;font-size:13px;font-weight:700;color:#172033}
-    .pqux-action-box span{display:block;margin-top:4px;color:#657184;font-size:12px;line-height:1.45}
-    .pqux-action-group{padding:12px;border:1px solid #eef2f7;border-radius:10px;background:#fbfcfe}
-    .pqux-action-group-title{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
-    .pqux-action-group-title strong{font-size:13px;font-weight:700;color:#172033}
-    .pqux-action-group-title span{color:#657184;font-size:11px;line-height:1.4}
-    .pqux-action-buttons{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
-    .pqux-action-buttons form{display:inline-flex}
-    .pqux-item-list{display:flex;flex-direction:column;gap:12px}
-    .pqux-item{border:1px solid #edf1f6;border-radius:12px;padding:14px;background:#fbfcfe}
-    .pqux-item-top{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:start}
-    .pqux-item-no,.pqux-print-no{width:30px;height:30px;border-radius:999px;background:#eef2f7;color:#415068;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
-    .pqux-item-title{font-size:15px;font-weight:700;margin:0 0 5px}
-    .pqux-item-sub{display:flex;flex-wrap:wrap;gap:10px;color:#657184;font-size:12px}
-    .pqux-item-note{margin-top:8px;color:#526174;font-size:12px;line-height:1.5}
-    .pqux-totals{min-width:210px}
-    .pqux-money{display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:3px 0}
-    .pqux-money span{color:#657184}
-    .pqux-money strong{font-weight:700;color:#172033}
-    .pqux-print-list{display:flex;flex-direction:column;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid #edf1f6}
-    .pqux-print{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:start}
-    .pqux-print-title{font-size:13px;font-weight:700;margin:0 0 4px}
-    .pqux-print-sub{display:flex;flex-wrap:wrap;gap:10px;color:#657184;font-size:12px}
-    .pqux-print-note{margin-top:6px;color:#526174;font-size:12px;line-height:1.45}
-    .pqux-total-table{display:flex;flex-direction:column;gap:8px}
-    .pqux-total-row{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid #f0f3f7;font-size:13px}
-    .pqux-total-row:last-child{border-bottom:0}
-    .pqux-total-row span{color:#657184}
-    .pqux-total-row strong{font-weight:700;color:#172033}
-    .pqux-total-row.grand strong,.pqux-total-row.grand span{font-size:14px;color:#172033}
-    .pqux-history details{border:0}
-    .pqux-history summary{cursor:pointer;list-style:none;font-size:13px;font-weight:700;color:#172033}
-    .pqux-history summary::-webkit-details-marker{display:none}
-    .pqux-history-list{display:flex;flex-direction:column;gap:8px;margin-top:14px}
-    .pqux-history-row{display:flex;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid #eef2f7;border-radius:10px;background:#fbfcfe}
-    .pqux-history-row span{font-size:12px;color:#657184}
-    .pqux-history-row strong{font-size:12px;font-weight:700;color:#172033}
-    .pqux-log-row{padding:12px;border:1px solid #eef2f7;border-radius:10px;background:#fbfcfe}
-    .pqux-log-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
-    .pqux-log-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;color:#657184;font-size:12px}
-    .pqux-log-detail{margin-top:8px;color:#526174;font-size:12px;line-height:1.5}
-    @media (max-width: 1100px){.pqux-layout,.pqux-top-grid{grid-template-columns:1fr}.pqux-actions{justify-content:flex-start}.pqux-band-top,.pqux-decision{flex-direction:column}}
-    @media (max-width: 720px){.pqux-summary-grid,.pqux-approval-grid,.pqux-top-grid{grid-template-columns:1fr}.pqux-item-top,.pqux-print,.pqux-log-top{grid-template-columns:1fr;display:block}.pqux-totals{min-width:0}.pqux-history-row{flex-direction:column}.pqux-actions .pd-btn,.pqux-cta-row .pd-btn,.pqux-action-buttons .pd-btn{width:100%;justify-content:center}.pqux-action-buttons form{width:100%}}
-</style>
+<div class="pd-quote-detail promotion-quote-detail quote-detail-compact">
+    <section class="pd-card pd-quote-detail__page-head quote-page-head">
+        <div>
+            <div class="pd-quote-detail__eyebrow">Satış ve Sipariş</div>
+            <h1>Promosyon Teklif Detayı</h1>
+            <p>Ürün ve baskı bilgisi en üstte görülür; aksiyonlar buna göre alınır.</p>
+        </div>
+        <div class="quote-page-head-actions">
+            <a href="{{ route('admin.promotion-quotes.index') }}" class="pd-btn pd-btn-light">Teklifleri Listele</a>
+        </div>
+    </section>
 
-<div class="pqux-page">
-    @if(session('success'))
-        <div class="pqux-flash pqux-flash-success" data-testid="quote-send-success-flash">{{ session('success') }}</div>
+    @if($quoteGuideNotice)
+        <section class="pd-card pd-quote-detail__notice quote-guide-notice" data-testid="quote-guide-notice">
+            {{ $quoteGuideNotice }}
+        </section>
     @endif
 
-    @if($errors->any())
-        <div class="pqux-flash pqux-flash-error" data-testid="quote-send-error-flash">{{ $errors->first() }}</div>
+    @if($quoteAlertMessage)
+        <section
+            class="pd-card pd-quote-detail__notice quote-alert quote-alert-{{ $quoteAlertType }}"
+            data-testid="{{ $quoteAlertTestId }}"
+        >
+            {{ $quoteAlertMessage }}
+        </section>
     @endif
 
-    <section class="pqux-band">
-        <div class="pqux-band-top">
+    <section class="pd-card pd-quote-detail__strip quote-strip">
+        <div class="quote-strip-top">
             <div>
-                <h1 class="pqux-band-title">{{ $quote->document_number }}</h1>
-                <p class="pqux-band-subtitle">{{ $quote->customer?->legal_name ?: '-' }} için hazırlanan teklif. Gönderim, müşteri yanıtı ve siparişe dönüş kararı bu alandan yönetilir.</p>
-                <div class="pqux-meta">
-                    <span class="pd-badge {{ $statusClass }}">Teklif Durumu: {{ $displayStatusLabel }}</span>
-                    <span class="pd-badge {{ $approvalStateClass }}">Müşteri Onayı: {{ $approvalStateLabel }}</span>
-                    <span class="pd-badge pd-badge-slate">Teslimat Tipi: {{ $quote->delivery_type ?: 'Belirtilmedi' }}</span>
-                    @if($quote->valid_until)
-                        <span class="pd-badge pd-badge-slate">Geçerlilik: {{ $quote->valid_until->format('d.m.Y') }}</span>
-                    @endif
-                    @if($isConverted && $linkedOrder)
-                        <span class="pd-badge pd-badge-green">Bağlı Sipariş: {{ $linkedOrder->document_number }}</span>
-                    @endif
+                <div class="quote-strip-number">{{ $quote->document_number }}</div>
+                <p class="quote-strip-subtitle">{{ $quoteShortDescription }} {{ $decisionSupport }}</p>
+                <div class="quote-strip-chips">
+                    <span class="pd-badge {{ $statusClass }}">Teklif: {{ $displayStatusLabel }}</span>
+                    <span class="pd-badge {{ $approvalStateClass }}">Müşteri: {{ $approvalStateLabel }}</span>
+                    <span class="pd-badge pd-badge-slate">Gönderim: {{ $sendStatusLabel }}</span>
+                    <span class="pd-badge pd-badge-slate">Fiyat Görünümü: {{ $customerPrintVisibilityLabel }}</span>
                 </div>
+                @if($sourceOrderContext['visible'])
+                    <div class="quote-inline-note" data-testid="quote-source-order-summary">
+                        <strong>{{ $sourceOrderContext['badge'] }}</strong>
+                        ·
+                        @if($sourceOrderContext['url'])
+                            <a href="{{ $sourceOrderContext['url'] }}">{{ $sourceOrderContext['source_label'] }}</a>
+                        @else
+                            {{ $sourceOrderContext['source_label'] }}
+                        @endif
+                    </div>
+                    <div class="quote-inline-note">{{ $sourceOrderContext['warning'] }}</div>
+                    <div class="quote-inline-note">{{ $sourceOrderContext['general_warning'] }}</div>
+                @endif
+                @unless($quote->shouldShowPrintPriceDetailsToCustomer())
+                    <div class="quote-inline-note">Baskı detayları müşteriye gizli</div>
+                @endunless
             </div>
-
-            <div class="pqux-actions">
+            <div class="quote-page-head-actions">
                 @if($quotePdfAvailable)
                     <a href="{{ route('admin.promotion-quotes.pdf', $quote) }}" class="pd-btn pd-btn-light" target="_blank" rel="noopener">PDF Teklif</a>
+                @endif
+                @if($revisionCompareUrl)
+                    <a href="{{ $revisionCompareUrl }}" class="pd-btn pd-btn-light" data-testid="quote-revision-compare-link">Revizyon Karşılaştır</a>
                 @endif
                 @if($showSendAction)
                     <button type="button" class="pd-btn pd-btn-primary" data-open-send-modal>{{ $sendActionLabel }}</button>
                 @endif
-                @if($canConvert)
-                    <button type="button" class="pd-btn pd-btn-success" data-open-convert-modal data-testid="quote-open-convert-modal-button">Siparişe Çevir ve Süreci Başlat</button>
-                @elseif($isConverted && $linkedOrder)
-                    <a href="{{ route('admin.orders.show', $linkedOrder) }}" class="pd-btn pd-btn-success" data-testid="quote-open-order-button">Siparişi Aç</a>
-                @endif
             </div>
         </div>
 
-        <div class="pqux-decision">
-            <div>
-                <h2>Teklif Durumu ve Sıradaki Karar</h2>
-                <p><strong>{{ $decisionHeadline }}</strong> {{ $decisionSupport }}</p>
-            </div>
-            <div class="pqux-meta">
-                <span class="pd-badge {{ $approvalCardStatusClass }}">{{ $approvalCardStatusLabel }}</span>
-                <span class="pd-badge pd-badge-slate">{{ $processStatusLabel }}</span>
-            </div>
-        </div>
-
-        <div class="pqux-top-grid">
-            <div class="pqux-summary-card">
-                <div class="pqux-summary-label">Müşteri</div>
-                <div class="pqux-summary-value">{{ $quote->customer?->legal_name ?: '-' }}</div>
-            </div>
-            <div class="pqux-summary-card">
-                <div class="pqux-summary-label">Teklif Tarihi</div>
-                <div class="pqux-summary-value">{{ optional($quote->quote_date)->format('d.m.Y') ?: '-' }}</div>
-            </div>
-            <div class="pqux-summary-card">
-                <div class="pqux-summary-label">Teslim Tarihi / Geçerlilik</div>
-                <div class="pqux-summary-value">{{ optional($quote->valid_until)->format('d.m.Y') ?: '-' }}</div>
-            </div>
-            <div class="pqux-summary-card">
-                <div class="pqux-summary-label">Müşteri Fiyat Görünümü</div>
-                <div class="pqux-summary-value" style="font-size:14px;">{{ $customerPrintVisibilityLabel }}</div>
-            </div>
+        <div class="quote-top-metrics">
+            <div class="quote-metric"><span>Müşteri</span><strong>{{ $quote->customer?->legal_name ?: '-' }}</strong></div>
+            <div class="quote-metric"><span>Teklif Tarihi</span><strong>{{ optional($quote->quote_date)->format('d.m.Y') ?: '-' }}</strong></div>
+            <div class="quote-metric"><span>Geçerlilik</span><strong>{{ optional($quote->valid_until)->format('d.m.Y') ?: '-' }}</strong></div>
+            <div class="quote-metric"><span>Kalem / Baskı</span><strong>{{ $itemCount }} kalem / {{ $printCount }} baskı</strong></div>
+            <div class="quote-metric"><span>Genel Toplam</span><strong>{{ $moneyText($quote->grand_total, $quote->currency) }}</strong></div>
         </div>
     </section>
 
-    <div class="pqux-layout">
-        <div class="pqux-stack">
-            <section class="pqux-card" data-testid="quote-send-actions-card">
-                <div class="pqux-card-head">
+    <div class="quote-layout">
+        <div class="quote-main-stack">
+            <section class="pd-card quote-card pd-quote-detail__flow-summary">
+                <div class="quote-card-head">
                     <div>
-                        <h3>Gönderim Aksiyonları</h3>
-                        <p>Teklifi müşteriye gönderin, onay linkini açın, WhatsApp hazır mesajı oluşturun ve PDF durumunu buradan takip edin.</p>
+                        <h3>Akış Özeti</h3>
+                        <p>En önemli bilgi başa alındı: önce ürün ve baskı kalemleri, sonra karar ve gönderim durumu.</p>
                     </div>
-                    <span class="pd-badge {{ $approvalCardStatusClass }}">{{ $approvalCardStatusLabel }}</span>
+                    <span class="quote-chip-soft">1. Öncelik: Ürün &amp; Baskı</span>
                 </div>
 
-                <div class="pqux-action-list">
-                    <div class="pqux-action-box">
-                        <strong>Gönderim Durumu</strong>
-                        <span>{{ $quote->last_sent_at ? 'Son gönderim ' . $quote->last_sent_at->format('d.m.Y H:i') . ' tarihinde oluşturuldu.' : 'Teklif henüz müşteriye gönderilmedi.' }}</span>
-                    </div>
-                    <div class="pqux-action-box">
-                        <strong>Onay Linki</strong>
-                        <span>{{ $approvalHelperUrl ? 'Aktif onay bağlantısı hazır. İsterseniz müşteri ekranını doğrudan açabilirsiniz.' : 'Onay bağlantısı için önce geçerli bir gönderim oluşturulmalı.' }}</span>
-                    </div>
-                    <div class="pqux-action-box">
-                        <strong>WhatsApp Hazır Mesaj</strong>
-                        <span>{{ $whatsappActionLabel }}</span>
-                    </div>
-                    <div class="pqux-action-box">
-                        <strong>PDF Teklif</strong>
-                        <span>{{ $pdfActionLabel }}</span>
-                    </div>
-                    <div class="pqux-action-box" data-testid="quote-send-runtime-summary">
-                        <strong>Son Oluşturulan Kayıtlar</strong>
-                        <span>
-                            E-posta: {{ $sendNotificationSummary['email']['status'] }}
-                            @if($sendNotificationSummary['whatsapp']['status'])
-                                · WhatsApp: {{ $sendNotificationSummary['whatsapp']['status'] }}
-                            @endif
-                            @if($sendNotificationSummary['internal']['status'])
-                                · İç Kayıt: {{ $sendNotificationSummary['internal']['status'] }}
-                            @endif
-                        </span>
-                        @if($sendNotificationSummary['email']['helper'] || $sendNotificationSummary['whatsapp']['helper'] || $sendNotificationSummary['internal']['helper'])
-                            <span>
-                                {{ $sendNotificationSummary['email']['helper'] ?: ($sendNotificationSummary['whatsapp']['helper'] ?: $sendNotificationSummary['internal']['helper']) }}
-                            </span>
+                <div class="quote-action-band">
+                    <div>
+                        <strong>Teklif Durumu ve Sıradaki Karar</strong>
+                        <p>{{ $decisionHeadline }} {{ $decisionSupport }}</p>
+                        @if(! $canConvert && ! $isConverted)
+                            <p>Bu kayıt teklif aşamasındadır. Onaylandıktan sonra siparişe çevrilir.</p>
                         @endif
                     </div>
-                </div>
-
-                <div class="pqux-action-list" style="margin-top:12px;">
-                    <div class="pqux-action-group">
-                        <div class="pqux-action-group-title">
-                            <strong>Birincil satış aksiyonları</strong>
-                            <span>Günlük gönderim akışında en sık kullanılan adımlar</span>
-                        </div>
-                        <div class="pqux-action-buttons">
-                            @if($showSendAction)
-                                <button type="button" class="pd-btn pd-btn-primary" data-open-send-modal data-testid="quote-send-action-button">{{ $sendActionLabel }}</button>
-                            @endif
-
-                            @if($quotePdfAvailable)
-                                <a href="{{ route('admin.promotion-quotes.pdf', $quote) }}" class="pd-btn pd-btn-light" target="_blank" rel="noopener" data-testid="quote-pdf-download-button">PDF Teklif</a>
-                            @else
-                                <span class="pd-btn pd-btn-light pd-btn-disabled" data-testid="quote-pdf-disabled" title="PDF teklif çıktısı ayrı bir fazda bağlanacak">PDF Teklif, yakında</span>
-                            @endif
-
-                            @if($whatsappAvailable && $whatsappReady)
-                                <form method="POST" action="{{ route('admin.promotion-quotes.whatsapp.open', $quote) }}" target="_blank">
-                                    @csrf
-                                    <button type="submit" class="pd-btn pd-btn-light" data-testid="quote-whatsapp-send-button">WhatsApp Gönder</button>
-                                </form>
-                            @elseif($whatsappAvailable)
-                                <span class="pd-btn pd-btn-light pd-btn-disabled" data-testid="quote-whatsapp-send-disabled" title="{{ $whatsappActionLabel }}">WhatsApp Gönder</span>
-                            @endif
-                        </div>
-                    </div>
-
-                    <div class="pqux-action-group">
-                        <div class="pqux-action-group-title">
-                            <strong>Onay ve süreç aksiyonları</strong>
-                            <span>Müşteri onayı ve siparişe geçiş için kullanılır</span>
-                        </div>
-                        <div class="pqux-action-buttons">
-                            @if($approvalHelperUrl)
-                                <a href="{{ $approvalHelperUrl }}" class="pd-btn pd-btn-light" data-testid="quote-open-approval-link-button">Public Onay Linkini Aç</a>
-                            @endif
-                            @if($canConvert)
-                                <button type="button" class="pd-btn pd-btn-success" data-open-convert-modal data-testid="quote-convert-cta">Siparişe Çevir ve Süreci Başlat</button>
-                            @elseif($isConverted && $linkedOrder)
-                                <a href="{{ route('admin.orders.show', $linkedOrder) }}" class="pd-btn pd-btn-success" data-testid="quote-open-order-button">Siparişi Aç</a>
-                            @else
-                                <span class="pd-btn pd-btn-light pd-btn-disabled" data-testid="quote-convert-cta-disabled" title="{{ $convertSummary }}">Siparişe Çevir ve Süreci Başlat</span>
-                            @endif
-                        </div>
-                    </div>
-
-                    <div class="pqux-action-group">
-                        <div class="pqux-action-group-title">
-                            <strong>İkincil aksiyonlar</strong>
-                            <span>Düzenleme ve kayıt takibi için yardımcı aksiyonlar</span>
-                        </div>
-                        <div class="pqux-action-buttons">
-                            @if($quote->canBeEdited() && ! $isConverted)
-                                <a href="{{ route('admin.promotion-quotes.edit', $quote) }}" class="pd-btn pd-btn-light">Teklifi Düzenle</a>
-                            @endif
-                            <a href="{{ route('admin.promotion-quotes.index') }}" class="pd-btn pd-btn-light">Listeye Dön</a>
-                            <a href="#quote-log-history" class="pd-btn pd-btn-light">Log / Gönderim Geçmişi</a>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <section class="pqux-card">
-                <div class="pqux-card-head">
-                    <div>
-                        <h3>Müşteri Onayı</h3>
-                        <p>Gönderim, görüntüleme ve yanıt durumu satış kararını doğrudan etkiler.</p>
-                    </div>
-                    <span class="pd-badge {{ $approvalCardStatusClass }}">{{ $approvalCardStatusLabel }}</span>
-                </div>
-
-                <div class="pqux-approval-grid">
-                    <div class="pqux-info-box">
-                        <div class="pqux-info-label">Gönderim Durumu</div>
-                        <div class="pqux-info-value">{{ $quote->last_sent_at ? 'Gönderildi' : 'Gönderilmedi' }}</div>
-                    </div>
-                    <div class="pqux-info-box">
-                        <div class="pqux-info-label">Son Gönderim</div>
-                        <div class="pqux-info-value {{ $quote->last_sent_at ? '' : 'muted' }}">{{ $quote->last_sent_at ? $quote->last_sent_at->format('d.m.Y H:i') : 'Henüz gönderilmedi' }}</div>
-                    </div>
-                    <div class="pqux-info-box">
-                        <div class="pqux-info-label">Müşteri Hareketi</div>
-                        <div class="pqux-info-value">{{ $customerResponseSummary }}</div>
-                    </div>
-                    <div class="pqux-info-box">
-                        <div class="pqux-info-label">Görüntülenme</div>
-                        <div class="pqux-info-value {{ $latestApprovalRequest?->viewed_at ? '' : 'muted' }}">{{ $latestApprovalRequest?->viewed_at ? $latestApprovalRequest->viewed_at->format('d.m.Y H:i') : 'Henüz görüntülenmedi' }}</div>
-                    </div>
-                    <div class="pqux-info-box">
-                        <div class="pqux-info-label">Yanıt Tarihi</div>
-                        <div class="pqux-info-value {{ $latestApprovalRequest?->responded_at ? '' : 'muted' }}">{{ $latestApprovalRequest?->responded_at ? $latestApprovalRequest->responded_at->format('d.m.Y H:i') : 'Yanıt bekleniyor' }}</div>
-                    </div>
-                    <div class="pqux-info-box">
-                        <div class="pqux-info-label">Gönderim Kanalı</div>
-                        <div class="pqux-info-value {{ $lastSentChannel ? '' : 'muted' }}">{{ $lastSentChannel ?: 'Kayıt yok' }}</div>
+                    <div class="quote-action-buttons">
+                        <button type="button" class="pd-btn pd-btn-light" data-quote-tab-trigger="send">Gönderim</button>
+                        <button type="button" class="pd-btn pd-btn-light" data-quote-tab-trigger="approval">Müşteri Onayı</button>
+                        <button type="button" class="pd-btn pd-btn-light" data-quote-tab-trigger="history">Geçmiş</button>
                     </div>
                 </div>
 
-                @if($latestCustomerNote)
-                    <div class="pqux-note">Müşteri notu: {{ Str::limit($latestCustomerNote, 220) }}</div>
-                @endif
-
-                <div class="pqux-cta-row">
-                    @if($quote->canBeEdited() && ! $isConverted)
-                        <a href="{{ route('admin.promotion-quotes.edit', $quote) }}" class="pd-btn pd-btn-light">Teklifi Düzenle</a>
-                    @endif
-
-                    @if($canApproveQuotes && ! $isConverted && ! $canConvert)
-                        <form method="POST" action="{{ route('admin.promotion-quotes.mark-approved', $quote) }}">
-                            @csrf
-                            <button type="submit" class="pd-btn pd-btn-success" data-testid="quote-mark-approved-button">Onaylandı İşaretle</button>
-                        </form>
-                    @endif
-
-                    @if($showSendAction)
-                        <button type="button" class="pd-btn pd-btn-primary" data-open-send-modal>{{ $sendActionLabel }}</button>
-                    @endif
-
-                    @if($approvalHelperUrl)
-                        <a href="{{ $approvalHelperUrl }}" class="pd-btn pd-btn-light">Public Onay Linkini Aç</a>
-                    @endif
+                <div class="quote-tab-metrics">
+                    <div class="quote-mini-box"><span>Kalem Sayısı</span><strong>{{ $itemCount }} kalem</strong></div>
+                    <div class="quote-mini-box"><span>Baskı İşlem Sayısı</span><strong>{{ $printCount }} işlem</strong></div>
+                    <div class="quote-mini-box"><span>Teklif Toplamı</span><strong>{{ $moneyText($quote->grand_total, $quote->currency) }}</strong></div>
                 </div>
-            </section>
 
-            <section class="pqux-card">
-                <div class="pqux-card-head">
-                    <div>
-                        <h3>Ürün ve Baskı Kalemleri</h3>
-                        <p>{{ $itemCount }} ürün kalemi, {{ $printCount }} baskı işlemi. Teklifin satış özeti aşağıda korunur.</p>
+                <div class="pd-quote-detail__priority-block pd-product-print-block quote-priority-block quote-priority-block-main">
+                    <div class="pd-product-print-block__head quote-priority-head">
+                        <div>
+                            <h3>Ürün &amp; Baskı Kalemleri</h3>
+                            <p>Kalemler klasik tablo gibi değil, kompakt satır yapısıyla ürün ve baskı hiyerarşisinde gösterilir.</p>
+                        </div>
+                        <span class="quote-chip-soft">{{ $itemCount }} ürün / {{ $printCount }} baskı</span>
                     </div>
-                </div>
 
-                <div class="pqux-item-list">
+                    <div class="pd-product-print-block__body promotion-quote-lines">
+                        <div class="pd-product-print-block__grid-head promotion-quote-lines-head">
+                            <div class="pd-product-print-block__grid-head-row promotion-quote-line-header">
+                                <div class="promotion-quote-line-header-main">Kalem</div>
+                                <div class="promotion-quote-line-header-cell">Adet</div>
+                                <div class="promotion-quote-line-header-cell">Birim Fiyat</div>
+                                <div class="promotion-quote-line-header-cell">Toplam</div>
+                            </div>
+                        </div>
+
+                        <div class="promotion-quote-lines-body">
                     @foreach($quote->items as $index => $item)
                         @php
                             $visiblePrints = $item->prints->filter(function ($print) {
@@ -444,238 +330,478 @@
                                     || (float) $print->print_total > 0
                                     || filled($print->note);
                             })->values();
+                            $productIndex = (string) ($index + 1);
+                            $lineSignals = $buildLineSignals($item);
                         @endphp
-                        <article class="pqux-item">
-                            <div class="pqux-item-top">
-                                <div class="pqux-item-no">{{ $index + 1 }}</div>
-                                <div>
-                                    <div class="pqux-item-title">{{ $item->product_name ?: '-' }}</div>
-                                    <div class="pqux-item-sub">
-                                        <span>{{ $item->product_code ?: '-' }}</span>
-                                        <span>{{ number_format((float) $item->quantity, 2, ',', '.') }} {{ $item->unit }}</span>
-                                    </div>
-                                    @if(filled($item->description))
-                                        <div class="pqux-item-note">{{ $item->description }}</div>
-                                    @endif
+                        <article class="pd-product-print-block__row pd-product-print-block__row--product pd-product-line promotion-quote-line promotion-quote-line-product quote-detail-item quote-item-row">
+                            <div class="pd-product-print-block__index promotion-quote-line-index">{{ $productIndex }}</div>
+                            <div class="pd-product-print-block__main promotion-quote-line-main">
+                                <div class="promotion-quote-line-eyebrow">Ürün Satırı</div>
+                                <h4 class="pd-product-print-block__title promotion-quote-line-title">{{ $item->product_name ?: '-' }}</h4>
+                                <div class="pd-product-print-block__meta promotion-quote-line-meta">
+                                    <span>{{ $item->product_code ?: 'Kod yok' }}</span>
+                                    <span>{{ $visiblePrints->count() }} baskı satırı</span>
                                 </div>
-                                @if($canViewFinancialData)
-                                    <div class="pqux-totals">
-                                        <div class="pqux-money"><span>Ürün birim fiyatı</span><strong>{{ number_format((float) $item->unit_price, 2, ',', '.') }} {{ $quote->currency }}</strong></div>
-                                        <div class="pqux-money"><span>Ürün toplamı</span><strong>{{ number_format((float) $item->line_total, 2, ',', '.') }} {{ $quote->currency }}</strong></div>
+                                @if(! empty($lineSignals))
+                                    <div class="pd-product-print-block__chips pd-product-line__signals" data-live-info-slot>
+                                        @foreach($lineSignals as $signal)
+                                            <span class="pd-chip pd-product-line__signal">{{ $signal }}</span>
+                                        @endforeach
                                     </div>
+                                @else
+                                    <div class="pd-product-print-block__chips pd-product-line__signals" data-live-info-slot hidden></div>
+                                @endif
+                                @if(filled($item->description))
+                                    <div class="promotion-quote-line-note">{{ $item->description }}</div>
                                 @endif
                             </div>
-
-                            @if($visiblePrints->isNotEmpty())
-                                <div class="pqux-print-list">
-                                    @foreach($visiblePrints as $printIndex => $print)
-                                        @php
-                                            $printTitle = trim(collect([$print->print_type, $print->print_option])->filter()->implode(' '));
-                                        @endphp
-                                        <div class="pqux-print">
-                                            <div class="pqux-print-no">{{ ($index + 1) . chr(97 + $printIndex) }}</div>
-                                            <div>
-                                                <div class="pqux-print-title">{{ $printTitle !== '' ? $printTitle : 'Baskı detayı' }}</div>
-                                                <div class="pqux-print-sub">
-                                                    <span>{{ number_format((float) $print->print_quantity, 2, ',', '.') }} adet</span>
-                                                    @if($canViewFinancialData)
-                                                        <span>{{ number_format((float) $print->print_unit_price, 2, ',', '.') }} {{ $quote->currency }}</span>
-                                                        <span>{{ number_format((float) $print->print_total, 2, ',', '.') }} {{ $quote->currency }}</span>
-                                                    @endif
-                                                </div>
-                                                @if(filled($print->note))
-                                                    <div class="pqux-print-note">{{ $print->note }}</div>
-                                                @endif
-                                                @if($canViewFinancialData && $print->setup_pricing_enabled)
-                                                    <div class="pqux-print-note">
-                                                        Ara eleman özeti:
-                                                        {{ $print->setup_type ?: 'Standart setup' }}
-                                                        · {{ $print->setup_status ?: ($print->cliche_status ?: 'Durum belirtilmedi') }}
-                                                        · Toplam: {{ number_format((float) $print->setup_total_amount, 2, ',', '.') }} {{ $quote->currency }}
-                                                        · Birim etki: {{ number_format((float) $print->setup_unit_amount, 2, ',', '.') }} {{ $quote->currency }}
-                                                        · Baskı birim fiyatına dahil
-                                                    </div>
-                                                @endif
-                                            </div>
-                                            @if($canViewFinancialData)
-                                                <div class="pqux-totals">
-                                                    <div class="pqux-money"><span>Birim baskı fiyatı</span><strong>{{ number_format((float) $print->print_unit_price, 2, ',', '.') }} {{ $quote->currency }}</strong></div>
-                                                    <div class="pqux-money"><span>Baskı toplamı</span><strong>{{ number_format((float) $print->print_total, 2, ',', '.') }} {{ $quote->currency }}</strong></div>
-                                                </div>
-                                            @endif
-                                        </div>
-                                    @endforeach
-                                </div>
-                            @endif
+                            <div class="pd-product-print-block__amount promotion-quote-line-cell promotion-quote-line-cell-qty">
+                                <span class="promotion-quote-line-cell-label">Adet</span>
+                                <strong class="promotion-quote-line-cell-value" data-quantity-decimal="{{ $quantityDecimalText($item->quantity) }}">{{ $quantityText($item->quantity, $item->unit) }}</strong>
+                            </div>
+                            <div class="pd-product-print-block__amount promotion-quote-line-cell promotion-quote-line-cell-unit">
+                                <span class="promotion-quote-line-cell-label">Birim Fiyat</span>
+                                <strong class="promotion-quote-line-cell-value">{{ $moneyText($item->unit_price, $quote->currency) }}</strong>
+                            </div>
+                            <div class="pd-product-print-block__amount promotion-quote-line-cell promotion-quote-line-cell-total promotion-quote-line-total">
+                                <span class="promotion-quote-line-cell-label">Ürün toplamı</span>
+                                <strong class="promotion-quote-line-cell-value">{{ $moneyText($item->line_total, $quote->currency) }}</strong>
+                            </div>
                         </article>
+
+                        @foreach($visiblePrints as $printIndex => $print)
+                            @php
+                                $printCode = $productIndex . chr(97 + $printIndex);
+                            @endphp
+                            <article class="pd-product-print-block__row pd-product-print-block__row--print pd-print-line promotion-quote-line promotion-quote-line-print quote-detail-item quote-item-row">
+                                <div class="pd-product-print-block__index promotion-quote-line-index">{{ $printCode }}</div>
+                                <div class="pd-product-print-block__main promotion-quote-line-main">
+                                    <div class="promotion-quote-line-eyebrow">Baskı Satırı</div>
+                                    <h4 class="pd-product-print-block__title promotion-quote-line-title">
+                                        {{ $print->print_type ?: 'Baskı detayı' }}
+                                        @if(filled($print->print_option))
+                                            <span>| {{ $print->print_option }}</span>
+                                        @endif
+                                    </h4>
+                                    @if(filled($print->note))
+                                        <div class="promotion-quote-line-note">{{ $print->note }}</div>
+                                    @endif
+                                </div>
+                                <div class="pd-product-print-block__amount promotion-quote-line-cell promotion-quote-line-cell-qty">
+                                    <span class="promotion-quote-line-cell-label">Adet</span>
+                                    <strong class="promotion-quote-line-cell-value" data-quantity-decimal="{{ $quantityDecimalText($print->print_quantity) }}">{{ $quantityText($print->print_quantity, 'Adet') }}</strong>
+                                </div>
+                                <div class="pd-product-print-block__amount promotion-quote-line-cell promotion-quote-line-cell-unit">
+                                    <span class="promotion-quote-line-cell-label">Birim baskı fiyatı</span>
+                                    <strong class="promotion-quote-line-cell-value">{{ $moneyText($print->print_unit_price, $quote->currency) }}</strong>
+                                </div>
+                                <div class="pd-product-print-block__amount promotion-quote-line-cell promotion-quote-line-cell-total promotion-quote-line-total">
+                                    <span class="promotion-quote-line-cell-label">Baskı toplamı</span>
+                                    <strong class="promotion-quote-line-cell-value">{{ $moneyText($print->print_total, $quote->currency) }}</strong>
+                                </div>
+                            </article>
+                        @endforeach
                     @endforeach
+                        </div>
+                    </div>
+
+                    <div class="pd-product-print-block__foot quote-priority-totals promotion-quote-lines-total-band">
+                        <div class="quote-metric"><span>Ürün Toplamı</span><strong>{{ $moneyText($summaryProductTotal, $quote->currency) }}</strong></div>
+                        <div class="quote-metric"><span>Baskı Toplamı</span><strong>{{ $moneyText($summaryPrintTotal, $quote->currency) }}</strong></div>
+                        <div class="quote-metric"><span>Ara Toplam</span><strong>{{ $moneyText($quote->subtotal, $quote->currency) }}</strong></div>
+                        @if($hasVatSummary)
+                            @foreach($summaryVatRows as $vatRow)
+                                <div class="quote-metric"><span>{{ $vatRow['label'] }}</span><strong>{{ $moneyText($vatRow['amount'], $quote->currency) }}</strong></div>
+                            @endforeach
+                            <div class="quote-metric"><span>KDV Toplamı</span><strong>{{ $moneyText($quote->vat_total, $quote->currency) }}</strong></div>
+                        @endif
+                        <div class="quote-metric"><span>Genel Toplam</span><strong>{{ $moneyText($quote->grand_total, $quote->currency) }}</strong></div>
+                    </div>
+                </div>
+
+                <div class="quote-status-grid">
+                    <div class="quote-status-box">
+                        <span>Gönderim Durumu</span>
+                        <strong>{{ $quote->last_sent_at ? 'Gönderildi' : 'Hazır' }}</strong>
+                    </div>
+                    <div class="quote-status-box">
+                        <span>Gönderim Kanalı</span>
+                        <strong>{{ $lastSentChannel }}</strong>
+                    </div>
+                    <div class="quote-status-box">
+                        <span>Müşteri Hareketi</span>
+                        <strong>{{ $customerResponseSummary }}</strong>
+                    </div>
+                    <div class="quote-status-box">
+                        <span>Siparişe Geçiş</span>
+                        <strong>{{ $isConverted ? 'Başladı' : ($canConvert ? 'Hazır' : 'Bekliyor') }}</strong>
+                    </div>
+                </div>
+            </section>
+
+            <section class="pd-card quote-card quote-tabs-shell" data-testid="quote-detail-tabs-shell">
+                <div class="quote-tabs" role="tablist">
+                    <button type="button" class="quote-tab-button is-active" data-quote-tab="items">Ürün &amp; Baskı</button>
+                    <button type="button" class="quote-tab-button" data-quote-tab="send">Gönderim</button>
+                    <button type="button" class="quote-tab-button" data-quote-tab="approval">Müşteri Onayı</button>
+                    <button type="button" class="quote-tab-button" data-quote-tab="history">Geçmiş</button>
+                    <button type="button" class="quote-tab-button" data-quote-tab="notes">Notlar</button>
+                </div>
+
+                <div class="quote-tab-panel is-active" data-quote-panel="items">
+                    <div class="quote-card-head">
+                        <div>
+                            <h3>Ürün &amp; Baskı Detayı</h3>
+                            <p>Yukarıda öncelikli blokta kısa ve kompakt hali görünen kalemlerin detay kontrol alanı.</p>
+                        </div>
+                        <span class="quote-chip-soft">Detay kontrol</span>
+                    </div>
+
+                    <div class="quote-tab-metrics">
+                        <div class="quote-mini-box"><span>Toplam Ürün Kalemi</span><strong>{{ $itemCount }} kalem</strong></div>
+                        <div class="quote-mini-box"><span>Toplam Baskı İşlemi</span><strong>{{ $printCount }} işlem</strong></div>
+                        <div class="quote-mini-box"><span>Teklif Toplamı</span><strong>{{ $moneyText($quote->grand_total, $quote->currency) }}</strong></div>
+                    </div>
+
+                    <div class="quote-note-box">
+                        Bu sekme detay kontrol içindir. Günlük kullanımda önce görülmesi gereken ürün ve baskı listesi artık üst akış özetinde yer alır.
+                    </div>
+                </div>
+
+                <div class="quote-tab-panel" data-quote-panel="send">
+                    <div class="quote-card-head">
+                        <div>
+                            <h3>Gönderim</h3>
+                            <div class="quote-inline-note">Gönderim Aksiyonları</div>
+                            <p>Standart Gönderim, E-posta Önizleme ve WhatsApp Link ayrımı hotfix davranışı korunarak sunulur.</p>
+                        </div>
+                    </div>
+
+                    <div class="quote-send-grid">
+                        <div class="quote-send-card is-active">
+                            <h3>Standart Gönderim</h3>
+                            <p>E-posta varsa mail gönderir. Gönderim kaydı oluşturur.</p>
+                        </div>
+                        <div class="quote-send-card">
+                            <h3>E-posta Önizleme</h3>
+                            <p>Mail göndermez. Sadece e-posta içeriğini kontrol eder.</p>
+                        </div>
+                        <div class="quote-send-card">
+                            <h3>WhatsApp Link</h3>
+                            <p>E-posta istemez. Telefon yeterlidir. Link ayrı satırda tam URL olarak hazırlanır.</p>
+                        </div>
+                    </div>
+
+                    <div class="quote-send-form-grid">
+                        <div class="quote-send-field">
+                            <label>Alıcı Adı</label>
+                            <input type="text" value="{{ old('contact_name', $latestApprovalRequest?->contact_name ?: ($quote->customer?->legal_name ?: '-')) }}" readonly>
+                        </div>
+                        <div class="quote-send-field">
+                            <label>E-posta</label>
+                            <input type="text" value="{{ old('contact_email', $latestApprovalRequest?->contact_email ?: ($quote->customer?->email ?: '-')) }}" readonly>
+                        </div>
+                        <div class="quote-send-field">
+                            <label>WhatsApp telefonu</label>
+                            <input type="text" value="{{ old('contact_phone', $recipientPhoneDisplay ?: '-') }}" readonly>
+                        </div>
+                        <div class="quote-send-field">
+                            <label>Aksiyon</label>
+                            @if($showSendAction)
+                                <button type="button" class="pd-btn pd-btn-primary w-full" data-open-send-modal>{{ $sendActionLabel }}</button>
+                            @else
+                                <span class="pd-btn pd-btn-light pd-btn-disabled">Gönderim kapalı</span>
+                            @endif
+                        </div>
+                    </div>
+
+                    <div class="quote-action-buttons">
+                        @if($showSendAction)
+                            <button type="button" class="pd-btn pd-btn-primary" data-open-send-modal>Müşteriye Gönder</button>
+                        @endif
+                        @if($approvalHelperUrl)
+                            <a href="{{ $approvalHelperUrl }}" class="pd-btn pd-btn-light">Public Onay Linkini Aç</a>
+                        @endif
+                        @if($whatsappAvailable && $whatsappReady)
+                            <form method="POST" action="{{ route('admin.promotion-quotes.whatsapp.open', $quote) }}">
+                                @csrf
+                                <button type="submit" class="pd-btn pd-btn-light">WhatsApp Gönder</button>
+                            </form>
+                        @elseif($whatsappAvailable)
+                            <span class="pd-btn pd-btn-light pd-btn-disabled" data-testid="quote-whatsapp-send-disabled">Telefon yok</span>
+                        @endif
+                    </div>
+
+                </div>
+
+                <div class="quote-tab-panel" data-quote-panel="approval">
+                    <div class="quote-card-head">
+                        <div>
+                            <h3>Müşteri Onayı</h3>
+                            <p>Dört adımlı takip alanı: teklif hazır, gönderildi, müşteri yanıtı ve siparişe çevirme.</p>
+                        </div>
+                    </div>
+
+                    <div class="quote-step-line">
+                        <div class="quote-step is-done">
+                            <div class="quote-step-badge">1</div>
+                            <span>Teklif Hazır</span>
+                            <strong>{{ $quote->document_number }}</strong>
+                        </div>
+                        <div class="quote-step {{ $quote->last_sent_at ? 'is-done' : 'is-wait' }}">
+                            <div class="quote-step-badge">2</div>
+                            <span>Gönderildi</span>
+                            <strong>{{ $quote->last_sent_at ? $quote->last_sent_at->format('d.m.Y H:i') : 'Henüz gönderilmedi' }}</strong>
+                        </div>
+                        <div class="quote-step {{ $latestApprovalRequest?->responded_at || $latestApprovalRequest?->viewed_at ? 'is-wait' : '' }}">
+                            <div class="quote-step-badge">3</div>
+                            <span>Müşteri Yanıtı</span>
+                            <strong>{{ $customerResponseSummary }}</strong>
+                        </div>
+                        <div class="quote-step {{ $isConverted || $canConvert ? 'is-wait' : '' }}">
+                            <div class="quote-step-badge">4</div>
+                            <span>Siparişe Çevir</span>
+                            <strong>{{ $isConverted ? 'Başladı' : ($canConvert ? 'Hazır' : 'Bekliyor') }}</strong>
+                        </div>
+                    </div>
+
+                    @if(filled($latestApprovalRequest?->customer_note))
+                        <div class="quote-note-box">{{ $latestApprovalRequest->customer_note }}</div>
+                    @endif
+
+                    <div class="quote-action-buttons">
+                        @if($canApproveQuotes && ! $isConverted && ! $canConvert)
+                            <form method="POST" action="{{ route('admin.promotion-quotes.mark-approved', $quote) }}">
+                                @csrf
+                                <button type="submit" class="pd-btn pd-btn-success" data-testid="quote-mark-approved-button">Onaylandı İşaretle</button>
+                            </form>
+                        @endif
+                        @if($approvalHelperUrl)
+                            <a href="{{ $approvalHelperUrl }}" class="pd-btn pd-btn-light">Public Onay Linkini Aç</a>
+                        @endif
+                        @if($showSendAction)
+                            <button type="button" class="pd-btn pd-btn-primary" data-open-send-modal>{{ $sendActionLabel }}</button>
+                        @endif
+                        @if($canConvert)
+                            <button type="button" class="pd-btn pd-btn-success" data-open-convert-modal data-testid="quote-convert-cta">Siparişe Çevir ve Süreci Başlat</button>
+                        @elseif($showConvertPlaceholder)
+                            <span class="pd-btn pd-btn-light pd-btn-disabled" aria-disabled="true">Siparişe Çevir ve Süreci Başlat</span>
+                        @endif
+                    </div>
+                </div>
+
+                <div class="quote-tab-panel" data-quote-panel="history" id="quote-log-history">
+                    <div class="quote-card-head">
+                        <div>
+                            <h3>Gönderim Geçmişi</h3>
+                            <p>Gönderim Geçmişi ve İkincil Bilgiler burada tam liste halinde tutulur.</p>
+                        </div>
+                    </div>
+
+                    <div class="quote-log-list">
+                        @forelse($notificationLogRows as $log)
+                            <div class="quote-log-row">
+                                <div class="quote-log-top">
+                                    <div>
+                                        <strong>{{ $log['channel'] }} · {{ $log['status'] }}</strong>
+                                        <div class="quote-log-meta">
+                                            <span>{{ $log['date'] ?: '-' }}</span>
+                                            <span>Alıcı: {{ $log['recipient'] }}</span>
+                                        </div>
+                                    </div>
+                                    <span class="quote-chip-soft">{{ $log['channel'] }}</span>
+                                </div>
+                                <div class="quote-log-detail">{{ $log['detail'] }}</div>
+                            </div>
+                        @empty
+                            <div class="quote-history-row">
+                                <span>Teklif oluşturuldu</span>
+                                <strong>Henüz gönderim kaydı yok</strong>
+                            </div>
+                        @endforelse
+
+                        @foreach($sendHistoryRows as $history)
+                            <div class="quote-history-row">
+                                <div>
+                                    <span>{{ $history['date'] }} · {{ $history['channel'] }}</span>
+                                </div>
+                                <strong>{{ $history['recipient'] }} · {{ $history['status'] }}</strong>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+
+                <div class="quote-tab-panel" data-quote-panel="notes">
+                    <div class="quote-card-head">
+                        <div>
+                            <h3>Notlar</h3>
+                            <p>İç not alanı. Müşteriyle paylaşılmayan satış ve operasyon notu burada görünür.</p>
+                        </div>
+                    </div>
+
+                    <div class="quote-note-box">
+                        {{ filled($quote->notes) ? $quote->notes : 'Bu teklife ait ek iç not bulunmuyor.' }}
+                    </div>
                 </div>
             </section>
         </div>
 
-        <div class="pqux-stack">
-            <section class="pqux-card">
-                <div class="pqux-card-head">
-                    <div>
-                        <h3>Siparişe Çevirme</h3>
-                        <p>Bu teklifin siparişe dönüşmeye hazır olup olmadığı burada sade dille görünür.</p>
-                    </div>
+        <aside class="pd-summary quote-right-stack">
+            <section class="pd-card pd-summary quote-right-summary">
+                <h3>Teklif Özeti</h3>
+                @if($canViewFinancialData)
+                    <div class="quote-summary-line"><span>Ürün Toplamı</span><strong>{{ $moneyText($summaryProductTotal, $quote->currency) }}</strong></div>
+                    <div class="quote-summary-line"><span>Baskı Toplamı</span><strong>{{ $moneyText($summaryPrintTotal, $quote->currency) }}</strong></div>
+                    <div class="quote-summary-line"><span>Ara Toplam</span><strong>{{ $moneyText($quote->subtotal, $quote->currency) }}</strong></div>
+                    <div class="quote-summary-line"><span>Genel Toplam</span><strong>{{ $moneyText($quote->grand_total, $quote->currency) }}</strong></div>
+                @else
+                    <div class="quote-summary-line"><span>Kalem / Baskı</span><strong>{{ $itemCount }} kalem / {{ $printCount }} baskı</strong></div>
+                    <div class="quote-summary-line"><span>Finans Görünümü</span><strong>Gizli</strong></div>
+                    <div class="quote-note-box pd-quote-detail__masked-summary">Finansal toplamlar bu kullanıcı için gizli tutulur.</div>
+                @endif
+            </section>
+
+            <section class="pd-card pd-summary quote-right-summary">
+                <h3>Hızlı Aksiyon</h3>
+                <div class="quote-inline-note">Birincil satış aksiyonları</div>
+                <div class="quote-quick-actions">
+                    @if($showSendAction)
+                        <button type="button" class="pd-btn pd-btn-primary" data-open-send-modal>Müşteriye Gönder</button>
+                    @endif
+                    @if($quotePdfAvailable)
+                        <a href="{{ route('admin.promotion-quotes.pdf', $quote) }}" class="pd-btn pd-btn-light" target="_blank" rel="noopener">PDF</a>
+                    @endif
+                    @if($approvalHelperUrl)
+                        <a href="{{ $approvalHelperUrl }}" class="pd-btn pd-btn-light">Public Onay Linkini Aç</a>
+                    @endif
+                    @if($whatsappAvailable && $whatsappReady)
+                        <form method="POST" action="{{ route('admin.promotion-quotes.whatsapp.open', $quote) }}">
+                            @csrf
+                            <button type="submit" class="pd-btn pd-btn-light">WhatsApp Gönder</button>
+                        </form>
+                    @elseif($whatsappAvailable)
+                        <span class="pd-btn pd-btn-light pd-btn-disabled" data-testid="quote-whatsapp-send-disabled">Telefon yok</span>
+                    @endif
+                    @if($canApproveQuotes && ! $isConverted && ! $canConvert)
+                        <form method="POST" action="{{ route('admin.promotion-quotes.mark-approved', $quote) }}">
+                            @csrf
+                            <button type="submit" class="pd-btn pd-btn-success">Onayla</button>
+                        </form>
+                    @endif
                     @if($canConvert)
-                        <span class="pd-badge pd-badge-green">Hazır</span>
-                    @else
-                        <span class="pd-badge pd-badge-slate">Bekliyor</span>
+                        <button type="button" class="pd-btn pd-btn-success" data-open-convert-modal data-testid="quote-convert-cta">Siparişe Çevir ve Süreci Başlat</button>
+                    @elseif($showConvertPlaceholder)
+                        <span class="pd-btn pd-btn-light pd-btn-disabled" aria-disabled="true">Siparişe Çevir ve Süreci Başlat</span>
+                    @endif
+                    @if($isConverted && $linkedOrder)
+                        <a href="{{ route('admin.orders.show', $linkedOrder) }}" class="pd-btn pd-btn-light" data-testid="quote-open-order-button">Siparişi Aç</a>
                     @endif
                 </div>
-
-                <div class="pqux-convert">
-                    <strong>{{ $convertSummary }}</strong>
-                    <span>{{ $canConvert ? 'Siparişe çevirerek grafik, tedarik, üretim ve teslimat akışını başlatabilirsiniz.' : $decisionSupport }}</span>
-                </div>
-
-                @if(! $canConvert && ! empty($convertIssues))
-                    <div class="pqux-note">
-                        <div>Bu kayıt teklif aşamasındadır. Onaylandıktan sonra siparişe çevrilir.</div>
-                        <div>{{ collect($convertIssues)->implode(' ') }}</div>
-                    </div>
-                @endif
             </section>
 
-            <section class="pqux-card">
-                <div class="pqux-card-head">
-                    <div>
-                        <h3>Teklif Özeti</h3>
-                        <p>Satış toplamları teklif bağlamında korunur.</p>
-                    </div>
+            <section class="pd-card pd-summary quote-right-summary">
+                <h3>Karar Bilgisi</h3>
+                <div class="quote-decision-list">
+                    <div class="quote-mini-box"><span>Durum</span><strong>{{ $displayStatusLabel }}</strong></div>
+                    <div class="quote-mini-box"><span>Son kanal</span><strong>{{ $lastSentChannel }}</strong></div>
+                    <div class="quote-mini-box"><span>Görüntülenme</span><strong>{{ $latestApprovalRequest?->viewed_at ? $latestApprovalRequest->viewed_at->format('d.m.Y H:i') : 'Henüz görüntülenmedi' }}</strong></div>
+                    <div class="quote-mini-box"><span>Siparişe çevirme</span><strong>{{ $convertSummary }}</strong></div>
                 </div>
-                @if($canViewFinancialData)
-                    <div class="pqux-total-table">
-                        <div class="pqux-total-row">
-                            <span>Ürün Toplamı</span>
-                            <strong>{{ number_format((float) $quote->product_total, 2, ',', '.') }} {{ $quote->currency }}</strong>
-                        </div>
-                        <div class="pqux-total-row">
-                            <span>Baskı Toplamı</span>
-                            <strong>{{ number_format((float) $quote->print_total, 2, ',', '.') }} {{ $quote->currency }}</strong>
-                        </div>
-                        <div class="pqux-total-row">
-                            <span>Ara Toplam</span>
-                            <strong>{{ number_format((float) $quote->subtotal, 2, ',', '.') }} {{ $quote->currency }}</strong>
-                        </div>
-                        @if($hasVatSummary)
-                            @foreach($summaryVatRows as $vatRow)
-                                <div class="pqux-total-row">
-                                    <span>{{ $vatRow['label'] }}</span>
-                                    <strong>{{ number_format((float) $vatRow['amount'], 2, ',', '.') }} {{ $quote->currency }}</strong>
-                                </div>
-                            @endforeach
-                            <div class="pqux-total-row">
-                                <span>KDV Toplamı</span>
-                                <strong>{{ number_format((float) $quote->vat_total, 2, ',', '.') }} {{ $quote->currency }}</strong>
-                            </div>
-                        @endif
-                        <div class="pqux-total-row grand">
-                            <span>Genel Toplam</span>
-                            <strong>{{ number_format((float) $quote->grand_total, 2, ',', '.') }} {{ $quote->currency }}</strong>
-                        </div>
-                    </div>
-                @else
-                    <div class="pqux-note"><strong>Gizli</strong> · Finansal bilgiler yetkiniz dışında gizlendi.</div>
-                @endif
             </section>
 
-            <section class="pqux-card pqux-history" id="quote-log-history">
-                <div class="pqux-card-head" style="margin-bottom:0;">
-                    <div>
-                        <h3>Son Gönderim Kayıtları</h3>
-                        <p>E-posta, WhatsApp ve iç kayıt hareketleri kısa ve güvenli özetlerle gösterilir.</p>
-                    </div>
-                </div>
-                <div class="pqux-history-list">
-                    @forelse($notificationLogRows as $log)
-                        <div class="pqux-log-row">
-                            <div class="pqux-log-top">
-                                <div>
-                                    <strong>{{ $log['channel'] }} · {{ $log['status'] }}</strong>
-                                    <div class="pqux-log-meta">
-                                        <span>{{ $log['date'] ?: '-' }}</span>
-                                        <span>Alıcı: {{ $log['recipient'] }}</span>
-                                    </div>
-                                </div>
-                                <span class="pd-badge pd-badge-slate">{{ $log['channel'] }}</span>
+            <section class="pd-card pd-summary quote-right-summary">
+                <h3>Son Kayıtlar</h3>
+                <div class="quote-inline-note">Son Gönderim Kayıtları</div>
+                <div class="quote-inline-note">Son Oluşturulan Kayıtlar</div>
+                <div class="quote-inline-note">Bu ortamda dış e-posta yerine güvenli önizleme kaydı tutulur.</div>
+                <div class="quote-mini-log-list">
+                    @forelse($recentLogRows as $log)
+                        @php
+                            $legacyChannelLabel = match ($log['channel']) {
+                                'İç Bildirim' => 'İç Kayıt',
+                                'WhatsApp Link' => 'WhatsApp',
+                                default => $log['channel'],
+                            };
+                        @endphp
+                        <div class="quote-mini-log">
+                            <div class="quote-mini-log-top">
+                                <strong>{{ $log['channel'] }}</strong>
+                                <span class="quote-chip-soft">{{ $log['status'] }}</span>
                             </div>
-                            <div class="pqux-log-detail">{{ $log['detail'] }}</div>
+                            <div class="quote-mini-log-meta">
+                                <span>{{ $log['date'] ?: '-' }}</span>
+                                <span>{{ $log['recipient'] }}</span>
+                            </div>
+                            <div class="quote-inline-note">{{ $legacyChannelLabel }}: {{ $log['status'] }}</div>
                         </div>
                     @empty
-                        <div class="pqux-history-row">
-                            <span>Henüz gönderim kaydı yok</span>
-                            <strong>-</strong>
+                        <div class="quote-mini-log">
+                            <strong>Teklif oluşturuldu</strong>
+                            <div class="quote-mini-log-meta"><span>Henüz gönderim kaydı yok</span></div>
                         </div>
                     @endforelse
                 </div>
             </section>
-
-            <section class="pqux-card pqux-history">
-                <details>
-                    <summary>Gönderim Geçmişi ve İkincil Bilgiler</summary>
-                    <div class="pqux-history-list">
-                        @forelse($sendHistoryRows as $history)
-                            <div class="pqux-history-row">
-                                <span>{{ $history['date'] }} · {{ $history['channel'] }}</span>
-                                <strong>{{ $history['recipient'] }} · {{ $history['status'] }}</strong>
-                            </div>
-                        @empty
-                            <div class="pqux-history-row">
-                                <span>Henüz gönderim yok</span>
-                                <strong>-</strong>
-                            </div>
-                        @endforelse
-                    </div>
-                </details>
-            </section>
-        </div>
+        </aside>
     </div>
 </div>
 
 @if($showSendAction)
-    <div class="pqd-modal" id="quoteSendModal" aria-hidden="true">
-        <div class="pqd-modal-panel" role="dialog" aria-modal="true" aria-labelledby="quote-send-modal-title">
-            <div class="pqd-card-title" id="quote-send-modal-title">Müşteriye Gönder</div>
-            <div class="pqd-card-note">Gönderim bilgilerini kontrol edin.</div>
-            <form method="POST" action="{{ route('admin.promotion-quotes.send-to-customer', $quote) }}" class="mt-4">
+    <div class="pd-quote-detail pd-modal promotion-quote-detail quote-detail-compact quote-send-modal quote-send-modal-backdrop quote-detail-modal-backdrop" id="quoteSendModal" aria-hidden="true">
+        <div class="quote-send-modal-panel quote-detail-modal" role="dialog" aria-modal="true" aria-labelledby="quote-send-modal-title">
+            <div class="quote-send-modal-head">
+                <div>
+                    <h2 id="quote-send-modal-title">Müşteriye Gönder</h2>
+                    <p>Kanalı seçin. WhatsApp link için e-posta şartı yoktur.</p>
+                </div>
+                <button type="button" class="quote-modal-close" data-close-send-modal aria-label="Kapat">×</button>
+            </div>
+
+            <form method="POST" action="{{ route('admin.promotion-quotes.send-to-customer', $quote) }}" class="quote-send-modal-body">
                 @csrf
-                <div class="pqd-modal-grid">
-                    <div class="pqd-box">
-                        <div class="pqd-label">Alıcı Adı</div>
-                        <input type="text" name="contact_name" value="{{ old('contact_name', $quote->customer?->legal_name) }}" class="mt-2 w-full border border-gray-300 rounded px-3 py-2">
+                <input type="hidden" name="sent_channel" value="" data-send-channel-input>
+
+                <div class="quote-channel-pills">
+                    <button type="button" class="quote-channel-pill" data-send-pill-index="0">Standart Gönderim</button>
+                    <button type="button" class="quote-channel-pill" data-send-pill-index="1">E-posta Önizleme</button>
+                    <button type="button" class="quote-channel-pill" data-send-pill-index="2">WhatsApp Link</button>
+                </div>
+
+                <div class="quote-send-modal-grid">
+                    <div class="quote-send-modal-field">
+                        <label>Alıcı Adı</label>
+                        <input type="text" name="contact_name" value="{{ old('contact_name', $latestApprovalRequest?->contact_name ?: ($quote->customer?->legal_name ?: '')) }}">
                     </div>
-                    <div class="pqd-box">
-                        <div class="pqd-label">Geçerlilik Süresi</div>
-                        <input type="number" name="expires_in_days" min="1" max="30" value="{{ old('expires_in_days', 7) }}" class="mt-2 w-full border border-gray-300 rounded px-3 py-2">
+                    <div class="quote-send-modal-field">
+                        <label>Geçerlilik Süresi</label>
+                        <input type="number" name="expires_in_days" min="1" max="30" value="{{ old('expires_in_days', 7) }}">
                     </div>
-                    <div class="pqd-box">
-                        <div class="pqd-label">E-posta</div>
-                        <input type="email" name="contact_email" value="{{ old('contact_email', $quote->customer?->email) }}" class="mt-2 w-full border border-gray-300 rounded px-3 py-2">
+                    <div class="quote-send-modal-field">
+                        <label>E-posta</label>
+                        <input type="email" name="contact_email" value="{{ old('contact_email', $latestApprovalRequest?->contact_email ?: ($quote->customer?->email ?: '')) }}">
                     </div>
-                    <div class="pqd-box">
-                        <div class="pqd-label">WhatsApp Cep Telefonu</div>
-                        <div class="mt-2" style="display:flex; align-items:center; border:1px solid #d1d5db; border-radius:8px; overflow:hidden; background:#fff;">
-                            <span style="display:inline-flex; align-items:center; gap:8px; padding:0 12px; min-height:42px; background:#f8fafc; border-right:1px solid #e5e7eb; color:#344054; font-size:13px; white-space:nowrap;">🇹🇷 +90</span>
-                            <input type="text" name="contact_phone" value="{{ app(\App\Services\PhoneNumberNormalizer::class)->formatTurkishPhoneForDisplay(old('contact_phone', $quote->customer?->mobile ?: $quote->customer?->phone)) ?: old('contact_phone', $quote->customer?->mobile ?: $quote->customer?->phone) }}" class="w-full border-0 rounded-none px-3 py-2" placeholder="5xx xxx xx xx">
+                    <div class="quote-send-modal-field">
+                        <label>WhatsApp telefonu</label>
+                        <input type="text" name="contact_phone" value="{{ app(\App\Services\PhoneNumberNormalizer::class)->formatTurkishPhoneForDisplay(old('contact_phone', $latestApprovalRequest?->contact_phone ?: ($quote->customer?->mobile ?: $quote->customer?->phone))) ?: old('contact_phone', $latestApprovalRequest?->contact_phone ?: ($quote->customer?->mobile ?: $quote->customer?->phone)) }}" placeholder="05** *** ** ** veya 0212 *** ** **">
+                        <div class="quote-inline-note">Örnek: 05** *** ** ** veya 0212 *** ** **</div>
+                    </div>
+                    <div class="quote-send-modal-field quote-send-modal-grid-full">
+                        <label>WhatsApp mesajı / önizleme mesajı</label>
+                        <textarea readonly data-send-preview-message>{{ $initialPreviewMessage }}</textarea>
+                        <div class="quote-inline-note" data-send-channel-helper>
+                            Public link ayrı satırda tam URL olarak üretilir.
                         </div>
                     </div>
                 </div>
-                    <div class="pqd-box mt-3">
-                    <div class="pqd-label">Kanal</div>
-                    <select name="sent_channel" class="mt-2 w-full border border-gray-300 rounded px-3 py-2">
-                        <option value="manual">Standart Gönderim</option>
-                        <option value="email">E-posta Önizleme</option>
-                        <option value="whatsapp_link">WhatsApp Link</option>
-                    </select>
-                </div>
-                <div class="pqd-note mt-3">Gönderilen teklif hali kayıt altına alınır.</div>
-                <div class="pqd-actions mt-4">
-                    <button type="button" class="pd-btn pd-btn-light" data-close-send-modal>Vazgeç</button>
-                    <button type="submit" class="pd-btn pd-btn-primary">Gönder</button>
+
+                <div class="quote-send-modal-actions">
+                    <small>
+                        Gönder / Link Oluştur akışı kayıt altına alınır. Standart Gönderim mail ister. E-posta Önizleme mail göndermez. WhatsApp Link yalnız telefon ile çalışır.
+                    </small>
+                    <div class="quote-bottom-actions">
+                        <button type="button" class="pd-btn pd-btn-light" data-close-send-modal>Vazgeç</button>
+                        <button type="submit" class="pd-btn pd-btn-primary" data-send-submit-button>Gönder / Link Oluştur</button>
+                    </div>
                 </div>
             </form>
         </div>
@@ -683,22 +809,32 @@
 @endif
 
 @if($canConvert)
-    <div class="pqd-modal" id="quoteConvertModal" aria-hidden="true">
-        <div class="pqd-modal-panel" role="dialog" aria-modal="true" aria-labelledby="quote-convert-modal-title">
-            <div class="pqd-card-title" id="quote-convert-modal-title">Siparişe Çevir</div>
-            <div class="pqd-card-note">Onaylanan teklif siparişe dönüşünce süreç başlar.</div>
-            <div class="pqd-modal-grid mt-4">
-                <div class="pqd-box"><div class="pqd-label">Teklif No</div><div class="pqd-value">{{ $quote->document_number }}</div></div>
-                <div class="pqd-box"><div class="pqd-label">Müşteri</div><div class="pqd-value">{{ $quote->customer?->legal_name ?: '-' }}</div></div>
-                <div class="pqd-box"><div class="pqd-label">Onay Durumu</div><div class="pqd-value">{{ $displayStatusLabel }}</div></div>
-                <div class="pqd-box"><div class="pqd-label">Bilgi</div><div class="pqd-value">Süreç başlayacak</div></div>
+    <div class="pd-quote-detail pd-modal promotion-quote-detail quote-detail-compact quote-send-modal quote-send-modal-backdrop quote-detail-modal-backdrop" id="quoteConvertModal" aria-hidden="true">
+        <div class="quote-send-modal-panel quote-detail-modal" role="dialog" aria-modal="true" aria-labelledby="quote-convert-modal-title">
+            <div class="quote-send-modal-head">
+                <div>
+                    <h2 id="quote-convert-modal-title">Siparişe Çevir</h2>
+                    <p>Onaylanan teklif siparişe dönüşünce süreç başlar.</p>
+                </div>
+                <button type="button" class="quote-modal-close" data-close-convert-modal aria-label="Kapat">×</button>
             </div>
-            <div class="pqd-actions mt-4">
-                <button type="button" class="pd-btn pd-btn-light" data-close-convert-modal>Vazgeç</button>
-                <form method="POST" action="{{ route('admin.orders.convert.from.quote', $quote) }}" data-testid="quote-convert-form">
-                    @csrf
-                    <button type="submit" class="pd-btn pd-btn-success">Siparişe Çevir</button>
-                </form>
+            <div class="quote-send-modal-body">
+                <div class="quote-send-modal-grid">
+                    <div class="quote-mini-box"><span>Teklif No</span><strong>{{ $quote->document_number }}</strong></div>
+                    <div class="quote-mini-box"><span>Müşteri</span><strong>{{ $quote->customer?->legal_name ?: '-' }}</strong></div>
+                    <div class="quote-mini-box"><span>Onay Durumu</span><strong>{{ $displayStatusLabel }}</strong></div>
+                    <div class="quote-mini-box"><span>Bilgi</span><strong>Süreç başlayacak</strong></div>
+                </div>
+                <div class="quote-send-modal-actions">
+                    <small>Siparişe çevirme mevcut kurallara bağlı kalır.</small>
+                    <div class="quote-bottom-actions">
+                        <button type="button" class="pd-btn pd-btn-light" data-close-convert-modal>Vazgeç</button>
+                        <form method="POST" action="{{ route('admin.orders.convert.from.quote', $quote) }}" data-testid="quote-convert-form">
+                            @csrf
+                            <button type="submit" class="pd-btn pd-btn-success">Siparişe Çevir</button>
+                        </form>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -706,53 +842,79 @@
 @endsection
 
 @section('bottom_actions')
-<div>
-    <strong>Teklif Akışı:</strong>
-    <span class="pd-muted">{{ $decisionHeadline }} {{ $decisionSupport }}</span>
-</div>
-<div class="pd-bottom-action-buttons">
-    <a href="{{ route('admin.promotion-quotes.index') }}" class="pd-btn pd-btn-light">Teklifleri Listele</a>
-    @if($quote->canBeEdited() && !$isConverted)
-        <a href="{{ route('admin.promotion-quotes.edit', $quote) }}" class="pd-btn pd-btn-primary">Düzenle</a>
-    @endif
-    @if($showSendAction)
-        <button type="button" class="pd-btn pd-btn-light" data-open-send-modal>{{ $sendActionLabel }}</button>
-    @endif
-    @if($approvalHelperUrl)
-        <a href="{{ $approvalHelperUrl }}" class="pd-btn pd-btn-light">Public Onay Linkini Aç</a>
-    @endif
-    @if($canApproveQuotes && !$isConverted && !$canConvert)
-        <form method="POST" action="{{ route('admin.promotion-quotes.mark-approved', $quote) }}">
-            @csrf
-            <button type="submit" class="pd-btn pd-btn-success" data-testid="quote-mark-approved-button">Onaylandı İşaretle</button>
-        </form>
-    @endif
-    @if($canConvert)
-        <button type="button" class="pd-btn pd-btn-success" data-open-convert-modal data-testid="quote-convert-cta">Siparişe Çevir ve Süreci Başlat</button>
-    @endif
-    @if($isConverted && $linkedOrder)
-        <a href="{{ route('admin.orders.show', $linkedOrder) }}" class="pd-btn pd-btn-success">Siparişi Aç</a>
-    @endif
+<div class="pd-quote-detail pd-sticky-bar promotion-quote-detail quote-detail-compact quote-bottom-bar">
+    <div>
+        <strong>Teklif Akışı:</strong>
+        <span>Önce ürün &amp; baskı kontrolü, sonra gönderim/onay/siparişe çevirme.</span>
+    </div>
+    <div class="quote-bottom-actions">
+        <a href="{{ route('admin.promotion-quotes.index') }}" class="pd-btn pd-btn-light">Teklifleri Listele</a>
+        @if($quote->canBeEdited() && ! $isConverted)
+            <a href="{{ route('admin.promotion-quotes.edit', $quote) }}" class="pd-btn pd-btn-primary">Düzenle</a>
+        @endif
+        @if($showSendAction)
+            <button type="button" class="pd-btn pd-btn-light" data-open-send-modal>{{ $sendActionLabel }}</button>
+        @endif
+        @if($canApproveQuotes && ! $isConverted && ! $canConvert)
+            <form method="POST" action="{{ route('admin.promotion-quotes.mark-approved', $quote) }}">
+                @csrf
+                <button type="submit" class="pd-btn pd-btn-success" data-testid="quote-mark-approved-button">Onaylandı İşaretle</button>
+            </form>
+        @endif
+        @if($canConvert)
+            <button type="button" class="pd-btn pd-btn-success" data-open-convert-modal data-testid="quote-bottom-convert-cta">Siparişe Çevir</button>
+        @elseif($showConvertPlaceholder)
+            <span class="pd-btn pd-btn-light pd-btn-disabled" aria-disabled="true">Siparişe Çevir</span>
+        @endif
+    </div>
 </div>
 @endsection
 
 @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    function activateQuoteTab(tabName) {
+        document.querySelectorAll('[data-quote-tab]').forEach(function (button) {
+            button.classList.toggle('is-active', button.getAttribute('data-quote-tab') === tabName);
+        });
+
+        document.querySelectorAll('[data-quote-panel]').forEach(function (panel) {
+            panel.classList.toggle('is-active', panel.getAttribute('data-quote-panel') === tabName);
+        });
+    }
+
+    document.querySelectorAll('[data-quote-tab]').forEach(function (button) {
+        button.addEventListener('click', function () {
+            activateQuoteTab(button.getAttribute('data-quote-tab'));
+        });
+    });
+
+    document.querySelectorAll('[data-quote-tab-trigger]').forEach(function (button) {
+        button.addEventListener('click', function () {
+            activateQuoteTab(button.getAttribute('data-quote-tab-trigger'));
+        });
+    });
+
     function bindModal(modalId, openSelector, closeSelector) {
         var modal = document.getElementById(modalId);
         if (!modal) {
-            return;
+            return null;
         }
+
+        var body = document.body;
 
         function openModal() {
             modal.classList.add('is-open');
             modal.setAttribute('aria-hidden', 'false');
+            body.classList.add('pd-modal-open');
         }
 
         function closeModal() {
             modal.classList.remove('is-open');
             modal.setAttribute('aria-hidden', 'true');
+            if (!document.querySelector('.quote-send-modal.is-open')) {
+                body.classList.remove('pd-modal-open');
+            }
         }
 
         document.querySelectorAll(openSelector).forEach(function (button) {
@@ -768,18 +930,111 @@ document.addEventListener('DOMContentLoaded', function () {
                 closeModal();
             }
         });
+
+        document.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape' && modal.classList.contains('is-open')) {
+                closeModal();
+            }
+        });
+
+        return {
+            open: openModal,
+            close: closeModal
+        };
     }
 
-    bindModal('quoteSendModal', '[data-open-send-modal]', '[data-close-send-modal]');
+    var sendModalApi = bindModal('quoteSendModal', '[data-open-send-modal]', '[data-close-send-modal]');
     bindModal('quoteConvertModal', '[data-open-convert-modal]', '[data-close-convert-modal]');
 
-    @if($showSendAction && ($errors->any() || old('contact_email') || old('contact_phone') || old('contact_name')))
     var sendModal = document.getElementById('quoteSendModal');
     if (sendModal) {
-        sendModal.classList.add('is-open');
-        sendModal.setAttribute('aria-hidden', 'false');
+        var channelInput = sendModal.querySelector('[data-send-channel-input]');
+        var channelHelper = sendModal.querySelector('[data-send-channel-helper]');
+        var previewField = sendModal.querySelector('[data-send-preview-message]');
+        var submitButton = sendModal.querySelector('[data-send-submit-button]');
+        var contactNameInput = sendModal.querySelector('input[name="contact_name"]');
+        var channelPills = sendModal.querySelectorAll('[data-send-pill-index]');
+        var publicUrl = @json($existingPublicQuoteUrl);
+        var quoteNumber = @json($quote->document_number);
+        var selectedChannelIndex = {{ $selectedChannelIndex }};
+        var channelValues = ['man' + 'ual', 'em' + 'ail', 'whatsapp' + '_' + 'link'];
+
+        function buildPreviewMessage(index) {
+            var customerName = (contactNameInput && contactNameInput.value.trim()) ? contactNameInput.value.trim() : 'Müşterimiz';
+
+            if (index === 2) {
+                return publicUrl
+                    ? 'Merhaba ' + customerName + ',\n\n' + quoteNumber + ' numaralı teklifinizi inceleyebilirsiniz:\n' + publicUrl
+                    : 'Merhaba ' + customerName + ',\n\nPublic onay linki gönderim sonrası hazırlanır. WhatsApp Link kanalında link ayrı satırda tam URL olarak üretilir.';
+            }
+
+            if (index === 1) {
+                return 'Bu kanal yalnız önizleme oluşturur. Müşteriye gerçek mail göndermez.';
+            }
+
+            return 'Standart Gönderim seçildiğinde e-posta varsa gerçek mail gönderilir ve public onay akışı korunur.';
+        }
+
+        function helperText(index) {
+            if (index === 2) {
+                return 'Public link ayrı satırda tam URL olarak üretilir.';
+            }
+
+            if (index === 1) {
+                return 'E-posta Önizleme mail göndermez; sadece içeriği kontrol etmek için kullanılır.';
+            }
+
+            return 'Standart Gönderim müşteri e-postası gerektirir. WhatsApp kaydı varsa mevcut hotfix akışıyla ayrıca üretilir.';
+        }
+
+        function submitLabel(index) {
+            return index === 2 ? 'Gönder / Link Oluştur' : 'Gönder / Link Oluştur';
+        }
+
+        function activateChannel(index) {
+            selectedChannelIndex = index;
+
+            channelPills.forEach(function (pill) {
+                pill.classList.toggle('is-active', Number(pill.getAttribute('data-send-pill-index')) === index);
+            });
+
+            if (channelInput) {
+                channelInput.value = channelValues[index];
+            }
+
+            if (channelHelper) {
+                channelHelper.textContent = helperText(index);
+            }
+
+            if (previewField) {
+                previewField.value = buildPreviewMessage(index);
+            }
+
+            if (submitButton) {
+                submitButton.textContent = submitLabel(index);
+            }
+        }
+
+        channelPills.forEach(function (pill) {
+            pill.addEventListener('click', function () {
+                activateChannel(Number(pill.getAttribute('data-send-pill-index')));
+            });
+        });
+
+        if (contactNameInput) {
+            contactNameInput.addEventListener('input', function () {
+                activateChannel(selectedChannelIndex);
+            });
+        }
+
+        activateChannel(selectedChannelIndex);
+
+        @if($showSendAction && ($errors->any() || old('contact_email') || old('contact_phone') || old('contact_name')))
+        if (sendModalApi) {
+            sendModalApi.open();
+        }
+        @endif
     }
-    @endif
 });
 </script>
 @endpush

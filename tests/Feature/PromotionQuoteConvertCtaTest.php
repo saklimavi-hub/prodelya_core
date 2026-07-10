@@ -52,9 +52,10 @@ class PromotionQuoteConvertCtaTest extends TestCase
         $response->assertSee('data-testid="quote-convert-cta"', false);
         $response->assertSee('data-testid="quote-convert-form"', false);
         $response->assertSee(route('admin.orders.convert.from.quote', $quote), false);
-        $response->assertSee('Ürün ve Baskı Kalemleri');
-        $response->assertSee('Baskı toplamı');
-        $response->assertSee('Birim baskı fiyatı');
+        $response->assertSee('Ürün &amp; Baskı Kalemleri', false);
+        $response->assertSee('Baskı Toplamı');
+        $response->assertSee('Birim Fiyat');
+        $response->assertSee('Baskı Satırı');
         $response->assertDontSee('group_code', false);
         $response->assertDontSee('price_snapshot', false);
     }

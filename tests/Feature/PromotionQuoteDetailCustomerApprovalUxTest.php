@@ -59,7 +59,7 @@ class PromotionQuoteDetailCustomerApprovalUxTest extends TestCase
         $response->assertSee('Bu teklif henüz müşteriye gönderilmedi.');
         $response->assertSee('Teklifleri Listele');
         $response->assertSee('Onaylandı İşaretle');
-        $response->assertSee('Ürün ve Baskı Kalemleri');
+        $response->assertSee('Ürün &amp; Baskı Kalemleri', false);
         $response->assertSee('Teklif Özeti');
         $response->assertSee('Gönderim Geçmişi ve İkincil Bilgiler');
         $response->assertSee('Ürün Toplamı');

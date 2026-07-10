@@ -126,10 +126,10 @@ class PromotionQuoteSendActionsUxTest extends TestCase
         $response->assertOk();
         $response->assertSee('Gönderim kaydı oluşturuldu.');
         $response->assertSee('Son Oluşturulan Kayıtlar');
-        $response->assertSee('E-posta: Atlandı');
+        $response->assertSee('E-posta: Önizleme');
         $response->assertSee('WhatsApp: Link Oluşturuldu');
         $response->assertSee('İç Kayıt: Gönderildi');
-        $response->assertSee('Kanal veya hedef kitle ayarları nedeniyle bildirim atlandı.');
+        $response->assertSee('Bu ortamda dış e-posta yerine güvenli önizleme kaydı tutulur.');
     }
 
     public function test_detail_shows_safe_whatsapp_disabled_state_when_phone_is_missing(): void
