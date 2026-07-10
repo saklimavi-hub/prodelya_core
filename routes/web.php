@@ -402,7 +402,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:web', 'resolve.tenant'
     Route::get('/catalog/visibility', [TenantCatalogController::class, 'visibility'])->name('catalog.visibility');
     Route::post('/catalog/visibility/bulk-update', [TenantCatalogController::class, 'bulkUpdateVisibility'])->name('catalog.visibility.bulk-update');
     Route::get('/catalog/warnings', [TenantCatalogController::class, 'warnings'])->name('catalog.warnings');
-    
+    Route::get('/catalog/search', [CatalogSearchController::class, 'search'])->name('catalog.search');
     Route::get('/product-hub/live-product-info', [ProductHubLiveProductInfoController::class, 'show'])->name('product-hub.live-product-info');
     Route::post('/catalog/project', [TenantCatalogController::class, 'project'])->name('catalog.project');
     Route::post('/catalog/{product}/toggle-quote-visibility', [TenantCatalogController::class, 'toggleQuoteVisibility'])->name('catalog.toggle-quote-visibility')->whereNumber('product');
