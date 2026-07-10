@@ -4559,6 +4559,1172 @@ textarea:focus {
   }
 }
 
+.promotion-quote-detail.quote-detail-compact {
+  --quote-detail-line: #e5ebf3;
+  --quote-detail-soft: #eef2f7;
+  --quote-detail-muted: #66758f;
+  --quote-detail-text: #17243b;
+  --quote-detail-card-bg: #ffffff;
+  --quote-detail-soft-bg: #fbfdff;
+  --quote-detail-accent-bg: #f6f9ff;
+  --quote-detail-accent-line: #d6e4ff;
+  --quote-detail-page-bg: #f6f7f9;
+  color: var(--quote-detail-text);
+  font-family: inherit;
+}
+
+.pd-quote-detail {
+  font-family: inherit;
+}
+
+
+.promotion-quote-detail.quote-detail-compact {
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.promotion-quote-detail.quote-detail-compact * {
+  box-sizing: border-box;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-page-head,
+.promotion-quote-detail.quote-detail-compact .quote-detail-page-head,
+.promotion-quote-detail.quote-detail-compact .quote-strip,
+.promotion-quote-detail.quote-detail-compact .quote-detail-strip,
+.promotion-quote-detail.quote-detail-compact .quote-card,
+.promotion-quote-detail.quote-detail-compact .quote-detail-card,
+.promotion-quote-detail.quote-detail-compact .quote-right-summary,
+.promotion-quote-detail.quote-detail-compact .quote-detail-right,
+.promotion-quote-detail.quote-detail-compact .quote-send-modal-panel,
+.promotion-quote-detail.quote-detail-compact .quote-detail-modal {
+  background: var(--quote-detail-card-bg);
+  border: 1px solid var(--quote-detail-line);
+  border-radius: 8px;
+  box-shadow: 0 6px 16px rgba(20, 36, 66, 0.05);
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-page-head,
+.promotion-quote-detail.quote-detail-compact .quote-detail-page-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 16px 18px;
+  margin-bottom: 12px;
+}
+
+.pd-quote-detail .pd-quote-detail__eyebrow {
+  margin-bottom: 6px;
+  color: var(--quote-detail-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.pd-quote-detail .pd-quote-detail__notice {
+  margin-bottom: 12px;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-guide-notice {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid #f5d49b;
+  border-radius: 8px;
+  background: #fff7e6;
+  color: #92400e;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-page-head h1,
+.promotion-quote-detail.quote-detail-compact .quote-detail-page-head h1 {
+  margin: 0 0 4px;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-page-head p,
+.promotion-quote-detail.quote-detail-compact .quote-detail-page-head p,
+.promotion-quote-detail.quote-detail-compact .quote-card-head p,
+.promotion-quote-detail.quote-detail-compact .quote-priority-head p,
+.promotion-quote-detail.quote-detail-compact .quote-send-modal-head p {
+  margin: 0;
+  color: var(--quote-detail-muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.quote-detail-compact .quote-page-head-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-alert {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-alert-success {
+  background: #edf8f2;
+  border-color: #cfeedd;
+  color: #166534;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-alert-error {
+  background: #fff0ef;
+  border-color: #f5c2c0;
+  color: #b42318;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-alert-warning {
+  background: #fff7e6;
+  border-color: #f5d49b;
+  color: #92400e;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-strip,
+.promotion-quote-detail.quote-detail-compact .quote-detail-strip {
+  padding: 16px 18px;
+  margin-bottom: 12px;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-strip-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  padding-bottom: 14px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--quote-detail-soft);
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-strip-number {
+  margin: 0 0 6px;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-strip-subtitle {
+  margin: 0;
+  max-width: 760px;
+  color: var(--quote-detail-muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.quote-detail-compact .quote-strip-chips,
+.quote-detail-compact .quote-channel-pills,
+.quote-detail-compact .quote-print-chips,
+.quote-detail-compact .quote-action-buttons,
+.quote-detail-compact .quote-bottom-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.quote-detail-compact .quote-strip-chips,
+.quote-detail-compact .quote-channel-pills {
+  margin-top: 10px;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-top-metrics,
+.promotion-quote-detail.quote-detail-compact .quote-detail-top-metrics,
+.promotion-quote-detail.quote-detail-compact .quote-priority-totals,
+.promotion-quote-detail.quote-detail-compact .quote-status-grid,
+.promotion-quote-detail.quote-detail-compact .quote-tab-metrics,
+.promotion-quote-detail.quote-detail-compact .quote-step-line,
+.promotion-quote-detail.quote-detail-compact .quote-send-grid,
+.promotion-quote-detail.quote-detail-compact .quote-send-form-grid,
+.promotion-quote-detail.quote-detail-compact .quote-send-modal-grid,
+.promotion-quote-detail.quote-detail-compact .quote-quick-actions,
+.promotion-quote-detail.quote-detail-compact .quote-detail-layout,
+.promotion-quote-detail.quote-detail-compact .quote-layout {
+  display: grid;
+  gap: 12px;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-top-metrics,
+.promotion-quote-detail.quote-detail-compact .quote-detail-top-metrics {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-layout,
+.promotion-quote-detail.quote-detail-compact .quote-detail-layout {
+  grid-template-columns: minmax(0, 1fr) 336px;
+  align-items: start;
+  gap: 14px;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-main-stack,
+.promotion-quote-detail.quote-detail-compact .quote-detail-main {
+  display: grid;
+  gap: 14px;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-right-stack,
+.promotion-quote-detail.quote-detail-compact .quote-detail-right {
+  position: sticky;
+  top: 16px;
+  display: grid;
+  gap: 12px;
+  align-self: start;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-card,
+.promotion-quote-detail.quote-detail-compact .quote-detail-card,
+.promotion-quote-detail.quote-detail-compact .quote-right-summary {
+  padding: 16px 18px;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-card-head h2,
+.promotion-quote-detail.quote-detail-compact .quote-card-head h3,
+.promotion-quote-detail.quote-detail-compact .quote-right-summary h3,
+.promotion-quote-detail.quote-detail-compact .quote-priority-head h3,
+.promotion-quote-detail.quote-detail-compact .quote-send-card h3 {
+  margin: 0 0 4px;
+  font-weight: 700;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-card-head h2 {
+  font-size: 20px;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-card-head h3,
+.promotion-quote-detail.quote-detail-compact .quote-right-summary h3,
+.promotion-quote-detail.quote-detail-compact .quote-priority-head h3 {
+  font-size: 16px;
+}
+
+.quote-detail-compact .quote-priority-block,
+.quote-detail-compact .quote-detail-priority {
+  border: 1px solid var(--quote-detail-accent-line);
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-priority-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--quote-detail-soft);
+  background: var(--quote-detail-accent-bg);
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-priority-list,
+.promotion-quote-detail.quote-detail-compact .quote-detail-list,
+.promotion-quote-detail.quote-detail-compact .quote-detail-print-list,
+.promotion-quote-detail.quote-detail-compact .quote-log-list,
+.promotion-quote-detail.quote-detail-compact .quote-mini-log-list,
+.promotion-quote-detail.quote-detail-compact .quote-decision-list {
+  display: grid;
+  gap: 10px;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-priority-list {
+  gap: 0;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-item-row,
+.promotion-quote-detail.quote-detail-compact .quote-detail-item-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 132px 132px;
+  gap: 12px;
+  align-items: start;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--quote-detail-soft);
+}
+
+.quote-detail-compact .quote-item-row:last-child {
+  border-bottom: 0;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-item-index,
+.promotion-quote-detail.quote-detail-compact .quote-print-index,
+.promotion-quote-detail.quote-detail-compact .quote-step-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.quote-detail-compact .quote-item-index,
+.quote-detail-compact .quote-print-index {
+  width: 26px;
+  height: 26px;
+  background: #edf2fb;
+  color: #51627d;
+}
+
+.quote-detail-compact .quote-step-badge {
+  width: 22px;
+  height: 22px;
+  margin-bottom: 6px;
+  background: #e9eef7;
+  color: #3b4b66;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-item-name {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-item-meta,
+.promotion-quote-detail.quote-detail-compact .quote-print-sub,
+.promotion-quote-detail.quote-detail-compact .quote-log-meta,
+.promotion-quote-detail.quote-detail-compact .quote-mini-log-meta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+  color: var(--quote-detail-muted);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-item-note,
+.promotion-quote-detail.quote-detail-compact .quote-print-note,
+.promotion-quote-detail.quote-detail-compact .quote-log-detail,
+.promotion-quote-detail.quote-detail-compact .quote-send-card p,
+.promotion-quote-detail.quote-detail-compact .quote-inline-note {
+  color: #55657e;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.quote-detail-compact .quote-item-note,
+.quote-detail-compact .quote-print-note,
+.quote-detail-compact .quote-inline-note,
+.quote-detail-compact .quote-log-detail {
+  margin-top: 8px;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-print-chip,
+.promotion-quote-detail.quote-detail-compact .quote-channel-pill,
+.promotion-quote-detail.quote-detail-compact .quote-tab-button,
+.promotion-quote-detail.quote-detail-compact .quote-detail-tab,
+.promotion-quote-detail.quote-detail-compact .quote-chip-soft {
+  border: 1px solid #dbe3ef;
+  background: #f8fafc;
+  border-radius: 8px;
+  color: #475569;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-print-chip,
+.promotion-quote-detail.quote-detail-compact .quote-chip-soft {
+  padding: 5px 10px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.pd-quote-detail .pd-product-line__signals {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.pd-quote-detail .pd-product-line__signal {
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.pd-quote-detail .pd-product-line__totals {
+  display: flex;
+  gap: 8px 14px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  color: #55657e;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.pd-quote-detail .pd-product-line__totals strong {
+  color: var(--quote-detail-text);
+}
+
+.pd-quote-detail .pd-quote-detail__masked-summary {
+  margin-top: 10px;
+}
+
+.pd-quote-detail .pd-quote-detail__flow-summary {
+  padding: 12px;
+}
+
+.pd-quote-detail .pd-product-print-block__head,
+.pd-quote-detail .pd-product-print-block__foot,
+.pd-quote-detail .pd-product-print-block__grid-head {
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.pd-quote-detail .pd-product-print-block__grid-head-row,
+.pd-quote-detail .pd-product-print-block__row {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 104px 110px 120px;
+  gap: 8px;
+  align-items: center;
+}
+
+.pd-quote-detail .pd-product-print-block__row--product {
+  min-height: 50px;
+}
+
+.pd-quote-detail .pd-product-print-block__row--print {
+  min-height: 40px;
+}
+
+.pd-quote-detail .pd-product-print-block__index {
+  width: 23px;
+  min-width: 23px;
+  height: 23px;
+  min-height: 23px;
+}
+
+.pd-quote-detail .pd-product-print-block__row--print .pd-product-print-block__index {
+  background: #f1f5fb;
+  color: #607089;
+  font-size: 10.5px;
+}
+
+.pd-quote-detail .pd-product-print-block__title {
+  font-size: 12.8px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.pd-quote-detail .pd-product-print-block__row--print .pd-product-print-block__title {
+  font-size: 11.8px;
+}
+
+.pd-quote-detail .pd-product-print-block__meta {
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.pd-quote-detail .pd-product-print-block__chips {
+  margin-top: 5px;
+}
+
+.pd-quote-detail .pd-product-print-block__amount {
+  align-self: stretch;
+}
+
+.quote-detail-compact .quote-item-money {
+  text-align: right;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-item-money span,
+.promotion-quote-detail.quote-detail-compact .quote-status-box span,
+.promotion-quote-detail.quote-detail-compact .quote-mini-box span,
+.promotion-quote-detail.quote-detail-compact .quote-step span:first-of-type,
+.promotion-quote-detail.quote-detail-compact .quote-metric span,
+.promotion-quote-detail.quote-detail-compact .quote-send-field label,
+.promotion-quote-detail.quote-detail-compact .quote-send-modal-field label {
+  display: block;
+  color: var(--quote-detail-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-item-money strong,
+.promotion-quote-detail.quote-detail-compact .quote-status-box strong,
+.promotion-quote-detail.quote-detail-compact .quote-mini-box strong,
+.promotion-quote-detail.quote-detail-compact .quote-step strong,
+.promotion-quote-detail.quote-detail-compact .quote-metric strong,
+.promotion-quote-detail.quote-detail-compact .quote-summary-line strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--quote-detail-text);
+  font-size: 14px;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-item-money strong {
+  font-size: 14px;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-metric,
+.promotion-quote-detail.quote-detail-compact .quote-status-box,
+.promotion-quote-detail.quote-detail-compact .quote-mini-box,
+.promotion-quote-detail.quote-detail-compact .quote-step,
+.promotion-quote-detail.quote-detail-compact .quote-history-row,
+.promotion-quote-detail.quote-detail-compact .quote-send-card,
+.promotion-quote-detail.quote-detail-compact .quote-log-row,
+.promotion-quote-detail.quote-detail-compact .quote-mini-log,
+.promotion-quote-detail.quote-detail-compact .quote-note-box,
+.promotion-quote-detail.quote-detail-compact .quote-detail-item {
+  border: 1px solid var(--quote-detail-soft);
+  background: var(--quote-detail-soft-bg);
+  border-radius: 8px;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-metric,
+.promotion-quote-detail.quote-detail-compact .quote-status-box,
+.promotion-quote-detail.quote-detail-compact .quote-mini-box,
+.promotion-quote-detail.quote-detail-compact .quote-step,
+.promotion-quote-detail.quote-detail-compact .quote-history-row,
+.promotion-quote-detail.quote-detail-compact .quote-log-row,
+.promotion-quote-detail.quote-detail-compact .quote-mini-log,
+.promotion-quote-detail.quote-detail-compact .quote-note-box,
+.promotion-quote-detail.quote-detail-compact .quote-send-card,
+.promotion-quote-detail.quote-detail-compact .quote-detail-item {
+  padding: 11px 12px;
+}
+
+.quote-detail-compact .quote-priority-totals,
+.quote-detail-compact .quote-status-grid,
+.quote-detail-compact .quote-step-line {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-priority-totals {
+  padding: 12px 14px;
+  border-top: 1px solid var(--quote-detail-soft);
+  background: var(--quote-detail-soft-bg);
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-action-band {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-top: 12px;
+  border: 1px solid var(--quote-detail-soft);
+  background: var(--quote-detail-soft-bg);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.quote-detail-compact .quote-action-band:first-of-type {
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+
+.quote-detail-compact .quote-action-band p {
+  margin: 0;
+}
+
+
+.promotion-quote-detail.quote-detail-compact .quote-tabs,
+.promotion-quote-detail.quote-detail-compact .quote-detail-tabs {
+  display: flex;
+  gap: 6px;
+  overflow: auto;
+  padding: 8px 0 12px;
+  border-bottom: 1px solid var(--quote-detail-soft);
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-tab-button,
+.promotion-quote-detail.quote-detail-compact .quote-detail-tab,
+.promotion-quote-detail.quote-detail-compact .quote-channel-pill {
+  padding: 8px 11px;
+  font-size: 12.5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.quote-detail-compact .quote-tab-button.is-active,
+.quote-detail-compact .quote-detail-tab.active,
+.quote-detail-compact .quote-channel-pill.is-active {
+  background: #edf4ff;
+  border-color: #cddffd;
+  color: #1d4ed8;
+  font-weight: 650;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-tab-panel,
+.promotion-quote-detail.quote-detail-compact .quote-detail-panel {
+  display: none;
+  padding-top: 14px;
+}
+
+.quote-detail-compact .quote-tab-panel.is-active,
+.quote-detail-compact .quote-detail-panel.active {
+  display: block;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-tab-metrics {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 12px;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-detail-item {
+  padding: 14px;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-detail-item.quote-item-row {
+  display: block;
+  grid-template-columns: none;
+  border-bottom: 0;
+}
+
+.promotion-quote-detail.quote-detail-compact .promotion-quote-lines {
+  display: grid;
+  gap: 0;
+}
+
+.promotion-quote-detail.quote-detail-compact .promotion-quote-lines-head {
+  padding: 0 10px 7px;
+  border-bottom: 1px solid var(--quote-detail-soft);
+  background: #fcfdff;
+}
+
+.promotion-quote-detail.quote-detail-compact .promotion-quote-line-header,
+.promotion-quote-detail.quote-detail-compact .promotion-quote-line {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 104px 110px 120px;
+  gap: 8px;
+  align-items: center;
+}
+
+.promotion-quote-detail.quote-detail-compact .promotion-quote-line.quote-detail-item.quote-item-row {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 104px 110px 120px;
+  border-bottom: 1px solid var(--quote-detail-soft);
+}
+
+.promotion-quote-detail.quote-detail-compact .promotion-quote-line-header {
+  color: var(--quote-detail-muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.promotion-quote-detail.quote-detail-compact .promotion-quote-line-header-main {
+  grid-column: 1 / 3;
+}
+
+.promotion-quote-detail.quote-detail-compact .promotion-quote-line-header-cell:last-child,
+.promotion-quote-detail.quote-detail-compact .promotion-quote-line-total {
+  text-align: right;
+}
+
+.promotion-quote-detail.quote-detail-compact .promotion-quote-lines-body {
+  display: grid;
+}
+
+.promotion-quote-detail.quote-detail-compact .promotion-quote-line {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--quote-detail-soft);
+}
+
+.promotion-quote-detail.quote-detail-compact .promotion-quote-line:last-child {
+  border-bottom: 0;
+}
+
+.promotion-quote-detail.quote-detail-compact .promotion-quote-line-product {
+  background: #ffffff;
+}
+
+.promotion-quote-detail.quote-detail-compact .promotion-quote-line-print {
+  background: #fbfcfe;
+}
+
+.promotion-quote-detail.quote-detail-compact .promotion-quote-line-print .promotion-quote-line-main {
+  padding-left: 8px;
+  border-left: 2px solid #e3ebf8;
+}
+
+.promotion-quote-detail.quote-detail-compact .promotion-quote-line-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 23px;
+  min-width: 23px;
+  height: 23px;
+  min-height: 23px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #edf2fb;
+  color: #44536a;
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.promotion-quote-detail.quote-detail-compact .promotion-quote-line-main {
+  min-width: 0;
+  align-self: center;
+}
+
+.promotion-quote-detail.quote-detail-compact .promotion-quote-line-eyebrow {
+  color: #5f6f86;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.promotion-quote-detail.quote-detail-compact .promotion-quote-line-title {
+  margin: 3px 0 0;
+  color: var(--quote-detail-text);
+  font-size: 12.8px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.promotion-quote-detail.quote-detail-compact .promotion-quote-line-title span {
+  color: #4d5f79;
+  font-weight: 600;
+}
+
+.promotion-quote-detail.quote-detail-compact .promotion-quote-line-print .promotion-quote-line-title {
+  font-size: 11.8px;
+}
+
+.promotion-quote-detail.quote-detail-compact .promotion-quote-line-meta {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 3px;
+  color: var(--quote-detail-muted);
+  font-size: 11px;
+  line-height: 1.28;
+}
+
+.promotion-quote-detail.quote-detail-compact .promotion-quote-line-note {
+  margin-top: 5px;
+  color: #55657e;
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.promotion-quote-detail.quote-detail-compact .promotion-quote-line-cell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+  text-align: right;
+}
+
+.promotion-quote-detail.quote-detail-compact .promotion-quote-line-cell-label {
+  display: block;
+  color: var(--quote-detail-muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.promotion-quote-detail.quote-detail-compact .promotion-quote-line-cell-value {
+  display: block;
+  color: var(--quote-detail-text);
+  font-size: 12.2px;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+@media (min-width: 901px) {
+  .promotion-quote-detail.quote-detail-compact .promotion-quote-line-cell-label {
+    display: none;
+  }
+}
+
+.promotion-quote-detail.quote-detail-compact .promotion-quote-lines-total-band {
+  margin: 0;
+  padding: 9px 11px;
+  border-top: 1px solid var(--quote-detail-soft);
+  background: linear-gradient(180deg, #fbfdff 0%, #f4f8ff 100%);
+}
+
+@media (max-width: 900px) {
+  .promotion-quote-detail.quote-detail-compact .promotion-quote-line-header {
+    display: none;
+  }
+
+  .promotion-quote-detail.quote-detail-compact .promotion-quote-lines-head {
+    padding-bottom: 0;
+    border-bottom: 0;
+    background: transparent;
+  }
+
+  .promotion-quote-detail.quote-detail-compact .promotion-quote-line {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+
+  .promotion-quote-detail.quote-detail-compact .promotion-quote-line.quote-detail-item.quote-item-row {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+
+  .promotion-quote-detail.quote-detail-compact .promotion-quote-line-main {
+    grid-column: 2;
+  }
+
+  .promotion-quote-detail.quote-detail-compact .promotion-quote-line-cell {
+    grid-column: 2;
+    text-align: left;
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding-left: 12px;
+  }
+
+  .promotion-quote-detail.quote-detail-compact .promotion-quote-line-cell-label {
+    display: block;
+    flex: 0 0 auto;
+  }
+
+  .promotion-quote-detail.quote-detail-compact .promotion-quote-line-cell-value {
+    text-align: right;
+  }
+
+  .promotion-quote-detail.quote-detail-compact .promotion-quote-line-total {
+    border-top: 1px dashed #d8e2f0;
+    padding-top: 8px;
+  }
+}
+
+.quote-detail-compact .quote-detail-item-head,
+.quote-detail-compact .quote-detail-print-row,
+.quote-detail-compact .quote-log-top,
+.quote-detail-compact .quote-mini-log-top,
+.quote-detail-compact .quote-summary-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-detail-print-list {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--quote-detail-soft);
+}
+
+.quote-detail-compact .quote-detail-print-row {
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-send-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 12px;
+}
+
+.quote-detail-compact .quote-send-card.is-active {
+  border-color: #cfe0ff;
+  background: #f4f8ff;
+}
+
+.quote-detail-compact .quote-send-form-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: end;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-send-field input,
+.promotion-quote-detail.quote-detail-compact .quote-send-field textarea,
+.promotion-quote-detail.quote-detail-compact .quote-send-modal-field input,
+.promotion-quote-detail.quote-detail-compact .quote-send-modal-field textarea {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid #dbe3ef;
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 9px 11px;
+  font: inherit;
+  color: var(--quote-detail-text);
+}
+
+.quote-detail-compact .quote-send-field textarea,
+.quote-detail-compact .quote-send-modal-field textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.quote-detail-compact .quote-send-field textarea[readonly],
+.quote-detail-compact .quote-send-modal-field textarea[readonly],
+.quote-detail-compact .quote-send-field input[readonly] {
+  background: #fbfdff;
+  color: #4f5f78;
+}
+
+.quote-detail-compact .quote-step.is-done .quote-step-badge {
+  background: #16a34a;
+  color: #ffffff;
+}
+
+.quote-detail-compact .quote-step.is-wait .quote-step-badge {
+  background: #edf4ff;
+  color: #1d4ed8;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-summary-line {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--quote-detail-soft);
+  font-size: 12px;
+}
+
+.quote-detail-compact .quote-summary-line:last-child {
+  border-bottom: 0;
+}
+
+.quote-detail-compact .quote-summary-line span {
+  color: var(--quote-detail-muted);
+}
+
+.quote-detail-compact .quote-quick-actions {
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-right-summary {
+  padding: 14px 16px;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-right-summary h3 {
+  margin-bottom: 7px;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-right-summary .quote-inline-note {
+  margin-top: 0;
+  margin-bottom: 8px;
+  font-size: 11.5px;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-right-summary .quote-summary-line strong,
+.promotion-quote-detail.quote-detail-compact .quote-right-summary .quote-mini-box strong {
+  font-size: 13.5px;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-right-summary .quote-mini-box {
+  padding: 10px 11px;
+}
+
+
+.promotion-quote-detail.quote-detail-compact .quote-quick-actions form {
+  display: contents;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-bottom-bar,
+.promotion-quote-detail.quote-detail-compact .quote-detail-bottom-bar {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  width: 100%;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-bottom-bar strong,
+.promotion-quote-detail.quote-detail-compact .quote-bottom-bar span {
+  display: block;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-bottom-bar strong {
+  font-size: 14px;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-bottom-bar span {
+  color: var(--quote-detail-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+
+.promotion-quote-detail.quote-detail-compact.quote-bottom-bar,
+.promotion-quote-detail.quote-detail-compact.quote-detail-bottom-bar {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  width: 100%;
+}
+
+
+.promotion-quote-detail.quote-detail-compact.quote-send-modal,
+.promotion-quote-detail.quote-detail-compact.quote-detail-modal-backdrop,
+.promotion-quote-detail.quote-detail-compact .quote-send-modal,
+.promotion-quote-detail.quote-detail-compact .quote-detail-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10050;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.66);
+  overflow-y: auto;
+}
+
+.promotion-quote-detail.quote-detail-compact.quote-send-modal.is-open,
+.promotion-quote-detail.quote-detail-compact.quote-detail-modal-backdrop.is-open,
+.promotion-quote-detail.quote-detail-compact .quote-send-modal.is-open,
+.promotion-quote-detail.quote-detail-compact .quote-detail-modal-backdrop.is-open {
+  display: flex;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-send-modal-panel,
+.promotion-quote-detail.quote-detail-compact .quote-detail-modal {
+  position: relative;
+  width: min(640px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  padding: 0;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-send-modal-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--quote-detail-soft);
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-send-modal-head h2 {
+  margin: 0 0 4px;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-send-modal-body {
+  padding: 16px 18px 18px;
+}
+
+.quote-detail-compact .quote-send-modal-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.quote-detail-compact .quote-send-modal-grid-full {
+  grid-column: 1 / -1;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-send-modal-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--quote-detail-soft);
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-send-modal-actions small {
+  color: var(--quote-detail-muted);
+  line-height: 1.45;
+  font-size: 12px;
+}
+
+.promotion-quote-detail.quote-detail-compact .quote-modal-close {
+  border: 0;
+  background: transparent;
+  color: var(--quote-detail-muted);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+@media (max-width: 1180px) {
+  .promotion-quote-detail.quote-detail-compact .quote-layout,
+  .promotion-quote-detail.quote-detail-compact .quote-detail-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .promotion-quote-detail.quote-detail-compact .quote-right-stack,
+  .promotion-quote-detail.quote-detail-compact .quote-detail-right {
+    position: static;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .promotion-quote-detail.quote-detail-compact .quote-top-metrics,
+  .promotion-quote-detail.quote-detail-compact .quote-detail-top-metrics,
+  .promotion-quote-detail.quote-detail-compact .quote-priority-totals,
+  .promotion-quote-detail.quote-detail-compact .quote-status-grid,
+  .promotion-quote-detail.quote-detail-compact .quote-step-line,
+  .promotion-quote-detail.quote-detail-compact .quote-send-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .promotion-quote-detail.quote-detail-compact .quote-page-head,
+  .promotion-quote-detail.quote-detail-compact .quote-strip-top,
+  .promotion-quote-detail.quote-detail-compact .quote-action-band,
+  .promotion-quote-detail.quote-detail-compact .quote-send-modal-actions,
+  .promotion-quote-detail.quote-detail-compact .quote-bottom-bar {
+    display: block;
+  }
+
+  .promotion-quote-detail.quote-detail-compact .quote-page-head-actions,
+  .promotion-quote-detail.quote-detail-compact .quote-action-buttons,
+  .promotion-quote-detail.quote-detail-compact .quote-bottom-actions {
+    justify-content: flex-start;
+    margin-top: 10px;
+  }
+
+  .promotion-quote-detail.quote-detail-compact .quote-top-metrics,
+  .promotion-quote-detail.quote-detail-compact .quote-detail-top-metrics,
+  .promotion-quote-detail.quote-detail-compact .quote-priority-totals,
+  .promotion-quote-detail.quote-detail-compact .quote-status-grid,
+  .promotion-quote-detail.quote-detail-compact .quote-tab-metrics,
+  .promotion-quote-detail.quote-detail-compact .quote-step-line,
+  .promotion-quote-detail.quote-detail-compact .quote-right-stack,
+  .promotion-quote-detail.quote-detail-compact .quote-send-grid,
+  .promotion-quote-detail.quote-detail-compact .quote-send-form-grid,
+  .promotion-quote-detail.quote-detail-compact .quote-send-modal-grid,
+  .promotion-quote-detail.quote-detail-compact .quote-quick-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .pd-quote-detail .pd-product-line__totals {
+    display: grid;
+    gap: 4px;
+  }
+
+  .promotion-quote-detail.quote-detail-compact .quote-item-row,
+  .promotion-quote-detail.quote-detail-compact .quote-detail-item-row {
+    grid-template-columns: 28px 1fr;
+  }
+
+  .promotion-quote-detail.quote-detail-compact .quote-item-money {
+    text-align: left;
+  }
+
+  .promotion-quote-detail.quote-detail-compact .quote-detail-item-head,
+  .promotion-quote-detail.quote-detail-compact .quote-detail-print-row,
+  .promotion-quote-detail.quote-detail-compact .quote-log-top,
+  .promotion-quote-detail.quote-detail-compact .quote-mini-log-top,
+  .promotion-quote-detail.quote-detail-compact .quote-summary-line {
+    display: block;
+  }
+
+  .promotion-quote-detail.quote-detail-compact.quote-send-modal,
+  .promotion-quote-detail.quote-detail-compact.quote-detail-modal-backdrop,
+  .promotion-quote-detail.quote-detail-compact .quote-send-modal,
+  .promotion-quote-detail.quote-detail-compact .quote-detail-modal-backdrop {
+    padding: 10px;
+    align-items: flex-start;
+    overflow: auto;
+  }
+}
+
+
 .order-revision-compare {
   --orc-border: #dbe3ef;
   --orc-soft: #edf2f7;
