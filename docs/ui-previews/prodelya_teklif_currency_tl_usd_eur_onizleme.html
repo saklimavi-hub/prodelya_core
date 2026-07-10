@@ -523,7 +523,7 @@
 
         <section class="scenario-panel">
             <button class="scenario-toggle" type="button" id="scenario-toggle">Önizleme Senaryosu</button>
-            <div class="scenario-body" id="scenario-body">
+            <div class="scenario-body hidden" id="scenario-body">
                 <div class="scenario-grid">
                     <div class="field">
                         <label for="module-state">Modül</label>
@@ -620,7 +620,7 @@
                             </div>
                             <button class="btn soft" type="button" id="toggle-search-results">Sonuçları Göster</button>
                         </div>
-                        <div class="search-dropdown open" id="search-dropdown"></div>
+                        <div class="search-dropdown" id="search-dropdown"></div>
                     </div>
                 </section>
 
@@ -819,9 +819,9 @@
             ];
 
             const searchResults = [
-                { title: 'Metal Tükenmez Kalem', financeMeta: 'Atlas Promo · 3,50 USD · Tahmini TL maliyet 151,20 · Stok 4.800', opsMeta: 'Satışa uygun demo ürün · Stok 4.800' },
-                { title: 'Premium Termos', financeMeta: 'Kuzey Gifts · 8,00 EUR · Tahmini TL maliyet 348,80 · Stok 1.260', opsMeta: 'Satışa uygun demo ürün · Stok 1.260' },
-                { title: 'Plastik Tükenmez Kalem', financeMeta: 'Yerel Tedarik · 9,20 TL · Stok 13.400', opsMeta: 'Satışa uygun demo ürün · Stok 13.400' }
+                { title: 'Metal Tükenmez Kalem', supplier: 'Atlas Promo', sourcePrice: 3.5, sourceCurrency: 'USD', baseCostTry: 151.20, stock: '4.800' },
+                { title: 'Premium Termos', supplier: 'Kuzey Gifts', sourcePrice: 8, sourceCurrency: 'EUR', baseCostTry: 348.80, stock: '1.260' },
+                { title: 'Plastik Tükenmez Kalem', supplier: 'Yerel Tedarik', sourcePrice: 9.2, sourceCurrency: 'TRY', baseCostTry: 9.20, stock: '13.400' }
             ];
 
             const moduleSelect = document.getElementById('module-state');
@@ -883,6 +883,14 @@
                 return state.moduleEnabled && state.isFinance;
             }
 
+            function sourceChipText(state, item) {
+                if (detailVisible(state)) {
+                    return item.sourceCurrency === 'TRY' ? 'TRY kaynaklı' : item.sourceCurrency + ' kaynaklı';
+                }
+
+                return state.isFinance ? 'Teklife uygun' : 'Satış fiyatı hazır';
+            }
+
             function applyStateRestrictions() {
                 const state = getState();
 
@@ -900,6 +908,9 @@
                     ? 'USD/EUR ürünler belge para birimine tutarlı dönüştürülür'
                     : 'Bu paket yalnız TL teklif oluşturur';
                 document.getElementById('tl-package-chip').classList.toggle('hidden', state.moduleEnabled);
+                document.getElementById('last-rate-chip').textContent = state.moduleEnabled
+                    ? stateTexts[state.rateState].lastRate
+                    : 'Belge para birimi: TL';
             }
 
             function effectiveSourceDisplay(item, state) {
@@ -976,7 +987,7 @@
                 const query = searchInput.value.trim().toLowerCase();
                 const filtered = searchResults.filter((entry) => entry.title.toLowerCase().includes(query));
                 searchDropdown.innerHTML = filtered.map((entry, index) => {
-                    const meta = detailVisible(state) ? entry.financeMeta : entry.opsMeta;
+                    const meta = buildSearchMeta(entry, state);
                     return `
                         <div class="search-result">
                             <div>
@@ -991,6 +1002,33 @@
                 if (!filtered.length) {
                     searchDropdown.innerHTML = '<div class="search-result"><div><div class="search-title">Sonuç bulunamadı</div><div class="search-meta">Farklı bir anahtar kelime deneyin.</div></div></div>';
                 }
+            }
+
+            function buildSearchMeta(entry, state) {
+                if (!detailVisible(state)) {
+                    return `${entry.supplier} · Satışa uygun demo ürün · Stok ${entry.stock}`;
+                }
+
+                if (state.rateState === 'missing' && entry.sourceCurrency !== 'TRY') {
+                    return `${entry.supplier} · ${formatMoney(entry.sourcePrice, entry.sourceCurrency)} · Tahmini TL maliyet: Hesaplanamadı · Kur bilgisi bulunamadı · Stok ${entry.stock}`;
+                }
+
+                if (state.rateState === 'unsupported' && entry.sourceCurrency !== 'TRY') {
+                    return `${entry.supplier} · Para birimi desteklenmiyor · Otomatik TL maliyeti hesaplanamadı · Stok ${entry.stock}`;
+                }
+
+                if (entry.sourceCurrency === 'TRY') {
+                    return `${entry.supplier} · Yerel fiyat akışı · Stok ${entry.stock}`;
+                }
+
+                let suffix = '';
+                if (state.rateState === 'fallback') {
+                    suffix = ' · Önceki iş günü kuru kullanılıyor';
+                } else if (state.rateState === 'stale') {
+                    suffix = ' · Kur eski olabilir';
+                }
+
+                return `${entry.supplier} · ${formatMoney(entry.sourcePrice, entry.sourceCurrency)} · Tahmini TL maliyet ${formatMoney(entry.baseCostTry, 'TRY')}${suffix} · Stok ${entry.stock}`;
             }
 
             function summaryHtml(models) {
@@ -1043,7 +1081,7 @@
                                 <div class="item-title">${model.item.title}</div>
                                 <div class="item-note">Tedarikçi: ${model.item.supplier} · Stok: ${model.item.stock}</div>
                             </div>
-                            <span class="chip gray">${model.item.sourceCurrency === 'TRY' ? 'TRY kaynaklı' : model.item.sourceCurrency + ' kaynaklı'}</span>
+                            <span class="chip gray">${sourceChipText(state, model.item)}</span>
                         </div>
 
                         <div class="item-main-grid">
@@ -1149,12 +1187,37 @@
                 const rateDesc = document.getElementById('rate-desc');
                 const rateChip = document.getElementById('rate-chip');
                 const rateActions = document.getElementById('rate-actions');
-                document.getElementById('last-rate-chip').textContent = meta.lastRate;
+                const passiveManualChip = document.getElementById('passive-manual-chip');
+                const techNote = document.querySelector('.status-box .tech-note');
+
+                if (!state.moduleEnabled) {
+                    rateTitle.textContent = 'Kur ve Para Birimi';
+                    rateDesc.textContent = 'Belge para birimi: TL. Tedarikçi fiyatları sistem tarafından güvenli TL karşılığıyla hazırlanır. Gelişmiş kur detayı bu pakette kapalıdır.';
+                    rateChip.className = 'chip gray';
+                    rateChip.textContent = 'TL paket';
+                    passiveManualChip.classList.add('hidden');
+                    rateActions.innerHTML = '';
+                    techNote.textContent = 'Gelişmiş kur ayrıntıları ve aksiyonları bu paket kapsamında gösterilmez.';
+                    return;
+                }
+
+                if (!state.isFinance) {
+                    rateTitle.textContent = 'Kur ve Para Birimi';
+                    rateDesc.textContent = 'Satış fiyatları belge para birimine göre hazırlandı. Finansal kur ayrıntıları yetkiniz kapsamında gösterilmez.';
+                    rateChip.className = 'chip gray';
+                    rateChip.textContent = 'Güvenli görünüm';
+                    passiveManualChip.classList.add('hidden');
+                    rateActions.innerHTML = '';
+                    techNote.textContent = 'Kur, oran ve manuel plan bilgileri yalnız finans yetkili görünümünde değerlendirilir.';
+                    return;
+                }
 
                 rateTitle.textContent = meta.title;
                 rateDesc.textContent = meta.desc;
                 rateChip.className = 'chip ' + meta.chip[0];
                 rateChip.textContent = meta.chip[1];
+                passiveManualChip.classList.remove('hidden');
+                techNote.textContent = 'Manuel kur aktif buton olarak sunulmaz. Mevcut contract doğrulamasında `can_use_manual_rate = false`.';
 
                 if (state.rateState === 'current') {
                     rateActions.innerHTML = '<span class="chip green">Kur güncel</span>';
@@ -1227,8 +1290,7 @@
                     }
                 });
 
-                document.addEventListener('input', function (event) {
-                    const target = event.target.closest('[data-sale-input]');
+                function commitSaleInput(target) {
                     if (!target) {
                         return;
                     }
@@ -1252,7 +1314,21 @@
                     item.manualTryValue = Math.round(tryValue * 100) / 100;
                     item.isManual = true;
                     renderItems();
+                }
+
+                document.addEventListener('change', function (event) {
+                    const target = event.target.closest('[data-sale-input]');
+                    if (target) {
+                        commitSaleInput(target);
+                    }
                 });
+
+                document.addEventListener('blur', function (event) {
+                    const target = event.target.closest('[data-sale-input]');
+                    if (target) {
+                        commitSaleInput(target);
+                    }
+                }, true);
             }
 
             bindEvents();

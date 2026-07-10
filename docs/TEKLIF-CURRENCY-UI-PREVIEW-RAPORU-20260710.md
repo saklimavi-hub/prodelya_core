@@ -321,3 +321,57 @@ Production layout zaten kendi sayfa başlığını üretiyorsa ikinci bir topbar
 
 ### 24.12 Kullanıcı onayı
 Revize preview tamamlandı. Bu noktada hâlâ açık kullanıcı onayı beklenmektedir. Onay olmadan `10.16.4` implementation fazına geçilmemelidir.
+
+## 25. 10.16.3-R2 Son Güvenlik ve Etkileşim Düzeltmesi
+Preview üzerinde son güvenlik ve etkileşim sertleştirmesi yapıldı. Bu turda amaç yeni görünüm üretmek değil, mevcut revizyonu role/modül görünürlüğü ve kullanıcı etkileşimi açısından son kez güvenli hale getirmekti.
+
+### 25.1 Kaynak currency badge sızıntısı
+Ürün başlıklarındaki `USD kaynaklı`, `EUR kaynaklı`, `TRY kaynaklı` chip’leri artık yalnız `multi_currency açık + finans yetkili` görünümünde gösterilir. Modül kapalı veya operasyon görünümünde güvenli nötr chip kullanılır.
+
+### 25.2 Kur paneli modül ve role göre güvenli hale getirildi
+`Kur ve Para Birimi` paneli üç ayrı güvenli davranışa çekildi:
+
+- `multi_currency` kapalı: yalnız TL paketi mesajı ve sade açıklama
+- `multi_currency` açık + operasyon: yalnız güvenli satış mesajı
+- `multi_currency` açık + finans: ayrıntılı kur durumu ve uygun aksiyonlar
+
+Bu sayede modül kapalı veya operasyon görünümünde TCMB, kur oranı, rate date, fallback/stale detayı ve manuel kur planı görünmez.
+
+### 25.3 Arama sonuçları missing ve unsupported durumuna bağlandı
+Arama dropdown metadata’sı artık `rateState` ve görünürlük politikasına göre dinamik üretilir.
+
+- missing: `Tahmini TL maliyet: Hesaplanamadı` ve `Kur bilgisi bulunamadı`
+- desteklenmeyen para birimi: `Otomatik TL maliyeti hesaplanamadı`
+- fallback/stale: kısa ve güvenli durum notu
+
+Eski sabit tahmini TL maliyeti metinleri bu durumlarda artık gösterilmez.
+
+### 25.4 Operasyon görünümü tekrar doğrulandı
+Operasyon görünümünde kur ve maliyet bağlamı tekrar sıkılaştırıldı. Kaynak fiyat, kur, tahmini alış maliyeti, `Kur detayı` ve source currency ifadeleri görünmez tutuldu.
+
+### 25.5 Fiyat input focus problemi
+Satış fiyatı alanında her tuşta tüm ürün listesini yeniden render eden akış kaldırıldı. Manuel fiyat commit’i `change` ve `blur` aşamasına alındı. Böylece kullanıcı çok haneli fiyatı kesintisiz yazabilir ve focus kaybı yaşamaz.
+
+### 25.6 Scenario panel varsayılan kapalı
+`Önizleme Senaryosu` paneli artık sayfa ilk açıldığında kapalı başlar. Böylece ana teklif formu ilk bakışta öne çıkar. Bu panelin production’a taşınmayacağı kararı korunur.
+
+### 25.7 Doğrulanan senaryo matrisi
+Aşağıdaki kombinasyonlara göre preview davranışı gözden geçirildi:
+
+1. modül açık + finans + TL + güncel
+2. modül açık + finans + USD
+3. modül açık + finans + EUR
+4. modül açık + finans + missing
+5. modül açık + finans + desteklenmeyen para birimi
+6. modül açık + operasyon + güncel
+7. modül açık + operasyon + stale
+8. modül kapalı + finans
+9. modül kapalı + operasyon
+10. satış fiyatı alanına çok haneli giriş
+11. belge para birimi değişiminde toplamların tutarlılığı
+
+### 25.8 Production dosyaları
+Bu turda da production dosyalarına dokunulmadı. Yalnız preview HTML ve preview raporu güncellendi.
+
+### 25.9 Kullanıcı onayı
+Preview son güvenlik ve etkileşim düzeltmesiyle tamamlandı. Hâlâ açık kullanıcı onayı beklenmektedir. Onay olmadan `Prodelya_V1 10.16.4 — Quote Currency Conversion and Snapshot Implementation` fazına geçilmemelidir.
