@@ -1,18 +1,16 @@
 @extends('layouts.prodelya-admin')
 
-@section('title', $order->document_number)
-@section('page_title', $order->document_number)
-@section('page_subtitle', ($order->customer?->legal_name ?: 'Müşteri bilgisi yok') . ' · Sipariş Detayı')
+@section('title', ($order->document_number ?: 'Sipariş') . ' | Prodelya')
+@section('page_title', 'Sipariş Detayı')
+@section('page_subtitle', ($order->document_number ?: 'Sipariş') . ' · ' . ($order->customer?->legal_name ?: 'Müşteri bilgisi yok'))
 
 @section('page_actions')
     <div class="flex gap-3">
         <a href="{{ route('admin.orders.index') }}" class="pd-btn pd-btn-light">Listeye Dön</a>
         @if($order->workForms->first())
-            <a href="{{ route('admin.work-forms.show', $order->workForms->first()) }}" class="pd-btn pd-btn-light">İş Formu</a>
+            <a href="{{ route('admin.work-forms.pdf', $order->workForms->first()) }}" class="pd-btn pd-btn-light">PDF / İş Formu</a>
         @endif
-        @if($financialDataVisible)
-            <a href="{{ route('admin.finance.show', $order) }}" class="pd-btn pd-btn-primary">Finans Özeti</a>
-        @endif
+        <a href="{{ route('admin.orders.show', ['order' => $order, 'tab' => 'gecmis']) }}" class="pd-btn pd-btn-primary">Diğer İşlemler</a>
     </div>
 @endsection
 
@@ -34,54 +32,146 @@
         ->values();
     $deliveryInfo = $deliveryTab['delivery_info'] ?? [];
     $latestLabelBatch = $deliveryTab['latest_label_batch'] ?? null;
-@endphp
+    $orderFamilyLabel = match ((string) ($order->order_family ?? '')) {
+        'promotion' => 'Promosyon Sipariş',
+        'print' => 'Baskı Sipariş',
+        'matbaa' => 'Matbaa Sipariş',
+        default => $order->order_family ? \Illuminate\Support\Str::headline((string) $order->order_family) : 'Sipariş',
+    };
+    $documentTypeLabel = match ((string) ($order->document_type ?? '')) {
+        'order' => 'Sipariş',
+        'quote' => 'Teklif',
+        default => $order->document_type ? \Illuminate\Support\Str::headline((string) $order->document_type) : 'Belge',
+    };
+    $statusLine = collect([
+        $order->document_number,
+        $order->customer?->legal_name,
+        $orderFamilyLabel . ' / ' . $documentTypeLabel,
+        $orderStatusLabel,
+    ])->filter()->implode(' · ');
+    $deliveryDate = null;
 
-<style>
-    .pd-order-layout { display:grid; grid-template-columns:minmax(0, 2fr) minmax(280px, 1fr); gap:16px; align-items:start; }
-    .pd-order-stack { display:grid; gap:14px; }
-    .pd-order-tabs { display:flex; gap:8px; flex-wrap:wrap; }
-    .pd-order-tab {
-        display:inline-flex; align-items:center; justify-content:center; min-height:38px; padding:0 14px;
-        border:1px solid var(--pd-line); border-radius:8px; background:#fff; color:#344054; text-decoration:none; font-size:13px; font-weight:600;
+    if ($order->delivery_date) {
+        try {
+            $deliveryDate = \Illuminate\Support\Carbon::parse($order->delivery_date)->startOfDay();
+        } catch (\Throwable $exception) {
+            $deliveryDate = null;
+        }
     }
-    .pd-order-tab.is-active { background:#eff6ff; border-color:#bfdbfe; color:#1d4ed8; }
-    .pd-order-tab:hover { border-color:#bfd4ef; color:#1d4ed8; }
-    .pd-order-grid-2 { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:14px; }
-    .pd-order-grid-3 { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:14px; }
-    .pd-order-grid-4 { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:14px; }
-    .pd-order-kpi { border:1px solid var(--pd-line); border-radius:8px; background:#fff; padding:14px; }
-    .pd-order-kpi-label { color:var(--pd-muted); font-size:12px; }
-    .pd-order-kpi-value { margin-top:6px; font-weight:700; color:#111827; }
-    .pd-order-summary-panel { position:sticky; top:16px; display:grid; gap:14px; }
-    .pd-order-mini-list, .pd-order-history-list, .pd-order-step-list, .pd-order-package-list { display:grid; gap:10px; }
-    .pd-order-list-row, .pd-order-step-row, .pd-order-history-row, .pd-order-package-card {
-        border:1px solid var(--pd-line); border-radius:8px; background:#fff; padding:12px;
+
+    $remainingDaysLabel = 'Belirtilmedi';
+
+    if ($deliveryDate) {
+        $remainingDays = now()->startOfDay()->diffInDays($deliveryDate, false);
+        $remainingDaysLabel = match (true) {
+            $remainingDays === 0 => 'Bugün',
+            $remainingDays > 0 => $remainingDays . ' gün',
+            default => abs($remainingDays) . ' gün geçti',
+        };
     }
-    .pd-order-list-row { display:grid; grid-template-columns:minmax(0, 1fr) auto; gap:12px; align-items:start; }
-    .pd-order-step-row { display:grid; grid-template-columns:minmax(0, 1fr) auto; gap:12px; align-items:center; }
-    .pd-order-history-row { display:grid; grid-template-columns:140px minmax(0, 1fr); gap:12px; }
-    .pd-order-package-items { margin-top:10px; display:grid; gap:8px; }
-    .pd-order-form-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px; }
-    .pd-order-form-grid .full { grid-column:1 / -1; }
-    .pd-order-form-grid label { display:block; margin-bottom:5px; color:#475467; font-size:12px; font-weight:700; }
-    .pd-order-form-note { padding:12px; border:1px dashed var(--pd-line); border-radius:8px; background:#fbfcfe; color:#475467; font-size:12px; line-height:1.55; }
-    .pd-order-item-table { width:100%; border-collapse:collapse; }
-    .pd-order-item-table th, .pd-order-item-table td { border-bottom:1px solid var(--pd-line); padding:10px 8px; vertical-align:top; text-align:left; }
-    .pd-order-item-table th { color:#475467; font-size:12px; font-weight:700; }
-    .pd-order-alert-grid { display:grid; gap:10px; }
-    .pd-order-package-builder { display:grid; gap:12px; }
-    .pd-order-package-builder .pd-order-package-card { background:#f8fafc; }
-    .pd-order-package-toolbar { display:flex; gap:8px; justify-content:space-between; align-items:center; flex-wrap:wrap; }
-    .pd-order-package-actions { display:flex; gap:8px; flex-wrap:wrap; }
-    @media (max-width: 1100px) {
-        .pd-order-layout { grid-template-columns:1fr; }
-        .pd-order-summary-panel { position:static; }
-        .pd-order-grid-4 { grid-template-columns:repeat(2, minmax(0, 1fr)); }
-    }
-    @media (max-width: 900px) {
-        .pd-order-grid-2, .pd-order-grid-3, .pd-order-grid-4, .pd-order-form-grid, .pd-order-history-row, .pd-order-list-row, .pd-order-step-row { grid-template-columns:1fr; }
-    }
-</style>
+
+    $paymentStatusLabel = data_get($overview, 'payment_status_label', 'Finans izleniyor');
+    $customerCurrentAccountUrl = $customerCurrentAccount ? route('admin.current-accounts.transactions.index', $customerCurrentAccount) : null;
+    $customerCardUrl = $order->customer ? route('admin.companies.show', $order->customer) : route('admin.companies.index');
+    $hasPrintProcess = $itemRows->contains(fn (array $row): bool => collect($row['prints'] ?? [])->isNotEmpty());
+    $graphicNeedsAttention = $order->workForms->contains(function ($workFormRow): bool {
+        $status = (string) data_get($workFormRow->graphic_snapshot, 'status', '');
+
+        return $status !== '' && !in_array($status, ['gerekli_degil', 'uretime_hazir'], true);
+    });
+    $graphicCard = [
+        'title' => 'Grafik',
+        'badge' => $graphicNeedsAttention ? 'amber' : ($order->workForms->isNotEmpty() ? 'green' : ($hasPrintProcess ? 'amber' : 'gray')),
+        'status' => $order->workForms->isEmpty()
+            ? ($hasPrintProcess ? 'Grafik bekliyor' : 'Grafik gerekli değil')
+            : ($graphicNeedsAttention ? 'Grafik bekliyor' : 'Grafik hazır'),
+        'summary' => $order->workForms->isEmpty()
+            ? 'Grafik kaydı henüz oluşmadı.'
+            : 'Müşteri onayı, revize ve üretime hazırlık durumu iş formu üzerinden izlenir.',
+        'meta' => $workForm?->work_form_number ? 'Son iş formu: ' . $workForm->work_form_number : 'İş formu üzerinden izlenir',
+        'primary_label' => 'Grafik Detayını Aç',
+        'primary_url' => $workForm ? route('admin.graphics.show', $workForm) : route('admin.graphics.index'),
+        'secondary_label' => $trackingUrl ? 'Müşteri Takip Ekranı' : 'İş Formuna Git',
+        'secondary_url' => $trackingUrl ?: ($workForm ? route('admin.work-forms.show', $workForm) : route('admin.orders.show', ['order' => $order, 'tab' => 'is-formu'])),
+        'warning' => $graphicNeedsAttention ? 'Revize veya onay bekleyen grafik işi var.' : null,
+    ];
+    $procurementRecord = $order->procurements->first();
+    $procurementStatus = $procurementRecord?->safeStatusLabel();
+    $procurementCard = [
+        'title' => 'Tedarik / Malzeme',
+        'badge' => $procurementRecord ? (($procurementRecord->remaining_quantity ?? 0) > 0 ? 'amber' : 'green') : 'gray',
+        'status' => $procurementStatus ?: 'Tedarik gerekli değil',
+        'summary' => $procurementRecord
+            ? 'Malzeme ve ürün tedarik durumu mevcut tedarik kaydı üzerinden izlenir.'
+            : 'Bu sipariş için ayrı tedarik kaydı görünmüyor.',
+        'meta' => $procurementRecord ? 'Kalan miktar: ' . rtrim(rtrim(number_format((float) $procurementRecord->remaining_quantity, 4, ',', '.'), '0'), ',') : 'Tedarik listesi üzerinden yönetilir',
+        'primary_label' => 'Tedarik Detayını Aç',
+        'primary_url' => $procurementRecord ? route('admin.procurements.show', $procurementRecord) : route('admin.procurements.index'),
+        'secondary_label' => 'Tedarik Listesi',
+        'secondary_url' => route('admin.procurements.index'),
+        'warning' => $procurementRecord && (float) $procurementRecord->remaining_quantity > 0 ? 'Eksik tedarik kalemi bulunuyor.' : null,
+    ];
+    $productionRecord = $order->printProductions->first();
+    $productionCard = [
+        'title' => 'Üretim / Fason',
+        'badge' => $productionRecord ? ($productionRecord->isCompleted() ? 'green' : ($productionRecord->isProblematic() ? 'red' : 'blue')) : ($hasPrintProcess ? 'amber' : 'gray'),
+        'status' => $productionRecord?->safeStatusLabel() ?: ($hasPrintProcess ? 'Üretim bekliyor' : 'Üretim gerekli değil'),
+        'summary' => $productionRecord
+            ? 'İç üretim veya fason üretim durumu üretim kaydı üzerinden izlenir.'
+            : 'Henüz aktif üretim kaydı görünmüyor.',
+        'meta' => $productionRecord ? 'Tamamlanan: ' . rtrim(rtrim(number_format((float) $productionRecord->completed_quantity, 4, ',', '.'), '0'), ',') : 'Üretim listesi üzerinden izlenir',
+        'primary_label' => 'Üretimi Aç',
+        'primary_url' => $productionRecord ? route('admin.productions.show', $productionRecord) : route('admin.productions.index'),
+        'secondary_label' => 'Üretim Listesi',
+        'secondary_url' => route('admin.productions.index'),
+        'warning' => $productionRecord && !$productionRecord->isCompleted() ? 'Üretim süreci devam ediyor.' : null,
+    ];
+    $deliveryRecord = $order->deliveries->first();
+    $deliveryCard = [
+        'title' => 'Teslimat',
+        'badge' => $deliveryTab['is_delivered'] ? 'green' : ($deliveryRecord ? 'orange' : 'gray'),
+        'status' => $deliveryTab['is_delivered'] ? 'Teslim edildi' : ($deliveryRecord?->safeStatusLabel() ?: 'Teslimat bekliyor'),
+        'summary' => 'Koli planı, etiket ve teslim bilgileri teslimat alanından yönetilir.',
+        'meta' => $deliveryInfo['summary'] ?? ($deliveryTab['package_count'] . ' koli planı'),
+        'primary_label' => 'Teslimat Detayını Aç',
+        'primary_url' => $deliveryRecord ? route('admin.deliveries.show', $deliveryRecord) : route('admin.orders.show', ['order' => $order, 'tab' => 'teslimat']),
+        'secondary_label' => 'Teslimat Sekmesi',
+        'secondary_url' => route('admin.orders.show', ['order' => $order, 'tab' => 'teslimat']),
+        'warning' => !$deliveryTab['is_delivered'] && ($deliveryTab['package_count'] ?? 0) === 0 ? 'Teslimat öncesi koli planı hazırlanmalı.' : null,
+    ];
+    $financeCard = [
+        'title' => 'Finans',
+        'badge' => $financialDataVisible ? ($overview['payment_status_badge'] ?? 'gray') : 'gray',
+        'status' => $financialDataVisible ? data_get($financeOverview, 'overall.status_label', $paymentStatusLabel) : 'Yetkiye göre görünür',
+        'summary' => $financialDataVisible
+            ? 'Tahsilat, cari hareket ve karşı borç özeti finans ekranından izlenir.'
+            : 'Finans tutarları yalnız yetkili kullanıcıya gösterilir.',
+        'meta' => $financialDataVisible
+            ? 'Kalan bakiye: ' . number_format((float) data_get($financeOverview, 'customer_receivable.remaining_amount', 0), 2, ',', '.') . ' ' . ($order->currency ?: 'TL')
+            : 'Ödeme durumu yetkiye göre gösterilir',
+        'primary_label' => $financialDataVisible ? 'Finans Özeti' : 'Finans Sekmesi',
+        'primary_url' => $financialDataVisible ? route('admin.finance.show', $order) : route('admin.orders.show', ['order' => $order, 'tab' => 'finans']),
+        'secondary_label' => $customerCurrentAccountUrl ? 'Cari Hareketler' : 'Finans Sekmesi',
+        'secondary_url' => $customerCurrentAccountUrl ?: route('admin.orders.show', ['order' => $order, 'tab' => 'finans']),
+        'warning' => $financialDataVisible && (float) data_get($financeOverview, 'customer_receivable.remaining_amount', 0) > 0 ? 'Tahsilat bekleyen bakiye bulunuyor.' : null,
+    ];
+    $flowCards = [$graphicCard, $procurementCard, $productionCard, $deliveryCard, $financeCard];
+    $priorityFlowCard = collect($flowCards)
+        ->first(fn (array $card): bool => in_array($card['badge'], ['red', 'amber', 'blue', 'orange'], true))
+        ?: $flowCards[0];
+    $helperActions = collect([
+        $workForm ? ['label' => 'İş Formunu Aç', 'url' => route('admin.work-forms.show', $workForm)] : null,
+        $workFormPdfUrl ? ['label' => 'PDF İndir', 'url' => $workFormPdfUrl] : null,
+        $financialDataVisible ? ['label' => 'Ödeme Al', 'url' => route('admin.finance.show', $order)] : null,
+    ])->filter()->take(2)->values();
+    $quickLinks = collect([
+        ['label' => 'Cari Kart', 'url' => $customerCardUrl],
+        $trackingUrl ? ['label' => 'Müşteri Takip Ekranı', 'url' => $trackingUrl] : null,
+        $sourceQuoteUrl ? ['label' => 'Teklif Kaydı', 'url' => $sourceQuoteUrl] : null,
+        ['label' => 'Teslimat Sekmesi', 'url' => route('admin.orders.show', ['order' => $order, 'tab' => 'teslimat'])],
+    ])->filter()->take(3)->values();
+    $warnings = collect($flowCards)->pluck('warning')->filter()->take(3)->values();
+@endphp
 
 @if(session('success'))
     <div class="pd-alert">{{ session('success') }}</div>
@@ -101,9 +191,9 @@
             <div class="pd-card-body">
                 <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap;">
                     <div>
-                        <div class="text-xs" style="color:var(--pd-muted);">Sekmeli Görünüm</div>
-                        <div style="margin-top:6px; font-weight:700;">Sipariş akışını sekmelerden yönetin</div>
-                        <div style="margin-top:6px; color:var(--pd-muted);">Genel özet, operasyon modülleri, teslimat planı ve finans görünümü ayrı alanlarda sade tutulur.</div>
+                        <div class="text-xs" style="color:var(--pd-muted);">Sipariş No · Müşteri · Sipariş Ailesi · Durum</div>
+                        <div style="margin-top:6px; font-weight:700;">{{ $statusLine }}</div>
+                        <div style="margin-top:6px; color:var(--pd-muted);">Sipariş akışı, teslimat planı ve finans görünümü aynı sipariş omurgasında izlenir.</div>
                     </div>
                     <div class="pd-order-tabs" role="tablist" aria-label="Sipariş sekmeleri">
                         @foreach($orderTabs as $tabKey => $tabLabel)
@@ -124,74 +214,170 @@
             <div class="pd-card">
                 <div class="pd-card-header">
                     <h3 class="pd-card-title">Genel Özet</h3>
-                    <p class="pd-card-subtitle">Siparişin genel durumu, sıradaki iş ve operasyon özetleri tek alanda toplanır.</p>
+                    <p class="pd-card-subtitle">Siparişin genel durumu, kalem özeti ve operasyon akışı tek merkezde toplanır.</p>
                 </div>
                 <div class="pd-card-body">
-                    <div class="pd-order-grid-4">
-                        <div class="pd-order-kpi"><div class="pd-order-kpi-label">Sipariş No</div><div class="pd-order-kpi-value">{{ $order->document_number }}</div></div>
-                        <div class="pd-order-kpi"><div class="pd-order-kpi-label">Müşteri</div><div class="pd-order-kpi-value">{{ $order->customer?->legal_name ?: 'Müşteri bilgisi yok' }}</div></div>
-                        <div class="pd-order-kpi"><div class="pd-order-kpi-label">Sipariş Tarihi</div><div class="pd-order-kpi-value">{{ $overview['order_date_label'] ?? '-' }}</div></div>
-                        <div class="pd-order-kpi"><div class="pd-order-kpi-label">Teslim Tarihi</div><div class="pd-order-kpi-value">{{ $overview['delivery_date_label'] ?? '-' }}</div></div>
-                        <div class="pd-order-kpi"><div class="pd-order-kpi-label">Sipariş Durumu</div><div class="pd-order-kpi-value"><span class="pd-badge pd-badge-{{ $generalBadge }}">{{ $orderStatusLabel }}</span></div></div>
-                        <div class="pd-order-kpi"><div class="pd-order-kpi-label">Operasyon Durumu</div><div class="pd-order-kpi-value"><span class="pd-badge pd-badge-{{ $operationBadge }}">{{ $operationStatusLabel }}</span></div></div>
-                        <div class="pd-order-kpi"><div class="pd-order-kpi-label">Kalem Sayısı</div><div class="pd-order-kpi-value">{{ $order->items->count() }}</div></div>
-                        <div class="pd-order-kpi"><div class="pd-order-kpi-label">Sıradaki İş</div><div class="pd-order-kpi-value">{{ $overview['next_action_label'] ?? 'Siparişi incele' }}</div></div>
-                    </div>
-
-                    <div class="pd-order-alert-grid" style="margin-top:14px;">
-                        <div class="pd-order-form-note">
-                            <strong>Operasyon notu:</strong> Teslimat tamamlandığında sipariş operasyon akışından çıkarılabilir. Finans açık ise Cari Ekstre ve Finans ekranında tahsilat takibi sürer.
+                    <div class="pd-order-kpi-strip">
+                        <div class="pd-order-kpi">
+                            <div class="pd-order-kpi-label">Genel Durum</div>
+                            <div class="pd-order-kpi-value"><span class="pd-badge pd-badge-{{ $generalBadge }}">{{ $orderStatusLabel }}</span></div>
                         </div>
-                        @if($financialDataVisible && $financeOverview)
-                            <div class="pd-order-form-note">
-                                <strong>Kısa finans durumu:</strong>
-                                {{ data_get($financeOverview, 'overall.status_label', 'Finans açık') }}
-                                · Kalan Bakiye:
-                                @include('admin.current-accounts._money-display', [
-                                    'label' => number_format((float) data_get($financeOverview, 'customer_receivable.remaining_amount', 0), 2, ',', '.') . ' ' . ($order->currency ?: 'TL'),
-                                    'amount' => (float) data_get($financeOverview, 'customer_receivable.remaining_amount', 0),
-                                ])
-                            </div>
-                        @endif
-                    </div>
-
-                    @if($financialDataVisible && $financeOverview)
-                        <div class="pd-order-grid-4" style="margin-top:14px;">
-                            <div class="pd-order-kpi">
-                                <div class="pd-order-kpi-label">Müşteri Borcu</div>
-                                <div class="pd-order-kpi-value">@include('admin.current-accounts._money-display', ['label' => number_format((float) data_get($financeOverview, 'customer_receivable.debit_amount', 0), 2, ',', '.') . ' ' . ($order->currency ?: 'TL'), 'amount' => (float) data_get($financeOverview, 'customer_receivable.debit_amount', 0)])</div>
-                            </div>
-                            <div class="pd-order-kpi">
-                                <div class="pd-order-kpi-label">Tahsil Edilen</div>
-                                <div class="pd-order-kpi-value">@include('admin.current-accounts._money-display', ['label' => number_format((float) data_get($financeOverview, 'customer_receivable.collected_amount', 0), 2, ',', '.') . ' ' . ($order->currency ?: 'TL'), 'amount' => (float) data_get($financeOverview, 'customer_receivable.collected_amount', 0)])</div>
-                            </div>
-                            <div class="pd-order-kpi">
-                                <div class="pd-order-kpi-label">Kalan Bakiye</div>
-                                <div class="pd-order-kpi-value">@include('admin.current-accounts._money-display', ['label' => number_format((float) data_get($financeOverview, 'customer_receivable.remaining_amount', 0), 2, ',', '.') . ' ' . ($order->currency ?: 'TL'), 'amount' => (float) data_get($financeOverview, 'customer_receivable.remaining_amount', 0)])</div>
-                            </div>
-                            <div class="pd-order-kpi">
-                                <div class="pd-order-kpi-label">Karşı Borçlar</div>
-                                <div class="pd-order-kpi-value">@include('admin.current-accounts._money-display', ['label' => number_format(((float) data_get($financeOverview, 'supplier_debts.remaining_amount', 0)) + ((float) data_get($financeOverview, 'subcontractor_debts.remaining_amount', 0)), 2, ',', '.') . ' ' . ($order->currency ?: 'TL'), 'amount' => ((float) data_get($financeOverview, 'supplier_debts.remaining_amount', 0)) + ((float) data_get($financeOverview, 'subcontractor_debts.remaining_amount', 0))])</div>
+                        <div class="pd-order-kpi">
+                            <div class="pd-order-kpi-label">Teslim Tarihi</div>
+                            <div class="pd-order-kpi-value">{{ $overview['delivery_date_label'] ?? '-' }}</div>
+                        </div>
+                        <div class="pd-order-kpi">
+                            <div class="pd-order-kpi-label">Kalan Gün</div>
+                            <div class="pd-order-kpi-value">{{ $remainingDaysLabel }}</div>
+                        </div>
+                        <div class="pd-order-kpi">
+                            <div class="pd-order-kpi-label">{{ $financialDataVisible ? 'Açık Bakiye' : 'Ödeme Durumu' }}</div>
+                            <div class="pd-order-kpi-value">
+                                @if($financialDataVisible)
+                                    @include('admin.current-accounts._money-display', ['label' => number_format((float) data_get($financeOverview, 'customer_receivable.remaining_amount', 0), 2, ',', '.') . ' ' . ($order->currency ?: 'TL'), 'amount' => (float) data_get($financeOverview, 'customer_receivable.remaining_amount', 0)])
+                                @else
+                                    {{ $paymentStatusLabel }}
+                                @endif
                             </div>
                         </div>
-                    @endif
+                        <div class="pd-order-kpi">
+                            <div class="pd-order-kpi-label">Sipariş Ailesi / Belge Tipi</div>
+                            <div class="pd-order-kpi-value">{{ $orderFamilyLabel }} · {{ $documentTypeLabel }}</div>
+                        </div>
+                    </div>
 
                     <div class="pd-order-grid-2" style="margin-top:14px;">
-                        @foreach($moduleCards as $moduleCard)
-                            <div class="pd-order-list-row">
-                                <div>
-                                    <div class="text-xs" style="color:var(--pd-muted);">{{ $moduleCard['title'] }}</div>
-                                    <div style="margin-top:6px; font-weight:700;">{{ $moduleCard['status'] }}</div>
-                                    <div style="margin-top:4px; color:var(--pd-muted);">{{ $moduleCard['copy'] }}</div>
-                                </div>
-                                <div style="display:grid; gap:8px; justify-items:end;">
-                                    <span class="pd-badge pd-badge-{{ $moduleCard['badge'] }}">{{ $moduleCard['title'] }}</span>
-                                    @if(!empty($moduleCard['url']))
-                                        <a href="{{ $moduleCard['url'] }}" class="pd-btn pd-btn-light pd-btn-sm">Aç</a>
-                                    @endif
+                        <div class="pd-card pd-order-subcard">
+                            <div class="pd-card-header">
+                                <h3 class="pd-card-title">Sipariş Özeti</h3>
+                                <p class="pd-card-subtitle">Sipariş kimliği, belge tipi ve teslim bilgisi kısa görünümde toplanır.</p>
+                            </div>
+                            <div class="pd-card-body">
+                                <div class="pd-order-summary-grid">
+                                    <div class="pd-order-summary-cell"><span>Sipariş No</span><strong>{{ $order->document_number ?: '-' }}</strong></div>
+                                    <div class="pd-order-summary-cell"><span>Müşteri</span><strong>{{ $order->customer?->legal_name ?: 'Müşteri bilgisi yok' }}</strong></div>
+                                    <div class="pd-order-summary-cell"><span>Belge / Sipariş Durumu</span><strong>{{ $documentTypeLabel }} · {{ $orderStatusLabel }}</strong></div>
+                                    <div class="pd-order-summary-cell"><span>Sipariş Ailesi</span><strong>{{ $orderFamilyLabel }}</strong></div>
+                                    <div class="pd-order-summary-cell"><span>Teslim Tipi</span><strong>{{ $order->delivery_type ?: 'Belirtilmedi' }}</strong></div>
+                                    <div class="pd-order-summary-cell"><span>Yetkili</span><strong>{{ $order->customer?->contact_name ?: 'Belirtilmedi' }}</strong></div>
+                                    <div class="pd-order-summary-cell pd-order-summary-cell-full"><span>Kısa Not</span><strong>{{ $order->notes ?: 'Sipariş için ek not girilmemiş.' }}</strong></div>
                                 </div>
                             </div>
-                        @endforeach
+                        </div>
+
+                        <div class="pd-card pd-order-subcard">
+                            <div class="pd-card-header">
+                                <h3 class="pd-card-title">Sipariş Kalemleri</h3>
+                                <p class="pd-card-subtitle">Ürün, baskı ve operasyon bilgileri kompakt biçimde birlikte gösterilir.</p>
+                            </div>
+                            <div class="pd-card-body">
+                                <table class="pd-order-item-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Kalem</th>
+                                            <th>Ürün / Baskı</th>
+                                            <th>Miktar</th>
+                                            <th>Durum</th>
+                                            @if($financialDataVisible)
+                                                <th>Tutar</th>
+                                            @endif
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @forelse($itemRows as $itemRow)
+                                            <tr>
+                                                <td><strong>#{{ $itemRow['sequence'] }}</strong></td>
+                                                <td>
+                                                    <div class="pd-order-item-name">{{ $itemRow['product_name'] }}</div>
+                                                    @if(!empty($itemRow['prints']))
+                                                        <div class="pd-order-item-meta">
+                                                            @foreach($itemRow['prints'] as $printRow)
+                                                                <div>{{ $printRow['print_type'] ?: 'Baskı' }} · {{ $printRow['print_option'] ?: 'Detay yok' }} · {{ $printRow['production_status'] }}</div>
+                                                            @endforeach
+                                                        </div>
+                                                    @endif
+                                                </td>
+                                                <td>{{ $itemRow['quantity'] }}</td>
+                                                <td><span class="pd-badge pd-badge-{{ str_contains(strtolower($itemRow['operation_status']), 'teslim') ? 'green' : (str_contains(strtolower($itemRow['operation_status']), 'bekliyor') ? 'amber' : 'blue') }}">{{ $itemRow['operation_status'] }}</span></td>
+                                                @if($financialDataVisible)
+                                                    <td>{{ $itemRow['product_total_label'] }}</td>
+                                                @endif
+                                            </tr>
+                                        @empty
+                                            <tr><td colspan="{{ $financialDataVisible ? '5' : '4' }}" class="text-sm" style="color:var(--pd-muted);">Sipariş kalemi görünmüyor.</td></tr>
+                                        @endforelse
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        @if($financialDataVisible && $financeOverview)
+                            <div class="pd-card pd-order-subcard">
+                                <div class="pd-card-header">
+                                    <h3 class="pd-card-title">Finans Özeti</h3>
+                                    <p class="pd-card-subtitle">Müşteri borcu, tahsilat ve karşı borç görünümü sipariş merkezinde kısa biçimde izlenir.</p>
+                                </div>
+                                <div class="pd-card-body">
+                                    <div class="pd-order-grid-2">
+                                        <div class="pd-order-kpi">
+                                            <div class="pd-order-kpi-label">Müşteri Borcu</div>
+                                            <div class="pd-order-kpi-value">@include('admin.current-accounts._money-display', ['label' => number_format((float) data_get($financeOverview, 'customer_receivable.debit_amount', 0), 2, ',', '.') . ' ' . ($order->currency ?: 'TL'), 'amount' => (float) data_get($financeOverview, 'customer_receivable.debit_amount', 0)])</div>
+                                        </div>
+                                        <div class="pd-order-kpi">
+                                            <div class="pd-order-kpi-label">Tahsil Edilen</div>
+                                            <div class="pd-order-kpi-value">@include('admin.current-accounts._money-display', ['label' => number_format((float) data_get($financeOverview, 'customer_receivable.collected_amount', 0), 2, ',', '.') . ' ' . ($order->currency ?: 'TL'), 'amount' => (float) data_get($financeOverview, 'customer_receivable.collected_amount', 0)])</div>
+                                        </div>
+                                        <div class="pd-order-kpi">
+                                            <div class="pd-order-kpi-label">Kalan Bakiye</div>
+                                            <div class="pd-order-kpi-value">@include('admin.current-accounts._money-display', ['label' => number_format((float) data_get($financeOverview, 'customer_receivable.remaining_amount', 0), 2, ',', '.') . ' ' . ($order->currency ?: 'TL'), 'amount' => (float) data_get($financeOverview, 'customer_receivable.remaining_amount', 0)])</div>
+                                        </div>
+                                        <div class="pd-order-kpi">
+                                            <div class="pd-order-kpi-label">Karşı Borçlar</div>
+                                            <div class="pd-order-kpi-value">@include('admin.current-accounts._money-display', ['label' => number_format((float) data_get($financeOverview, 'supplier_debts.total_debt', 0) + (float) data_get($financeOverview, 'subcontractor_debts.total_debt', 0), 2, ',', '.') . ' TL', 'amount' => (float) data_get($financeOverview, 'supplier_debts.total_debt', 0) + (float) data_get($financeOverview, 'subcontractor_debts.total_debt', 0)])</div>
+                                        </div>
+                                    </div>
+                                    <div class="pd-order-package-actions" style="margin-top:14px;">
+                                        <a href="{{ route('admin.finance.show', $order) }}" class="pd-btn pd-btn-primary">Finans Özeti</a>
+                                        @if($customerCurrentAccount)
+                                            <a href="{{ route('admin.current-accounts.transactions.index', $customerCurrentAccount) }}" class="pd-btn pd-btn-light">Cari Hareketler</a>
+                                        @endif
+                                    </div>
+                                </div>
+                            </div>
+                        @endif
+
+                        <div class="pd-card pd-order-flow-card-shell" style="margin-top:14px;">
+                            <div class="pd-card-header">
+                                <h3 class="pd-card-title">Sipariş Akışı</h3>
+                            <p class="pd-card-subtitle">Bu alan siparişin grafik, tedarik, üretim, teslimat ve finans sürecini tek ekranda takip etmek için kullanılır.</p>
+                        </div>
+                        <div class="pd-card-body">
+                            <div class="pd-order-flow-grid">
+                                @foreach($flowCards as $flowCard)
+                                    <div class="pd-order-flow-card">
+                                        <div class="pd-order-flow-head">
+                                            <div>
+                                                <div class="pd-order-flow-title">{{ $flowCard['title'] }}</div>
+                                                <div class="pd-order-flow-text">{{ $flowCard['summary'] }}</div>
+                                            </div>
+                                            <span class="pd-badge pd-badge-{{ $flowCard['badge'] }}">{{ $flowCard['status'] }}</span>
+                                        </div>
+                                        <div class="pd-order-flow-meta">{{ $flowCard['meta'] }}</div>
+                                        @if($flowCard['warning'])
+                                            <div class="pd-order-flow-warning">{{ $flowCard['warning'] }}</div>
+                                        @endif
+                                        <div class="pd-order-flow-actions">
+                                            <a href="{{ $flowCard['primary_url'] }}" class="pd-btn pd-btn-light pd-btn-sm">{{ $flowCard['primary_label'] }}</a>
+                                            <a href="{{ $flowCard['secondary_url'] }}" class="pd-order-inline-link">{{ $flowCard['secondary_label'] }}</a>
+                                        </div>
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="pd-order-form-note" style="margin-top:14px;">
+                        Operasyon notu: Teslimat tamamlandığında sipariş operasyon akışından çıkarılabilir. Finans açık ise cari ve tahsilat takibi ilgili ekranlarda sürer.
                     </div>
                 </div>
             </div>
@@ -734,8 +920,8 @@
     <aside class="pd-order-summary-panel">
         <div class="pd-card">
             <div class="pd-card-header">
-                <h3 class="pd-card-title">Sağ Özet</h3>
-                <p class="pd-card-subtitle">Tekrarsız kısa görünüm</p>
+                <h3 class="pd-card-title">Kısa Özet</h3>
+                <p class="pd-card-subtitle">Siparişin kısa görünümü ve kontrollü hızlı aksiyon alanı</p>
             </div>
             <div class="pd-card-body">
                 <div class="pd-order-mini-list">
@@ -748,10 +934,10 @@
                     </div>
                     <div class="pd-order-list-row">
                         <div>
-                            <div class="text-xs" style="color:var(--pd-muted);">Operasyon</div>
-                            <div style="margin-top:6px; font-weight:700;">{{ $operationStatusLabel }}</div>
+                            <div class="text-xs" style="color:var(--pd-muted);">Sipariş Ailesi</div>
+                            <div style="margin-top:6px; font-weight:700;">{{ $orderFamilyLabel }}</div>
                         </div>
-                        <span class="pd-badge pd-badge-{{ $operationBadge }}">{{ $overview['next_action_label'] ?? 'İzle' }}</span>
+                        <span class="pd-badge pd-badge-{{ $operationBadge }}">{{ $documentTypeLabel }}</span>
                     </div>
                     <div class="pd-order-list-row">
                         <div>
@@ -762,11 +948,50 @@
                     </div>
                 </div>
 
+                <div class="pd-order-form-note" style="margin-top:14px;">
+                    <strong>Sıradaki İşlem:</strong> {{ $overview['next_action_label'] ?? 'Siparişi incele' }}
+                </div>
+
                 <div class="pd-order-package-actions" style="margin-top:14px;">
-                    <a href="{{ route('admin.orders.show', ['order' => $order, 'tab' => 'teslimat']) }}" class="pd-btn pd-btn-light">Teslimata Git</a>
-                    @if($sourceQuoteUrl)
-                        <a href="{{ $sourceQuoteUrl }}" class="pd-btn pd-btn-light">Teklifi Aç</a>
-                    @endif
+                    <a href="{{ $priorityFlowCard['primary_url'] }}" class="pd-btn pd-btn-primary">{{ $priorityFlowCard['primary_label'] }}</a>
+                    @foreach($helperActions as $helperAction)
+                        <a href="{{ $helperAction['url'] }}" class="pd-btn pd-btn-light">{{ $helperAction['label'] }}</a>
+                    @endforeach
+                </div>
+
+                @if($canCreateQuoteDraft)
+                    <div class="pd-order-mini-list" style="margin-top:14px;">
+                        <div class="text-xs" style="color:var(--pd-muted); font-weight:700;">Yeni Taslak Oluştur</div>
+                        <div class="pd-order-form-note" style="margin-top:8px;">
+                            Bu aksiyonlar mevcut siparişi değiştirmez. Önce yeni teklif taslağı oluşur, sonra normal teklif akışıyla ilerlenir.
+                        </div>
+                        <div class="pd-order-package-actions" style="margin-top:12px;">
+                            <form method="POST" action="{{ route('admin.orders.revision-draft.store', $order) }}">
+                                @csrf
+                                <button type="submit" class="pd-btn pd-btn-light">Revizyon Oluştur</button>
+                            </form>
+                            <form method="POST" action="{{ route('admin.orders.repeat-order-draft.store', $order) }}">
+                                @csrf
+                                <button type="submit" class="pd-btn pd-btn-light">Tekrar Sipariş Oluştur</button>
+                            </form>
+                        </div>
+                    </div>
+                @endif
+
+                @if($warnings->isNotEmpty())
+                    <div class="pd-order-mini-list" style="margin-top:14px;">
+                        <div class="text-xs" style="color:var(--pd-muted); font-weight:700;">Uyarılar</div>
+                        @foreach($warnings as $warningText)
+                            <div class="pd-order-flow-warning">{{ $warningText }}</div>
+                        @endforeach
+                    </div>
+                @endif
+
+                <div class="pd-order-mini-list" style="margin-top:14px;">
+                    <div class="text-xs" style="color:var(--pd-muted); font-weight:700;">Hızlı Bağlantılar</div>
+                    @foreach($quickLinks as $quickLink)
+                        <a href="{{ $quickLink['url'] }}" class="pd-order-inline-link">{{ $quickLink['label'] }}</a>
+                    @endforeach
                 </div>
             </div>
         </div>

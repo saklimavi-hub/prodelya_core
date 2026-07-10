@@ -41,6 +41,10 @@ class OrderDetailOperationalFlowUxTest extends TestCase
 
         $response->assertOk();
         $response->assertSee('Genel Özet');
+        $response->assertSee('Sipariş Akışı');
+        $response->assertSee('Bu alan siparişin grafik, tedarik, üretim, teslimat ve finans sürecini tek ekranda takip etmek için kullanılır.');
+        $response->assertSee('Kısa Özet');
+        $response->assertSee('Sıradaki İşlem');
         $response->assertSee('İş Formu');
         $response->assertSee('Grafik');
         $response->assertSee('Tedarik');

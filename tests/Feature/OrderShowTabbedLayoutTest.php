@@ -29,6 +29,9 @@ class OrderShowTabbedLayoutTest extends TestCase
 
         $response->assertOk()
             ->assertSee('Genel Özet')
+            ->assertSee('Sipariş Özeti')
+            ->assertSee('Sipariş Kalemleri')
+            ->assertSee('Sipariş Akışı')
             ->assertSee('İş Formu')
             ->assertSee('Grafik')
             ->assertSee('Tedarik')

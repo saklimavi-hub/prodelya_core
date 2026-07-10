@@ -361,6 +361,7 @@ class OrderController extends Controller
         $requestedTab = (string) $request->query('tab', 'genel');
         $activeOrderTab = array_key_exists($requestedTab, $orderTabs) ? $requestedTab : 'genel';
         $deliveryTab = $this->orderDeliveryPlanningService->buildContext($order);
+        $canCreateQuoteDraft = $request->user()?->hasPermissionInTenant('create_quotes', $tenant->id) ?? false;
 
         return view('admin.orders.show', [
             'order' => $order,
@@ -376,6 +377,7 @@ class OrderController extends Controller
             'orderTabs' => $orderTabs,
             'activeOrderTab' => $activeOrderTab,
             'deliveryTab' => $deliveryTab,
+            'canCreateQuoteDraft' => $canCreateQuoteDraft,
         ]);
     }
 
