@@ -136,6 +136,10 @@ class NotificationEventService
                         'missing_variables' => [],
                     ];
 
+                if ($normalizedEventKey === 'quote_sent_to_customer' && $channel === NotificationTemplate::CHANNEL_WHATSAPP_LINK) {
+                    $rendered['body'] = $this->normalizeQuoteWhatsappBody((string) ($rendered['body'] ?? ''), $variables);
+                }
+
                 $payload = [
                     'notification_key' => $normalizedEventKey,
                     'template_id' => $template?->id,
@@ -166,6 +170,23 @@ class NotificationEventService
         }
 
         return $result;
+    }
+
+    private function normalizeQuoteWhatsappBody(string $body, array $variables): string
+    {
+        $publicUrl = trim((string) ($variables['public_quote_url'] ?? $variables['public_quote_approval_url'] ?? ''));
+
+        if ($publicUrl === '' || ! preg_match('/^https?:\/\//i', $publicUrl)) {
+            return $body;
+        }
+
+        $normalizedBody = str_replace(["\r\n", "\r"], "\n", trim(strip_tags($body)));
+        $withoutUrl = preg_replace('/\s*' . preg_quote($publicUrl, '/') . '\s*/u', "\n", $normalizedBody, 1) ?? $normalizedBody;
+        $withoutUrl = preg_replace("/\n{3,}/u", "\n\n", trim($withoutUrl)) ?? trim($withoutUrl);
+
+        return $withoutUrl === ''
+            ? $publicUrl
+            : rtrim($withoutUrl) . "\n" . $publicUrl;
     }
 
     private function resolveAudienceType(string $eventKey, ?array $catalogEvent, array $options): string

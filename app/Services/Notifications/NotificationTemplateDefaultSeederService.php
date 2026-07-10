@@ -127,7 +127,7 @@ class NotificationTemplateDefaultSeederService
                     'body' => "Merhaba {{customer_name}},\n{{quote_number}} numaralı teklifinizi inceleyebilirsiniz.\n\nTeklifi görüntülemek ve onaylamak için:\n{{public_quote_approval_url}}\n\nTeşekkürler.",
                 ],
                 'whatsapp_link' => [
-                    'body' => 'Merhaba {{customer_name}}, {{quote_number}} numaralı teklifinizi inceleyip onaylayabilirsiniz: {{public_quote_approval_url}}',
+                    'body' => "Merhaba {{customer_name}}, {{quote_number}} numaralı teklifinizi inceleyip onaylayabilirsiniz:\n{{public_quote_approval_url}}",
                 ],
                 'internal' => [
                     'body' => '{{quote_number}} numaralı teklif müşteriye gönderildi.',
