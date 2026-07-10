@@ -94,7 +94,7 @@ class CompanyPhoneDisplayFormatTest extends TestCase
             'tenant_account_id' => $this->tenant->id,
             'legal_name' => 'Invalid Whatsapp Company',
             'status' => 'active',
-            'mobile' => '02121231212',
+            'mobile' => 'abc',
         ]);
 
         $company->companyRoles()->create([

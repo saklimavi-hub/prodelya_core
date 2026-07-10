@@ -26,12 +26,14 @@ class TenantWhatsappLinkService
         $settings = $this->settingsService->getWhatsappConfig($tenant);
         $customerName = trim((string) ($payload['customer_name'] ?? ''));
         $messageType = (string) ($payload['message_type'] ?? self::TYPE_GENERAL);
+        $quoteNumber = trim((string) ($payload['quote_number'] ?? ''));
         $publicLink = $this->sanitizePublicLink((string) ($payload['public_link'] ?? ''));
         $body = $this->buildMessageBody(
             $messageType,
             $customerName,
             (string) ($payload['message'] ?? ''),
             $publicLink,
+            $quoteNumber,
             (string) ($settings['sender_label'] ?? $tenant->name),
             (string) ($settings['default_signature'] ?? '')
         );
@@ -52,7 +54,7 @@ class TenantWhatsappLinkService
         $preview = $this->buildPreview($tenant, $payload);
 
         if (! filled($preview['phone_dial'] ?? null)) {
-            throw new \InvalidArgumentException('WhatsApp için geçerli bir cep telefonu bulunmuyor.');
+            throw new \InvalidArgumentException('WhatsApp için geçerli bir telefon numarası bulunmuyor.');
         }
 
         return $this->dispatchService->createWhatsappLink(
@@ -70,6 +72,8 @@ class TenantWhatsappLinkService
                     'message_type' => $preview['message_type'],
                     'public_link' => $preview['public_link'],
                 ],
+                'related_type' => $payload['related_type'] ?? null,
+                'related_id' => $payload['related_id'] ?? null,
             ],
             $user
         );
@@ -105,6 +109,7 @@ class TenantWhatsappLinkService
         string $customerName,
         string $manualMessage,
         ?string $publicLink,
+        string $quoteNumber,
         string $companyLabel,
         string $signature
     ): string {
@@ -114,7 +119,7 @@ class TenantWhatsappLinkService
         $lines = match ($messageType) {
             self::TYPE_QUOTE_LINK => [
                 "Merhaba {$safeCustomerName},",
-                "{$safeCompanyLabel} tarafından hazırlanan teklifinizi aşağıdaki bağlantıdan inceleyebilirsiniz:",
+                "{$safeCompanyLabel} tarafından hazırlanan " . ($quoteNumber !== '' ? "{$quoteNumber} numaralı " : '') . "teklifinizi aşağıdaki bağlantıdan inceleyebilirsiniz:",
                 $publicLink,
             ],
             self::TYPE_ORDER_TRACKING => [

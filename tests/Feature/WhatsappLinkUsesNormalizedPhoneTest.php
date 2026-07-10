@@ -72,7 +72,7 @@ class WhatsappLinkUsesNormalizedPhoneTest extends TestCase
             ->from(route('admin.settings.notifications.whatsapp'))
             ->post(route('admin.settings.notifications.whatsapp.create-link'), [
                 'customer_name' => 'Ayşe',
-                'recipient_phone' => '0212 123 45 67',
+                'recipient_phone' => 'abc',
                 'message_type' => 'general',
                 'message' => 'Merhaba',
             ]);

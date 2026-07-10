@@ -17,8 +17,11 @@ class TurkishPhoneNumberNormalizeTest extends TestCase
         $this->assertSame('+905321234567', $service->normalizeTurkishMobileForWhatsapp('0090 532 123 45 67'));
         $this->assertSame('+905321234567', $service->normalizeTurkishMobileForWhatsapp('90 532 123 45 67'));
         $this->assertSame('+905321234567', $service->normalizeTurkishMobileForWhatsapp('0 (532) 123 45 67'));
+        $this->assertSame('+902121234567', $service->normalizeTurkishMobileForWhatsapp('0212 123 45 67'));
         $this->assertSame('905321234567', $service->toWhatsappDialString('0532 123 45 67'));
+        $this->assertSame('902121234567', $service->toWhatsappDialString('0212 123 45 67'));
         $this->assertSame('0532 123 45 67', $service->formatTurkishPhoneForDisplay('5321234567'));
+        $this->assertSame('0212 123 45 67', $service->formatTurkishPhoneForDisplay('2121234567'));
     }
 
     public function test_it_returns_null_for_invalid_values_and_does_not_leak_special_characters(): void
@@ -26,7 +29,6 @@ class TurkishPhoneNumberNormalizeTest extends TestCase
         $service = app(PhoneNumberNormalizer::class);
 
         $this->assertNull($service->normalizeTurkishMobileForWhatsapp('abc'));
-        $this->assertNull($service->normalizeTurkishMobileForWhatsapp('0212 123 45 67'));
         $this->assertNull($service->toWhatsappDialString('<script>alert(1)</script>'));
     }
 }

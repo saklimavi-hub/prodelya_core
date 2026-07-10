@@ -4,7 +4,7 @@ namespace App\Services;
 
 class PhoneNumberNormalizer
 {
-    public function normalizeTurkishMobileForWhatsapp(?string $value): ?string
+    public function normalizeTurkishPhoneForWhatsapp(?string $value): ?string
     {
         $digits = $this->digitsOnly($value);
 
@@ -16,39 +16,44 @@ class PhoneNumberNormalizer
             $digits = substr($digits, 2);
         }
 
-        if (str_starts_with($digits, '90') && strlen($digits) === 12 && substr($digits, 2, 1) === '5') {
+        if (str_starts_with($digits, '90') && strlen($digits) === 12 && $this->hasValidTurkishNationalPrefix(substr($digits, 2))) {
             return '+' . $digits;
         }
 
-        if (str_starts_with($digits, '0') && strlen($digits) === 11 && substr($digits, 1, 1) === '5') {
+        if (str_starts_with($digits, '0') && strlen($digits) === 11 && $this->hasValidTurkishNationalPrefix(substr($digits, 1))) {
             return '+90' . substr($digits, 1);
         }
 
-        if (strlen($digits) === 10 && str_starts_with($digits, '5')) {
+        if (strlen($digits) === 10 && $this->hasValidTurkishNationalPrefix($digits)) {
             return '+90' . $digits;
         }
 
         return null;
     }
 
+    public function normalizeTurkishMobileForWhatsapp(?string $value): ?string
+    {
+        return $this->normalizeTurkishPhoneForWhatsapp($value);
+    }
+
     public function toWhatsappDialString(?string $value): ?string
     {
-        $normalized = $this->normalizeTurkishMobileForWhatsapp($value);
+        $normalized = $this->normalizeTurkishPhoneForWhatsapp($value);
 
         return $normalized ? ltrim($normalized, '+') : null;
     }
 
     public function isLikelyTurkishMobile(?string $value): bool
     {
-        return $this->normalizeTurkishMobileForWhatsapp($value) !== null;
+        return $this->normalizeTurkishPhoneForWhatsapp($value) !== null;
     }
 
     public function formatTurkishPhoneForDisplay(?string $value): string
     {
-        $normalizedMobile = $this->normalizeTurkishMobileForWhatsapp($value);
+        $normalizedPhone = $this->normalizeTurkishPhoneForWhatsapp($value);
 
-        if ($normalizedMobile) {
-            return $this->formatElevenDigitLocal('0' . substr($normalizedMobile, 3));
+        if ($normalizedPhone) {
+            return $this->formatElevenDigitLocal('0' . substr($normalizedPhone, 3));
         }
 
         $digits = $this->digitsOnly($value);
@@ -74,5 +79,10 @@ class PhoneNumberNormalizer
     private function digitsOnly(?string $value): string
     {
         return preg_replace('/\D+/', '', strip_tags((string) ($value ?? ''))) ?: '';
+    }
+
+    private function hasValidTurkishNationalPrefix(string $digits): bool
+    {
+        return strlen($digits) === 10 && preg_match('/^[2345]/', $digits) === 1;
     }
 }
