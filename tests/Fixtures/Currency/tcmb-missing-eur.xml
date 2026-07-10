@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Tarih_Date Tarih="10/07/2026" Date="10/07/2026" Bulten_No="2026/132">
+    <Currency CrossOrder="0" Kod="USD" CurrencyCode="USD">
+        <Unit>1</Unit>
+        <ForexSelling>43.2500</ForexSelling>
+    </Currency>
+</Tarih_Date>

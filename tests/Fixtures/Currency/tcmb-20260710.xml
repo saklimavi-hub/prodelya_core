@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Tarih_Date Tarih="10/07/2026" Date="10/07/2026" Bulten_No="2026/132">
+    <Currency CrossOrder="0" Kod="USD" CurrencyCode="USD">
+        <Unit>1</Unit>
+        <Isim>ABD DOLARI</Isim>
+        <CurrencyName>US DOLLAR</CurrencyName>
+        <ForexBuying>43.1000</ForexBuying>
+        <ForexSelling>43.2500</ForexSelling>
+        <BanknoteBuying>43.0700</BanknoteBuying>
+        <BanknoteSelling>43.3200</BanknoteSelling>
+    </Currency>
+    <Currency CrossOrder="1" Kod="EUR" CurrencyCode="EUR">
+        <Unit>1</Unit>
+        <Isim>EURO</Isim>
+        <CurrencyName>EURO</CurrencyName>
+        <ForexBuying>46.1000</ForexBuying>
+        <ForexSelling>46.2500</ForexSelling>
+        <BanknoteBuying>46.0700</BanknoteBuying>
+        <BanknoteSelling>46.3200</BanknoteSelling>
+    </Currency>
+</Tarih_Date>

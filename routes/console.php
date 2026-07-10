@@ -23,3 +23,10 @@ Schedule::command('product-data-hub:sync-sources --frequency=daily')
 Schedule::command('product-data-hub:sync-sources --frequency=weekly')
     ->weeklyOn(1, '04:00')
     ->withoutOverlapping();
+
+if (config('prodelya_currency.sync.schedule.enabled')) {
+    Schedule::command('prodelya:currency-rates-sync')
+        ->dailyAt((string) config('prodelya_currency.sync.schedule.time', '07:30'))
+        ->timezone((string) config('prodelya_currency.sync.schedule.timezone', 'Europe/Istanbul'))
+        ->withoutOverlapping();
+}
