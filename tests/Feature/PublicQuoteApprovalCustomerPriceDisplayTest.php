@@ -55,7 +55,8 @@ class PublicQuoteApprovalCustomerPriceDisplayTest extends TestCase
             ->assertSee('15,00 TL')
             ->assertSee('1.500,00 TL')
             ->assertSee('Baskı Birim: 10,00 TL')
-            ->assertSee('Baskı Toplam: 1.000,00 TL')
+            ->assertSee('Baskı Toplamı')
+            ->assertSee('1.000,00 TL')
             ->assertDontSee('supplier_cost')
             ->assertDontSee('group_code');
 
@@ -69,7 +70,8 @@ class PublicQuoteApprovalCustomerPriceDisplayTest extends TestCase
             ->assertSee('15,00 TL')
             ->assertSee('1.500,00 TL')
             ->assertDontSee('Baskı Birim:')
-            ->assertDontSee('Baskı Toplam:')
+            ->assertSee('Baskı Toplamı')
+            ->assertSee('Fiyata dahil')
             ->assertDontSee('supplier_cost')
             ->assertDontSee('group_code');
     }

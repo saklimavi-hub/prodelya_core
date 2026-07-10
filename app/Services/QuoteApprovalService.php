@@ -7,6 +7,7 @@ use App\Models\QuoteApprovalRequest;
 use App\Models\QuoteSendSnapshot;
 use App\Models\User;
 use App\Services\Notifications\NotificationEventService;
+use App\Services\Notifications\TenantSmtpMailerService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
@@ -17,12 +18,16 @@ class QuoteApprovalService
     public function __construct(
         protected QuoteSendSnapshotBuilder $snapshotBuilder,
         protected NotificationEventService $notificationEventService,
+        protected TenantSmtpMailerService $tenantSmtpMailerService,
     ) {
     }
 
     public function sendToCustomer(Order $quote, array $recipientData, ?User $user = null): QuoteApprovalRequest
     {
         $this->guardQuoteCanBeSent($quote);
+        $forceEmailPreview = (bool) ($recipientData['force_email_preview'] ?? false);
+        $skipEmailSend = (bool) ($recipientData['skip_email_send'] ?? false);
+        $skipWhatsappDispatch = (bool) ($recipientData['skip_whatsapp_dispatch'] ?? false);
 
         $request = DB::transaction(function () use ($quote, $recipientData, $user) {
             $quote->loadMissing('items.prints', 'customer');
@@ -45,40 +50,100 @@ class QuoteApprovalService
             return $request;
         });
 
-        $this->dispatchSafely(
-            $quote->fresh(['customer.contacts', 'items', 'workForms']),
-            'quote_sent_to_customer',
-            [
-                'audience_type' => 'customer',
-                'channels' => ['email', 'whatsapp_link'],
-                'recipient_override' => [[
-                    'type' => 'customer',
-                    'name' => $recipientData['contact_name'] ?? ($quote->customer?->legal_name ?: null),
-                    'email' => $recipientData['contact_email'] ?? null,
-                    'phone' => $recipientData['contact_phone'] ?? null,
-                    'company_id' => $quote->customer_company_id,
-                ]],
-                'created_by' => $user,
-                'related_type' => $quote->getMorphClass(),
-                'related_id' => $quote->id,
-                'context' => [
-                    'public_quote_url' => $this->resolvePublicQuoteUrl($request),
-                    'status_label' => $quote->fresh()->safeCustomerApprovalStatusLabel(),
-                ],
-            ]
-        );
+        $freshQuote = $quote->fresh(['customer.contacts', 'items', 'workForms', 'tenant']);
+        $publicQuoteUrl = $this->resolvePublicQuoteUrl($request) ?? '';
+
+        if ($publicQuoteUrl !== '' && ! $skipEmailSend && (filled($recipientData['contact_email'] ?? null) || $forceEmailPreview)) {
+            $emailLog = $this->tenantSmtpMailerService->sendQuoteApprovalMail(
+                $freshQuote->tenant,
+                $freshQuote,
+                $recipientData,
+                $publicQuoteUrl,
+                $user,
+                $forceEmailPreview
+            );
+
+            if ($emailLog->status === \App\Models\NotificationLog::STATUS_FAILED) {
+                if (! $skipWhatsappDispatch) {
+                    $this->dispatchSafely(
+                        $freshQuote,
+                        'quote_sent_to_customer',
+                        [
+                            'audience_type' => 'customer',
+                            'channels' => ['whatsapp_link'],
+                            'recipient_override' => [[
+                                'type' => 'customer',
+                                'name' => $recipientData['contact_name'] ?? ($freshQuote->customer?->legal_name ?: null),
+                                'email' => $recipientData['contact_email'] ?? null,
+                                'phone' => $recipientData['contact_phone'] ?? null,
+                                'company_id' => $freshQuote->customer_company_id,
+                            ]],
+                            'created_by' => $user,
+                            'related_type' => $freshQuote->getMorphClass(),
+                            'related_id' => $freshQuote->id,
+                            'context' => [
+                                'public_quote_url' => $publicQuoteUrl,
+                                'status_label' => $freshQuote->safeCustomerApprovalStatusLabel(),
+                            ],
+                        ]
+                    );
+                }
+
+                $this->dispatchSafely(
+                    $freshQuote,
+                    'quote_sent_to_customer',
+                    [
+                        'audience_type' => 'tenant_admin',
+                        'channels' => ['internal'],
+                        'created_by' => $user,
+                        'related_type' => $freshQuote->getMorphClass(),
+                        'related_id' => $freshQuote->id,
+                        'context' => [
+                            'status_label' => $freshQuote->safeCustomerApprovalStatusLabel(),
+                        ],
+                    ]
+                );
+
+                throw new RuntimeException('Teklif kaydı oluşturuldu ancak e-posta gönderilemedi. SMTP ayarlarını veya müşteri e-posta adresini kontrol edin.');
+            }
+        }
+
+        if (! $skipWhatsappDispatch) {
+            $this->dispatchSafely(
+                $freshQuote,
+                'quote_sent_to_customer',
+                [
+                    'audience_type' => 'customer',
+                    'channels' => ['whatsapp_link'],
+                    'recipient_override' => [[
+                        'type' => 'customer',
+                        'name' => $recipientData['contact_name'] ?? ($freshQuote->customer?->legal_name ?: null),
+                        'email' => $recipientData['contact_email'] ?? null,
+                        'phone' => $recipientData['contact_phone'] ?? null,
+                        'company_id' => $freshQuote->customer_company_id,
+                    ]],
+                    'created_by' => $user,
+                    'related_type' => $freshQuote->getMorphClass(),
+                    'related_id' => $freshQuote->id,
+                    'context' => [
+                        'public_quote_url' => $publicQuoteUrl,
+                        'status_label' => $freshQuote->safeCustomerApprovalStatusLabel(),
+                    ],
+                ]
+            );
+        }
 
         $this->dispatchSafely(
-            $quote->fresh(['customer.contacts', 'items', 'workForms']),
+            $freshQuote,
             'quote_sent_to_customer',
             [
                 'audience_type' => 'tenant_admin',
                 'channels' => ['internal'],
                 'created_by' => $user,
-                'related_type' => $quote->getMorphClass(),
-                'related_id' => $quote->id,
+                'related_type' => $freshQuote->getMorphClass(),
+                'related_id' => $freshQuote->id,
                 'context' => [
-                    'status_label' => $quote->fresh()->safeCustomerApprovalStatusLabel(),
+                    'status_label' => $freshQuote->safeCustomerApprovalStatusLabel(),
                 ],
             ]
         );

@@ -2,13 +2,16 @@
 
 namespace App\Services\Notifications;
 
+use App\Mail\QuoteCustomerApprovalMail;
 use App\Mail\TenantSmtpTestMail;
 use App\Models\NotificationLog;
 use App\Models\NotificationTemplate;
+use App\Models\Order;
 use App\Models\TenantAccount;
 use App\Models\User;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\View;
 use Throwable;
 
 class TenantSmtpMailerService
@@ -68,6 +71,70 @@ class TenantSmtpMailerService
                     'diagnostic_category' => $diagnostic['category'],
                 ],
                 'dispatch_mode' => 'test',
+            ]));
+        } finally {
+            Config::offsetUnset('mail.mailers.' . self::MAILER_NAME);
+            Mail::forgetMailers();
+        }
+    }
+
+    public function sendQuoteApprovalMail(
+        TenantAccount $tenant,
+        Order $quote,
+        array $recipientData,
+        string $publicApprovalUrl,
+        ?User $user = null,
+        bool $forcePreview = false
+    ): NotificationLog {
+        $config = $this->settingsService->getSmtpConfig($tenant);
+        $recipientEmail = trim((string) ($recipientData['contact_email'] ?? ''));
+        $recipientName = trim((string) ($recipientData['contact_name'] ?? ($quote->customer?->legal_name ?: 'Müşterimiz')));
+
+        $mailable = new QuoteCustomerApprovalMail(
+            tenant: $tenant,
+            quote: $quote,
+            customerName: $recipientName !== '' ? $recipientName : 'Müşterimiz',
+            publicApprovalUrl: $publicApprovalUrl,
+            validUntilLabel: $quote->valid_until?->format('d.m.Y') ?: '-',
+            grandTotalLabel: number_format((float) $quote->grand_total, 2, ',', '.') . ' ' . ($quote->currency ?: 'TL'),
+        );
+
+        $payload = $this->baseQuoteLogPayload($tenant, $quote, $recipientData, $user, [
+            'subject' => 'Prodelya Teklifiniz: ' . $quote->document_number,
+        ]);
+
+        if ($forcePreview || $this->shouldUsePreviewMode($tenant, $config)) {
+            return $this->dispatchService->dispatchEmailPreview($tenant, array_merge($payload, [
+                'body' => $this->renderQuoteApprovalPreview($mailable),
+                'dispatch_mode' => 'preview',
+            ]), $user);
+        }
+
+        Config::set('mail.mailers.' . self::MAILER_NAME, $this->buildMailerConfig($tenant));
+        Mail::forgetMailers();
+
+        try {
+            Mail::mailer(self::MAILER_NAME)
+                ->to($recipientEmail)
+                ->send($mailable);
+
+            return $this->dispatchService->logSent(array_merge($payload, [
+                'message_preview' => 'Teklif müşteriye e-posta olarak gönderildi.',
+                'dispatch_mode' => 'sync',
+            ]));
+        } catch (Throwable $exception) {
+            $diagnostic = $this->buildMailDiagnostic($exception);
+
+            return $this->dispatchService->logFailed(array_merge($payload, [
+                'message_preview' => 'Teklif müşteri e-postası gönderilemedi.',
+                'error_message' => $diagnostic['error_message'],
+                'provider_response' => $diagnostic['provider_response'],
+                'response_code' => $diagnostic['response_code'],
+                'meta_json' => [
+                    'operation' => 'quote_customer_mail',
+                    'diagnostic_category' => $diagnostic['category'],
+                ],
+                'dispatch_mode' => 'sync',
             ]));
         } finally {
             Config::offsetUnset('mail.mailers.' . self::MAILER_NAME);
@@ -205,6 +272,45 @@ class TenantSmtpMailerService
                 'operation' => 'smtp_test_mail',
             ],
         ], $overrides);
+    }
+
+    private function baseQuoteLogPayload(TenantAccount $tenant, Order $quote, array $recipientData, ?User $user, array $overrides = []): array
+    {
+        return array_merge([
+            'tenant_account_id' => $tenant->id,
+            'notification_key' => 'quote_sent_to_customer',
+            'template_id' => null,
+            'channel' => NotificationTemplate::CHANNEL_EMAIL,
+            'audience_type' => NotificationTemplate::AUDIENCE_CUSTOMER,
+            'recipient_type' => 'customer',
+            'recipient_name' => $recipientData['contact_name'] ?? ($quote->customer?->legal_name ?: null),
+            'recipient_email' => $recipientData['contact_email'] ?? null,
+            'related_type' => $quote->getMorphClass(),
+            'related_id' => $quote->id,
+            'created_by' => $user?->id,
+            'meta_json' => [
+                'operation' => 'quote_customer_mail',
+            ],
+        ], $overrides);
+    }
+
+    private function shouldUsePreviewMode(TenantAccount $tenant, array $config): bool
+    {
+        return !$this->settingsService->isEmailEnabled($tenant)
+            || !filled($config['host'] ?? null)
+            || !filled($config['from_email'] ?? null);
+    }
+
+    private function renderQuoteApprovalPreview(QuoteCustomerApprovalMail $mailable): string
+    {
+        return View::make('emails.quote-customer-approval', [
+            'tenant' => $mailable->tenant,
+            'quote' => $mailable->quote,
+            'customerName' => $mailable->customerName,
+            'publicApprovalUrl' => $mailable->publicApprovalUrl,
+            'validUntilLabel' => $mailable->validUntilLabel,
+            'grandTotalLabel' => $mailable->grandTotalLabel,
+        ])->render();
     }
 
     private function extractResponseCode(Throwable $exception): ?string

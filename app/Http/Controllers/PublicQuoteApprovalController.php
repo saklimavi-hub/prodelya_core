@@ -280,24 +280,51 @@ class PublicQuoteApprovalController extends Controller
                 'valid_until' => $this->formatDate(data_get($snapshot, 'valid_until')),
                 'currency' => $snapshotCurrency,
                 'invoice_status' => data_get($snapshot, 'invoice_status', $approvalRequest->quote?->invoice_status),
+                'item_count' => count($items),
             ],
             'items' => $items,
             'totals' => [
                 'product_total' => $this->formatMoney($totals['product_total'] ?? null, $snapshotCurrency),
                 'print_total' => $this->formatMoney($totals['print_total'] ?? null, $snapshotCurrency),
-                'subtotal' => $this->formatMoney($totals['subtotal'] ?? null, $snapshotCurrency),
-                'vat_total' => $this->formatMoney($totals['vat_total'] ?? null, $snapshotCurrency),
+                'subtotal' => $this->formatMoney(
+                    $totals['subtotal'] ?? (($totals['product_total'] ?? 0) + ($totals['print_total'] ?? 0)),
+                    $snapshotCurrency
+                ),
+                'vat_total' => $this->formatMoney($totals['vat_total'] ?? 0, $snapshotCurrency),
                 'grand_total' => $this->formatMoney($totals['grand_total'] ?? null, $snapshotCurrency),
-                'vat_breakdown' => collect($totals['vat_breakdown'] ?? [])
-                    ->filter(fn ($row) => is_array($row) && isset($row['rate'], $row['total']))
-                    ->map(fn (array $row): array => [
-                        'label' => 'KDV %' . rtrim(rtrim(number_format((float) $row['rate'], 2, ',', '.'), '0'), ','),
-                        'total' => $this->formatMoney($row['total'], $snapshotCurrency),
-                    ])
-                    ->values()
-                    ->all(),
+                'vat_breakdown' => $this->buildVatSummaryRows(
+                    collect($totals['vat_breakdown'] ?? [])->all(),
+                    (float) ($totals['vat_total'] ?? 0),
+                    $snapshotCurrency
+                ),
             ],
         ];
+    }
+
+    private function buildVatSummaryRows(array $rows, float $vatTotal, string $currency): array
+    {
+        $grouped = collect($rows)
+            ->filter(fn ($row) => is_array($row) && isset($row['rate'], $row['total']))
+            ->groupBy(fn (array $row) => number_format((float) $row['rate'], 2, '.', ''))
+            ->map(function ($group, string $rate) use ($currency): array {
+                $numericRate = (float) $rate;
+
+                return [
+                    'label' => 'KDV %' . rtrim(rtrim(number_format($numericRate, 2, ',', '.'), '0'), ','),
+                    'total' => $this->formatMoney($group->sum(fn (array $row) => (float) ($row['total'] ?? 0)), $currency),
+                ];
+            })
+            ->values()
+            ->all();
+
+        if ($grouped !== []) {
+            return $grouped;
+        }
+
+        return [[
+            'label' => 'KDV',
+            'total' => $this->formatMoney($vatTotal, $currency),
+        ]];
     }
 
     private function publicStatusLabel(QuoteApprovalRequest $approvalRequest, string $status): string
