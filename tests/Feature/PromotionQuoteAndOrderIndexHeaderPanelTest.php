@@ -56,7 +56,7 @@ class PromotionQuoteAndOrderIndexHeaderPanelTest extends TestCase
         $response->assertSee('Siparişler');
         $response->assertDontSee('Sipariş Takip Merkezi');
         $response->assertSee('Tüm Siparişler');
-        $response->assertSee('Açık Siparişler');
+        $response->assertSee('Aktif Siparişler');
         $response->assertSee('Seçili Sipariş');
         $response->assertSee($order->document_number);
         $response->assertSee($this->customer->legal_name);
@@ -90,8 +90,8 @@ class PromotionQuoteAndOrderIndexHeaderPanelTest extends TestCase
         $response->assertSee('Promosyon Teklifleri');
         $response->assertDontSee('Satış Teklif Kontrolü');
         $response->assertSee('Yeni Promosyon Teklifi');
-        $response->assertSee('Müşteri Onayı Bekleyenler');
-        $response->assertSee('Siparişe Çevrilebilir');
+        $response->assertSee('Açık Teklifler');
+        $response->assertSee('Siparişe Dönüşenler');
         $response->assertSee($quote->document_number);
         $response->assertSee('Onay Bekliyor');
         $response->assertDontSee('group_code', false);

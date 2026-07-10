@@ -70,7 +70,7 @@ class PromotionQuoteAndOrderIndexUxTest extends TestCase
 
         $response->assertOk();
         $response->assertSee('Promosyon Teklifleri');
-        $response->assertSee('Hazırlanan Teklifler');
+        $response->assertSee('Açık Teklifler');
         $response->assertSee('Müşteri Onayı Bekleyen');
         $response->assertSee('Onaylananlar');
         $response->assertSee('Teklif Listesi');
