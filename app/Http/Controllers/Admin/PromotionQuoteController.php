@@ -26,6 +26,8 @@ use App\Services\OrderRevisionApplyService;
 use App\Services\OrderRevisionComparisonService;
 use App\Services\OrderRevisionRecordService;
 use App\Services\ProductDataHub\ProductHubSellableTruthService;
+use App\Services\PromotionQuote\QuoteCurrencyAccessService;
+use App\Services\PromotionQuote\QuoteCurrencyPricingService;
 use App\Services\ProductDataHub\SupplierWarningLabelService;
 use App\Services\PromotionQuotePdfService;
 use App\Services\Notifications\TenantNotificationSettingsService;
@@ -67,6 +69,8 @@ class PromotionQuoteController extends Controller
         protected TenantDeliveryTypeService $tenantDeliveryTypeService,
         protected SupplierWarningLabelService $supplierWarningLabelService,
         protected ProductHubSellableTruthService $sellableTruthService,
+        protected QuoteCurrencyAccessService $quoteCurrencyAccessService,
+        protected QuoteCurrencyPricingService $quoteCurrencyPricingService,
         protected OrderRevisionComparisonService $orderRevisionComparisonService,
         protected PrintSetupUnitDistributionService $printSetupUnitDistributionService,
         protected TenantPrintOptionService $tenantPrintOptionService,
@@ -134,6 +138,167 @@ class PromotionQuoteController extends Controller
         }
 
         return $quote?->shouldShowPrintPriceDetailsToCustomer() ?? true;
+    }
+
+    private function quoteCurrencyAccess(TenantAccount $tenant, Request $request): array
+    {
+        return $this->quoteCurrencyAccessService->build($tenant, $request->user());
+    }
+
+    private function resolveRequestedQuoteCurrency(
+        TenantAccount $tenant,
+        array $access,
+        ?string $requestedCurrency
+    ): string {
+        $requested = strtoupper(trim((string) ($requestedCurrency ?? '')));
+        $requested = $requested === 'TL' ? 'TRY' : $requested;
+
+        if ($requested !== '' && ! in_array($requested, ['TRY', 'USD', 'EUR'], true)) {
+            throw ValidationException::withMessages([
+                'currency' => ['Belge para birimi desteklenmiyor.'],
+            ]);
+        }
+
+        if (($access['multi_currency_enabled'] ?? false) === false && in_array($requested, ['USD', 'EUR'], true)) {
+            throw ValidationException::withMessages([
+                'currency' => ['Bu tenant icin yalniz TL teklif olusturulabilir.'],
+            ]);
+        }
+
+        if (in_array($requested, ['USD', 'EUR'], true) && ! ($access['can_use_foreign_document_currency'] ?? false)) {
+            throw ValidationException::withMessages([
+                'currency' => ['Yabanci belge para birimi secme yetkiniz yok.'],
+            ]);
+        }
+
+        return $this->quoteCurrencyPricingService->normalizeDocumentCurrency($tenant, $access, $requested ?: null);
+    }
+
+    private function currencySelectOptions(array $access): array
+    {
+        if (! ($access['multi_currency_enabled'] ?? false)) {
+            return [
+                ['value' => 'TRY', 'label' => 'TL'],
+            ];
+        }
+
+        return [
+            ['value' => 'TRY', 'label' => 'TL'],
+            ['value' => 'USD', 'label' => 'USD'],
+            ['value' => 'EUR', 'label' => 'EUR'],
+        ];
+    }
+
+    private function quoteCurrencyViewPayload(TenantAccount $tenant, array $access, ?Order $quote = null): array
+    {
+        $summary = is_array($quote?->currency_snapshot_summary) ? $quote->currency_snapshot_summary : [];
+        $documentCurrency = strtoupper((string) ($quote?->currency ?: 'TRY'));
+        $documentCurrency = $documentCurrency === 'TL' ? 'TRY' : $documentCurrency;
+
+        return [
+            'access' => $access,
+            'options' => $this->currencySelectOptions($access),
+            'document_currency' => $documentCurrency,
+            'document_currency_label' => $documentCurrency === 'TRY' ? 'TL' : $documentCurrency,
+            'tenant_base_currency' => strtoupper((string) ($quote?->tenant_base_currency ?: $tenant->default_currency ?: 'TRY')),
+            'summary' => $summary,
+            'status_label' => $this->quoteCurrencyStatusLabel((string) ($summary['overall_status'] ?? 'not_required')),
+            'status_variant' => $this->quoteCurrencyStatusVariant((string) ($summary['overall_status'] ?? 'not_required')),
+            'status_visible' => (bool) ($access['can_view_currency_details'] ?? false),
+            'last_refreshed_at' => $quote?->rates_refreshed_at,
+            'can_refresh' => (bool) ($access['can_refresh_rates'] ?? false) && ($quote?->canBeEdited() ?? true),
+            'can_acknowledge' => (bool) ($access['can_acknowledge_current_rates'] ?? false) && ($quote?->canBeEdited() ?? true),
+            'acknowledged_at' => $quote?->current_rate_acknowledged_at,
+        ];
+    }
+
+    private function quoteCurrencyStatusLabel(string $status): string
+    {
+        return match ($status) {
+            'converted' => 'Kur guncel',
+            'stale_rate' => 'Kur eski',
+            'missing_rate' => 'Kur bulunamadi',
+            'unsupported_currency' => 'Para birimi desteklenmiyor',
+            'missing_source_price' => 'Kaynak fiyat eksik',
+            'conversion_error' => 'Kur hesabi tamamlanamadi',
+            default => 'Kur gerekmiyor',
+        };
+    }
+
+    private function quoteCurrencyStatusVariant(string $status): string
+    {
+        return match ($status) {
+            'stale_rate' => 'warning',
+            'missing_rate', 'unsupported_currency', 'missing_source_price', 'conversion_error' => 'danger',
+            'converted' => 'success',
+            default => 'neutral',
+        };
+    }
+
+    private function summarizeQuoteCurrencyState(array $itemSnapshots): array
+    {
+        $statuses = collect($itemSnapshots)
+            ->map(fn (array $snapshot) => (string) ($snapshot['document_conversion_status'] ?? $snapshot['conversion_status'] ?? 'not_required'))
+            ->filter()
+            ->values();
+
+        $overallStatus = 'not_required';
+        foreach (['conversion_error', 'unsupported_currency', 'missing_rate', 'missing_source_price', 'stale_rate', 'converted'] as $candidate) {
+            if ($statuses->contains($candidate)) {
+                $overallStatus = $candidate;
+                break;
+            }
+        }
+
+        return [
+            'overall_status' => $overallStatus,
+            'item_count' => count($itemSnapshots),
+            'converted_count' => $statuses->filter(fn (string $status) => $status === 'converted')->count(),
+            'stale_count' => $statuses->filter(fn (string $status) => $status === 'stale_rate')->count(),
+            'missing_rate_count' => $statuses->filter(fn (string $status) => $status === 'missing_rate')->count(),
+            'unsupported_count' => $statuses->filter(fn (string $status) => $status === 'unsupported_currency')->count(),
+        ];
+    }
+
+    private function persistQuoteCurrencyMetadata(
+        Order $quote,
+        TenantAccount $tenant,
+        array $access,
+        string $documentCurrency,
+        string $requestedDate,
+        array $summary,
+        bool $preserveAcknowledgement = false
+    ): void {
+        $payload = $this->quoteCurrencyPricingService->buildOrderSummarySnapshot(
+            $tenant,
+            $documentCurrency,
+            $access,
+            $requestedDate
+        );
+
+        $payload['overall_status'] = $summary['overall_status'] ?? 'not_required';
+        $payload['status_counts'] = [
+            'converted' => (int) ($summary['converted_count'] ?? 0),
+            'stale' => (int) ($summary['stale_count'] ?? 0),
+            'missing_rate' => (int) ($summary['missing_rate_count'] ?? 0),
+            'unsupported' => (int) ($summary['unsupported_count'] ?? 0),
+        ];
+
+        $quote->forceFill([
+            'currency' => $documentCurrency,
+            'tenant_base_currency' => $payload['tenant_base_currency'],
+            'currency_policy' => $payload['currency_policy'],
+            'currency_snapshot_summary' => $payload,
+            'rates_refreshed_at' => now(),
+            'rates_refreshed_by' => Auth::id(),
+        ]);
+
+        if (! $preserveAcknowledgement) {
+            $quote->current_rate_acknowledged_at = null;
+            $quote->current_rate_acknowledged_by = null;
+        }
+
+        $quote->save();
     }
 
     private function isConvertedQuote(Order $quote): bool
@@ -658,6 +823,179 @@ class PromotionQuoteController extends Controller
             'vat_total' => $vatTotal,
             'gross_total' => $taxableTotal + $vatTotal,
         ];
+    }
+
+    private function buildQuoteItemSnapshot(
+        array $existingSnapshot,
+        array $pricingSnapshot,
+        array $unitPricePayload,
+        float $lineDocumentTotal,
+        float $printDocumentTotal,
+        array $taxBreakdown,
+        array $productTaxBreakdown,
+        array $printTaxBreakdown,
+        float $vatRate,
+        float $printVatRate,
+        string $vatMode,
+        string $invoiceStatus
+    ): array {
+        $snapshot = array_merge($existingSnapshot, $pricingSnapshot);
+        $snapshot['invoice_status'] = $invoiceStatus;
+        $snapshot['vat_mode'] = $vatMode;
+        $snapshot['vat_rate'] = $vatRate;
+        $snapshot['print_vat_rate'] = $printVatRate;
+        $snapshot['calculated_unit_price'] = $unitPricePayload['calculated_unit_price'];
+        $snapshot['manual_unit_price'] = $unitPricePayload['manual_unit_price'];
+        $snapshot['product_line_total'] = round($lineDocumentTotal, 2);
+        $snapshot['product_line_total_document'] = round($lineDocumentTotal, 2);
+        $snapshot['print_line_total'] = round($printDocumentTotal, 2);
+        $snapshot['print_line_total_document'] = round($printDocumentTotal, 2);
+        $snapshot['product_total'] = round($lineDocumentTotal, 2);
+        $snapshot['print_total'] = round($printDocumentTotal, 2);
+        $snapshot['subtotal'] = round($taxBreakdown['net_total'], 2);
+        $snapshot['product_vat_total'] = round($productTaxBreakdown['vat_total'], 2);
+        $snapshot['print_vat_total'] = round($printTaxBreakdown['vat_total'], 2);
+        $snapshot['vat_breakdown'] = array_values(array_filter([
+            $vatMode === 'taxable' && $vatRate > 0 ? ['rate' => $vatRate, 'total' => round($productTaxBreakdown['vat_total'], 2), 'scope' => 'product'] : null,
+            $vatMode === 'taxable' && $printVatRate > 0 && $printDocumentTotal > 0 ? ['rate' => $printVatRate, 'total' => round($printTaxBreakdown['vat_total'], 2), 'scope' => 'print'] : null,
+        ]));
+        $snapshot['vat_total'] = round($taxBreakdown['vat_total'], 2);
+        $snapshot['line_vat_total'] = round($taxBreakdown['vat_total'], 2);
+        $snapshot['line_net_total'] = round($taxBreakdown['net_total'], 2);
+        $snapshot['grand_total'] = round($taxBreakdown['gross_total'], 2);
+        $snapshot['line_gross_total'] = round($taxBreakdown['gross_total'], 2);
+
+        return $snapshot;
+    }
+
+    private function buildQuotePrintSnapshot(
+        TenantAccount $tenant,
+        string $documentCurrency,
+        array $printPricing,
+        string $requestedDate
+    ): array {
+        return $this->quoteCurrencyPricingService->buildPrintPricingSnapshot(
+            $tenant,
+            $documentCurrency,
+            (float) ($printPricing['print_unit_price'] ?? 0),
+            (float) ($printPricing['print_total'] ?? 0),
+            $requestedDate,
+            true
+        );
+    }
+
+    private function refreshDraftQuoteCurrencySnapshots(Order $quote, TenantAccount $tenant, array $access): void
+    {
+        $quote->loadMissing('items.prints');
+
+        $documentCurrency = strtoupper((string) ($quote->currency ?: 'TRY'));
+        $documentCurrency = $documentCurrency === 'TL' ? 'TRY' : $documentCurrency;
+        $requestedDate = optional($quote->quote_date)->format('Y-m-d') ?: now()->format('Y-m-d');
+        $invoiceStatus = $this->resolveInvoiceStatus($quote->invoice_status);
+        $vatMode = $this->resolveQuoteVatMode($invoiceStatus);
+        $printVatRate = $vatMode === 'taxable' ? $this->defaultPrintVatRate() : 0.0;
+
+        $netSubtotal = 0;
+        $vatTotal = 0;
+        $grossTotal = 0;
+        $productSubtotal = 0;
+        $printSubtotal = 0;
+        $itemCurrencySnapshots = [];
+
+        foreach ($quote->items as $item) {
+            $priceSnapshot = is_array($item->price_snapshot) ? $item->price_snapshot : [];
+            $manualOverride = (bool) data_get($priceSnapshot, 'manual_sales_price_override', data_get($priceSnapshot, 'manual_unit_price', false));
+            $itemData = [
+                'unit_price' => $manualOverride
+                    ? data_get($priceSnapshot, 'actual_sales_unit_price_document', $item->unit_price)
+                    : data_get($priceSnapshot, 'suggested_sales_unit_price_document', $item->unit_price),
+                'calculated_unit_price' => data_get($priceSnapshot, 'suggested_sales_unit_price_document', $item->unit_price),
+                'manual_unit_price' => $manualOverride,
+            ];
+
+            $pricingSnapshot = $this->quoteCurrencyPricingService->buildItemPricing(
+                $tenant,
+                $documentCurrency,
+                $priceSnapshot,
+                $itemData,
+                $requestedDate
+            );
+
+            $resolvedUnitPrice = $manualOverride
+                ? (float) data_get($pricingSnapshot, 'actual_sales_unit_price_document', $item->unit_price)
+                : (float) data_get($pricingSnapshot, 'suggested_sales_unit_price_document', $item->unit_price);
+            $lineDocumentTotal = round($resolvedUnitPrice * (float) $item->quantity, 2);
+            $item->forceFill([
+                'unit_price' => $resolvedUnitPrice,
+                'line_total' => $lineDocumentTotal,
+            ]);
+
+            $printLineTotal = 0;
+            foreach ($item->prints as $print) {
+                $printSnapshot = is_array($print->pricing_snapshot) ? $print->pricing_snapshot : [];
+                $printPricing = [
+                    'print_unit_price' => (float) data_get($printSnapshot, 'document_unit_price', $print->print_unit_price),
+                    'print_total' => (float) data_get($printSnapshot, 'document_total', $print->print_total),
+                ];
+                $print->pricing_snapshot = $this->buildQuotePrintSnapshot($tenant, $documentCurrency, $printPricing, $requestedDate);
+                $print->save();
+                $printLineTotal += (float) $print->print_total;
+            }
+
+            $item->print_total = $printLineTotal;
+            $vatRate = $vatMode === 'taxable'
+                ? (float) data_get($priceSnapshot, 'vat_rate', 20)
+                : 0.0;
+            $productTaxBreakdown = $this->calculateVatBreakdown($lineDocumentTotal, $vatRate, $vatMode);
+            $printTaxBreakdown = $this->calculateVatBreakdown($printLineTotal, $printVatRate, $vatMode);
+            $taxBreakdown = [
+                'net_total' => $productTaxBreakdown['net_total'] + $printTaxBreakdown['net_total'],
+                'vat_total' => $productTaxBreakdown['vat_total'] + $printTaxBreakdown['vat_total'],
+                'gross_total' => $productTaxBreakdown['gross_total'] + $printTaxBreakdown['gross_total'],
+            ];
+            $item->price_snapshot = $this->buildQuoteItemSnapshot(
+                $priceSnapshot,
+                $pricingSnapshot,
+                [
+                    'calculated_unit_price' => (float) data_get($pricingSnapshot, 'suggested_sales_unit_price_document', $resolvedUnitPrice),
+                    'manual_unit_price' => $manualOverride,
+                ],
+                $lineDocumentTotal,
+                $printLineTotal,
+                $taxBreakdown,
+                $productTaxBreakdown,
+                $printTaxBreakdown,
+                $vatRate,
+                $printVatRate,
+                $vatMode,
+                $invoiceStatus
+            );
+            $item->save();
+
+            $netSubtotal += $taxBreakdown['net_total'];
+            $vatTotal += $taxBreakdown['vat_total'];
+            $grossTotal += $taxBreakdown['gross_total'];
+            $productSubtotal += $lineDocumentTotal;
+            $printSubtotal += $printLineTotal;
+            $itemCurrencySnapshots[] = is_array($item->price_snapshot) ? $item->price_snapshot : [];
+        }
+
+        $quote->forceFill([
+            'subtotal' => $netSubtotal,
+            'vat_total' => $vatTotal,
+            'grand_total' => $grossTotal,
+            'product_total' => $productSubtotal,
+            'print_total' => $printSubtotal,
+        ])->save();
+
+        $this->persistQuoteCurrencyMetadata(
+            $quote,
+            $tenant,
+            $access,
+            $documentCurrency,
+            $requestedDate,
+            $this->summarizeQuoteCurrencyState($itemCurrencySnapshots)
+        );
     }
 
     private function defaultPrintVatRate(): float
@@ -1517,14 +1855,14 @@ class PromotionQuoteController extends Controller
     {
         $tenant = $this->tenantResolver->getCurrentTenant($request);
         $this->usageLimitGuardService->assertCanCreate($tenant, 'orders');
-        $canViewFinancialData = $request->user()?->canViewFinancialData($tenant->id) ?? false;
+        $quoteCurrencyAccess = $this->quoteCurrencyAccess($tenant, $request);
 
         $validated = $request->validate([
             'customer_company_id' => 'required|exists:companies,id',
             'quote_date' => 'required|date',
             'valid_until' => 'nullable|date|after_or_equal:quote_date',
             'invoice_status' => 'required|in:fis,fatura',
-            'currency' => 'required|in:TL,USD,EUR',
+            'currency' => 'required|string|max:3',
             'items' => 'required|array|min:1',
             'items.*.product_name' => 'required|string|max:255',
             'items.*.product_code' => 'nullable|string|max:255',
@@ -1587,6 +1925,8 @@ class PromotionQuoteController extends Controller
 
         $deliveryTypePayload = $this->resolveDeliveryTypePayload($tenant->id, $validated);
         $showPrintPriceDetailsToCustomer = $this->resolveShowPrintPriceDetailsToCustomer($validated);
+        $documentCurrency = $this->resolveRequestedQuoteCurrency($tenant, $quoteCurrencyAccess, $validated['currency'] ?? null);
+        $requestedDate = (string) $validated['quote_date'];
 
         DB::beginTransaction();
         try {
@@ -1611,7 +1951,7 @@ class PromotionQuoteController extends Controller
                 'delivery_type_id' => $deliveryTypePayload['delivery_type_id'],
                 'show_print_price_details_to_customer' => $showPrintPriceDetailsToCustomer,
                 'notes' => $validated['notes'] ?? null,
-                'currency' => $validated['currency'],
+                'currency' => $documentCurrency,
                 'created_by' => Auth::id(),
             ]);
 
@@ -1619,6 +1959,9 @@ class PromotionQuoteController extends Controller
             $netSubtotal = 0;
             $vatTotal = 0;
             $grossTotal = 0;
+            $productSubtotal = 0;
+            $printSubtotal = 0;
+            $itemCurrencySnapshots = [];
 
             foreach ($validated['items'] as $itemIndex => $itemData) {
                 $itemData = $this->normalizeQuoteItemInput($itemData, $invoiceStatus);
@@ -1629,6 +1972,13 @@ class PromotionQuoteController extends Controller
                 $unitPrice = $unitPricePayload['unit_price'];
 
                 $catalogPayload = $this->resolveCatalogItemPayload($tenant->id, $itemData, $itemIndex);
+                $pricingSnapshot = $this->quoteCurrencyPricingService->buildItemPricing(
+                    $tenant,
+                    $documentCurrency,
+                    $catalogPayload['price_snapshot'] ?? [],
+                    $itemData,
+                    $requestedDate
+                );
                 $vatMode = $this->resolveQuoteVatMode($invoiceStatus);
                 $vatRate = $vatMode === 'taxable'
                     ? (float) ($itemData['vat_rate'] ?? data_get($catalogPayload['price_snapshot'], 'vat_rate', 20) ?: 20)
@@ -1655,7 +2005,7 @@ class PromotionQuoteController extends Controller
                     'unit' => $itemData['unit'],
                     'description' => $itemData['description'] ?? null,
                     'product_snapshot' => $catalogPayload['product_snapshot'],
-                    'price_snapshot' => $catalogPayload['price_snapshot'],
+                    'price_snapshot' => array_merge($catalogPayload['price_snapshot'] ?? [], $pricingSnapshot),
                     'stock_snapshot' => $catalogPayload['stock_snapshot'],
                     'list_price' => $itemData['list_price'] ?? null,
                     'discount_rate' => $itemData['discount_rate'] ?? 0,
@@ -1693,6 +2043,12 @@ class PromotionQuoteController extends Controller
 
                         $printPricing = $this->normalizePrintSetupPricing($printData, $selectedSetting, $selectedOption, $itemIndex);
                         $currentPrintLineTotal = $printPricing['print_total'];
+                        $printPricingSnapshot = $this->buildQuotePrintSnapshot(
+                            $tenant,
+                            $documentCurrency,
+                            $printPricing,
+                            $requestedDate
+                        );
 
                         OrderItemPrint::create([
                             'tenant_account_id' => $tenant->id,
@@ -1719,6 +2075,7 @@ class PromotionQuoteController extends Controller
                             'print_quantity' => $printPricing['print_quantity'] ?? null,
                             'print_unit_price' => $printPricing['print_unit_price'] ?? null,
                             'print_total' => $currentPrintLineTotal,
+                            'pricing_snapshot' => $printPricingSnapshot,
                             'note' => $printData['note'] ?? null,
                             'production_note' => $printData['production_note'] ?? null,
                             'status' => 'draft',
@@ -1739,42 +2096,46 @@ class PromotionQuoteController extends Controller
                     'vat_total' => $productTaxBreakdown['vat_total'] + $printTaxBreakdown['vat_total'],
                     'gross_total' => $productTaxBreakdown['gross_total'] + $printTaxBreakdown['gross_total'],
                 ];
-                $priceSnapshot = $orderItem->price_snapshot ?? [];
-                $priceSnapshot['invoice_status'] = $invoiceStatus;
-                $priceSnapshot['vat_mode'] = $vatMode;
-                $priceSnapshot['vat_rate'] = $vatRate;
-                $priceSnapshot['print_vat_rate'] = $printVatRate;
-                $priceSnapshot['calculated_unit_price'] = $unitPricePayload['calculated_unit_price'];
-                $priceSnapshot['manual_unit_price'] = $unitPricePayload['manual_unit_price'];
-                $priceSnapshot['product_line_total'] = round($lineBaseTotal, 2);
-                $priceSnapshot['print_line_total'] = round($printLineTotal, 2);
-                $priceSnapshot['product_total'] = round($lineBaseTotal, 2);
-                $priceSnapshot['print_total'] = round($printLineTotal, 2);
-                $priceSnapshot['subtotal'] = round($taxBreakdown['net_total'], 2);
-                $priceSnapshot['product_vat_total'] = round($productTaxBreakdown['vat_total'], 2);
-                $priceSnapshot['print_vat_total'] = round($printTaxBreakdown['vat_total'], 2);
-                $priceSnapshot['vat_breakdown'] = array_values(array_filter([
-                    $vatMode === 'taxable' && $vatRate > 0 ? ['rate' => $vatRate, 'total' => round($productTaxBreakdown['vat_total'], 2), 'scope' => 'product'] : null,
-                    $vatMode === 'taxable' && $printVatRate > 0 && $printLineTotal > 0 ? ['rate' => $printVatRate, 'total' => round($printTaxBreakdown['vat_total'], 2), 'scope' => 'print'] : null,
-                ]));
-                $priceSnapshot['vat_total'] = round($taxBreakdown['vat_total'], 2);
-                $priceSnapshot['line_vat_total'] = round($taxBreakdown['vat_total'], 2);
-                $priceSnapshot['line_net_total'] = round($taxBreakdown['net_total'], 2);
-                $priceSnapshot['grand_total'] = round($taxBreakdown['gross_total'], 2);
-                $priceSnapshot['line_gross_total'] = round($taxBreakdown['gross_total'], 2);
+                $priceSnapshot = $this->buildQuoteItemSnapshot(
+                    $orderItem->price_snapshot ?? [],
+                    $pricingSnapshot,
+                    $unitPricePayload,
+                    $lineBaseTotal,
+                    $printLineTotal,
+                    $taxBreakdown,
+                    $productTaxBreakdown,
+                    $printTaxBreakdown,
+                    $vatRate,
+                    $printVatRate,
+                    $vatMode,
+                    $invoiceStatus
+                );
                 $orderItem->price_snapshot = $priceSnapshot;
                 $orderItem->save();
 
                 $netSubtotal += $taxBreakdown['net_total'];
                 $vatTotal += $taxBreakdown['vat_total'];
                 $grossTotal += $taxBreakdown['gross_total'];
+                $productSubtotal += $lineBaseTotal;
+                $printSubtotal += $printLineTotal;
+                $itemCurrencySnapshots[] = $priceSnapshot;
             }
 
-            $quote->update([
+            $quote->forceFill([
                 'subtotal' => $netSubtotal,
                 'vat_total' => $vatTotal,
                 'grand_total' => $grossTotal,
-            ]);
+                'product_total' => $productSubtotal,
+                'print_total' => $printSubtotal,
+            ])->save();
+            $this->persistQuoteCurrencyMetadata(
+                $quote,
+                $tenant,
+                $quoteCurrencyAccess,
+                $documentCurrency,
+                $requestedDate,
+                $this->summarizeQuoteCurrencyState($itemCurrencySnapshots)
+            );
 
             // TODO: Log audit trail
             // AuditLog::logQuoteCreated($tenant->id, $quote->id, Auth::id());
@@ -2342,6 +2703,63 @@ class PromotionQuoteController extends Controller
         return $redirect;
     }
 
+    public function refreshCurrencySnapshot(Request $request, Order $quote): RedirectResponse
+    {
+        $tenant = $this->tenantResolver->getCurrentTenant($request);
+        $access = $this->quoteCurrencyAccess($tenant, $request);
+
+        if ($quote->tenant_account_id !== $tenant->id) {
+            abort(403, 'Bu teklife erişim yetkiniz yok.');
+        }
+
+        if (! $quote->isPromotion() || ! $quote->isQuote()) {
+            abort(404);
+        }
+
+        if (! $quote->canBeEdited()) {
+            return back()->withErrors(['error' => 'Gonderilmis veya onaylanmis teklifin kur snapshoti yenilenemez.']);
+        }
+
+        if (! ($access['can_refresh_rates'] ?? false)) {
+            abort(403);
+        }
+
+        DB::transaction(function () use ($quote, $tenant, $access): void {
+            $this->refreshDraftQuoteCurrencySnapshots($quote->fresh(['items.prints']), $tenant, $access);
+        });
+
+        return back()->with('success', 'Teklif kur snapshoti yenilendi. Manuel satis fiyatlari korundu.');
+    }
+
+    public function acknowledgeCurrencySnapshot(Request $request, Order $quote): RedirectResponse
+    {
+        $tenant = $this->tenantResolver->getCurrentTenant($request);
+        $access = $this->quoteCurrencyAccess($tenant, $request);
+
+        if ($quote->tenant_account_id !== $tenant->id) {
+            abort(403, 'Bu teklife erişim yetkiniz yok.');
+        }
+
+        if (! $quote->isPromotion() || ! $quote->isQuote()) {
+            abort(404);
+        }
+
+        if (! $quote->canBeEdited()) {
+            return back()->withErrors(['error' => 'Yalniz taslak tekliflerde mevcut kur korunabilir.']);
+        }
+
+        if (! ($access['can_acknowledge_current_rates'] ?? false)) {
+            abort(403);
+        }
+
+        $quote->forceFill([
+            'current_rate_acknowledged_at' => now(),
+            'current_rate_acknowledged_by' => $request->user()?->id,
+        ])->save();
+
+        return back()->with('success', 'Mevcut kur snapshoti korundu olarak isaretlendi.');
+    }
+
     /**
      * Show the form for editing the specified resource.
      */
@@ -2424,7 +2842,7 @@ class PromotionQuoteController extends Controller
     public function update(Request $request, Order $quote)
     {
         $tenant = $this->tenantResolver->getCurrentTenant($request);
-        $canViewFinancialData = $request->user()?->canViewFinancialData($tenant->id) ?? false;
+        $quoteCurrencyAccess = $this->quoteCurrencyAccess($tenant, $request);
         
         // Tenant isolation check
         if ($quote->tenant_account_id !== $tenant->id) {
@@ -2458,7 +2876,7 @@ class PromotionQuoteController extends Controller
             'quote_date' => 'required|date',
             'valid_until' => 'nullable|date|after_or_equal:quote_date',
             'invoice_status' => 'required|in:fis,fatura',
-            'currency' => 'required|in:TL,USD,EUR',
+            'currency' => 'required|string|max:3',
             'items' => 'required|array|min:1',
             'items.*.product_name' => 'required|string|max:255',
             'items.*.product_code' => 'nullable|string|max:255',
@@ -2525,6 +2943,8 @@ class PromotionQuoteController extends Controller
             $quote->delivery_type_id
         );
         $showPrintPriceDetailsToCustomer = $this->resolveShowPrintPriceDetailsToCustomer($validated, $quote);
+        $documentCurrency = $this->resolveRequestedQuoteCurrency($tenant, $quoteCurrencyAccess, $validated['currency'] ?? null);
+        $requestedDate = (string) $validated['quote_date'];
 
         DB::beginTransaction();
         try {
@@ -2540,7 +2960,7 @@ class PromotionQuoteController extends Controller
                 'delivery_type_id' => $deliveryTypePayload['delivery_type_id'],
                 'show_print_price_details_to_customer' => $showPrintPriceDetailsToCustomer,
                 'notes' => $validated['notes'] ?? null,
-                'currency' => $validated['currency'],
+                'currency' => $documentCurrency,
             ]);
 
             // TODO: Simple approach - delete existing items and recreate
@@ -2551,6 +2971,9 @@ class PromotionQuoteController extends Controller
             $netSubtotal = 0;
             $vatTotal = 0;
             $grossTotal = 0;
+            $productSubtotal = 0;
+            $printSubtotal = 0;
+            $itemCurrencySnapshots = [];
 
             foreach ($validated['items'] as $itemIndex => $itemData) {
                 $itemData = $this->normalizeQuoteItemInput($itemData, $invoiceStatus);
@@ -2561,6 +2984,13 @@ class PromotionQuoteController extends Controller
                 $unitPrice = $unitPricePayload['unit_price'];
 
                 $catalogPayload = $this->resolveCatalogItemPayload($tenant->id, $itemData, $itemIndex);
+                $pricingSnapshot = $this->quoteCurrencyPricingService->buildItemPricing(
+                    $tenant,
+                    $documentCurrency,
+                    $catalogPayload['price_snapshot'] ?? [],
+                    $itemData,
+                    $requestedDate
+                );
                 $vatMode = $this->resolveQuoteVatMode($invoiceStatus);
                 $vatRate = $vatMode === 'taxable'
                     ? (float) ($itemData['vat_rate'] ?? data_get($catalogPayload['price_snapshot'], 'vat_rate', 20) ?: 20)
@@ -2587,7 +3017,7 @@ class PromotionQuoteController extends Controller
                     'unit' => $itemData['unit'],
                     'description' => $itemData['description'] ?? null,
                     'product_snapshot' => $catalogPayload['product_snapshot'],
-                    'price_snapshot' => $catalogPayload['price_snapshot'],
+                    'price_snapshot' => array_merge($catalogPayload['price_snapshot'] ?? [], $pricingSnapshot),
                     'stock_snapshot' => $catalogPayload['stock_snapshot'],
                     'list_price' => $itemData['list_price'] ?? null,
                     'discount_rate' => $itemData['discount_rate'] ?? 0,
@@ -2627,6 +3057,12 @@ class PromotionQuoteController extends Controller
 
                         $printPricing = $this->normalizePrintSetupPricing($printData, $selectedSetting, $selectedOption, $itemIndex);
                         $currentPrintLineTotal = $printPricing['print_total'];
+                        $printPricingSnapshot = $this->buildQuotePrintSnapshot(
+                            $tenant,
+                            $documentCurrency,
+                            $printPricing,
+                            $requestedDate
+                        );
 
                         OrderItemPrint::create([
                             'tenant_account_id' => $tenant->id,
@@ -2653,6 +3089,7 @@ class PromotionQuoteController extends Controller
                             'print_quantity' => $printPricing['print_quantity'] ?? null,
                             'print_unit_price' => $printPricing['print_unit_price'] ?? null,
                             'print_total' => $currentPrintLineTotal,
+                            'pricing_snapshot' => $printPricingSnapshot,
                             'note' => $printData['note'] ?? null,
                             'production_note' => $printData['production_note'] ?? null,
                             'status' => 'draft',
@@ -2673,42 +3110,46 @@ class PromotionQuoteController extends Controller
                     'vat_total' => $productTaxBreakdown['vat_total'] + $printTaxBreakdown['vat_total'],
                     'gross_total' => $productTaxBreakdown['gross_total'] + $printTaxBreakdown['gross_total'],
                 ];
-                $priceSnapshot = $orderItem->price_snapshot ?? [];
-                $priceSnapshot['invoice_status'] = $invoiceStatus;
-                $priceSnapshot['vat_mode'] = $vatMode;
-                $priceSnapshot['vat_rate'] = $vatRate;
-                $priceSnapshot['print_vat_rate'] = $printVatRate;
-                $priceSnapshot['calculated_unit_price'] = $unitPricePayload['calculated_unit_price'];
-                $priceSnapshot['manual_unit_price'] = $unitPricePayload['manual_unit_price'];
-                $priceSnapshot['product_line_total'] = round($lineBaseTotal, 2);
-                $priceSnapshot['print_line_total'] = round($printLineTotal, 2);
-                $priceSnapshot['product_total'] = round($lineBaseTotal, 2);
-                $priceSnapshot['print_total'] = round($printLineTotal, 2);
-                $priceSnapshot['subtotal'] = round($taxBreakdown['net_total'], 2);
-                $priceSnapshot['product_vat_total'] = round($productTaxBreakdown['vat_total'], 2);
-                $priceSnapshot['print_vat_total'] = round($printTaxBreakdown['vat_total'], 2);
-                $priceSnapshot['vat_breakdown'] = array_values(array_filter([
-                    $vatMode === 'taxable' && $vatRate > 0 ? ['rate' => $vatRate, 'total' => round($productTaxBreakdown['vat_total'], 2), 'scope' => 'product'] : null,
-                    $vatMode === 'taxable' && $printVatRate > 0 && $printLineTotal > 0 ? ['rate' => $printVatRate, 'total' => round($printTaxBreakdown['vat_total'], 2), 'scope' => 'print'] : null,
-                ]));
-                $priceSnapshot['vat_total'] = round($taxBreakdown['vat_total'], 2);
-                $priceSnapshot['line_vat_total'] = round($taxBreakdown['vat_total'], 2);
-                $priceSnapshot['line_net_total'] = round($taxBreakdown['net_total'], 2);
-                $priceSnapshot['grand_total'] = round($taxBreakdown['gross_total'], 2);
-                $priceSnapshot['line_gross_total'] = round($taxBreakdown['gross_total'], 2);
+                $priceSnapshot = $this->buildQuoteItemSnapshot(
+                    $orderItem->price_snapshot ?? [],
+                    $pricingSnapshot,
+                    $unitPricePayload,
+                    $lineBaseTotal,
+                    $printLineTotal,
+                    $taxBreakdown,
+                    $productTaxBreakdown,
+                    $printTaxBreakdown,
+                    $vatRate,
+                    $printVatRate,
+                    $vatMode,
+                    $invoiceStatus
+                );
                 $orderItem->price_snapshot = $priceSnapshot;
                 $orderItem->save();
 
                 $netSubtotal += $taxBreakdown['net_total'];
                 $vatTotal += $taxBreakdown['vat_total'];
                 $grossTotal += $taxBreakdown['gross_total'];
+                $productSubtotal += $lineBaseTotal;
+                $printSubtotal += $printLineTotal;
+                $itemCurrencySnapshots[] = $priceSnapshot;
             }
 
-            $quote->update([
+            $quote->forceFill([
                 'subtotal' => $netSubtotal,
                 'vat_total' => $vatTotal,
                 'grand_total' => $grossTotal,
-            ]);
+                'product_total' => $productSubtotal,
+                'print_total' => $printSubtotal,
+            ])->save();
+            $this->persistQuoteCurrencyMetadata(
+                $quote,
+                $tenant,
+                $quoteCurrencyAccess,
+                $documentCurrency,
+                $requestedDate,
+                $this->summarizeQuoteCurrencyState($itemCurrencySnapshots)
+            );
 
             // TODO: Log audit trail
             // AuditLog::logQuoteUpdated($tenant->id, $quote->id, Auth::id());

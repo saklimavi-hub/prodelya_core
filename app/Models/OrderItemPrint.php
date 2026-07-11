@@ -37,6 +37,7 @@ class OrderItemPrint extends Model
         'print_quantity',
         'print_unit_price',
         'print_total',
+        'pricing_snapshot',
         'note',
         'production_note',
         'status',
@@ -51,6 +52,7 @@ class OrderItemPrint extends Model
         'base_print_unit_price' => 'decimal:4',
         'print_unit_price' => 'decimal:4',
         'print_total' => 'decimal:4',
+        'pricing_snapshot' => 'array',
         'status' => 'string',
     ];
 
