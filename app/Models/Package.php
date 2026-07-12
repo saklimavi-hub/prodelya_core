@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\ProcessDepth\ProcessDepth;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -21,6 +22,7 @@ class Package extends Model
         'monthly_price',
         'yearly_price',
         'currency',
+        'process_depth',
         'notes',
     ];
 
@@ -30,7 +32,18 @@ class Package extends Model
         'monthly_price' => 'decimal:2',
         'yearly_price' => 'decimal:2',
         'sort_order' => 'integer',
+        'process_depth' => 'string',
     ];
+
+    public function getProcessDepthAttribute($value): string
+    {
+        return ProcessDepth::normalize(is_string($value) ? $value : null);
+    }
+
+    public function setProcessDepthAttribute($value): void
+    {
+        $this->attributes['process_depth'] = ProcessDepth::normalize(is_string($value) ? $value : null);
+    }
 
     public function modules(): HasMany
     {
@@ -94,5 +107,10 @@ class Package extends Model
         }
 
         return number_format((float) $amount, 2, ',', '.') . ' ' . ($this->currency ?: 'TRY');
+    }
+
+    public function processDepthLabel(): string
+    {
+        return ProcessDepth::label($this->process_depth);
     }
 }
