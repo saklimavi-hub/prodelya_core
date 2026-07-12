@@ -660,6 +660,11 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:web', 'resolve.tenant'
         Route::post('/whatsapp/preview', [NotificationSettingsController::class, 'previewWhatsapp'])->name('whatsapp.preview');
         Route::post('/whatsapp/create-link', [NotificationSettingsController::class, 'createWhatsappLink'])->name('whatsapp.create-link');
     });
+    Route::prefix('/settings')->name('settings.')->middleware(['module.enabled:tenant_settings', 'module.enabled:multi_currency'])->group(function () {
+        Route::get('/currency', [SettingsController::class, 'currency'])->name('currency');
+        Route::put('/currency', [SettingsController::class, 'updateCurrency'])->name('currency.update');
+        Route::post('/currency/refresh-rates', [SettingsController::class, 'refreshCurrencyRates'])->name('currency.refresh-rates');
+    });
     Route::prefix('/settings/print-settings')->name('settings.print-settings.')->middleware('module.enabled:print_settings')->group(function () {
         Route::get('/', [TenantPrintSettingController::class, 'index'])->name('index');
         Route::post('/sync', [TenantPrintSettingController::class, 'sync'])->name('sync');

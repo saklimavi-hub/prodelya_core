@@ -374,7 +374,7 @@ return [
             'name' => 'Coklu Para Birimi',
             'description' => 'Coklu para birimi is kurallari ve fiyat davranislari.',
             'category' => 'advanced',
-            'status' => 'planned',
+            'status' => 'active',
             'is_core' => false,
             'mandatory' => false,
             'default_enabled' => false,
@@ -1334,3 +1334,4 @@ return [
         'reporting',
     ],
 ];
+

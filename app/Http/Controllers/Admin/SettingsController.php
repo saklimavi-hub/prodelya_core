@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exceptions\Currency\ExchangeRateNotFoundException;
+use App\Exceptions\Currency\ExchangeRateProviderException;
 use App\Http\Controllers\Controller;
 use App\Models\TenantAccount;
 use App\Models\TenantPackageUpgradeRequest;
@@ -10,6 +12,7 @@ use App\Models\UserRole;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\Notifications\TenantNotificationSettingsService;
+use App\Services\Currency\TenantCurrencySettingsService;
 use App\Services\ModuleFeatureCatalogService;
 use App\Services\TenantAccessService;
 use App\Services\TenantCompanyProfileService;
@@ -19,10 +22,13 @@ use App\Services\TenantResolver;
 use App\Services\TenantSubscriptionStatusService;
 use App\Services\TenantUsageService;
 use App\Services\WorkFolderPathService;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class SettingsController extends Controller
 {
@@ -37,6 +43,7 @@ class SettingsController extends Controller
         protected TenantNotificationSettingsService $tenantNotificationSettingsService,
         protected TenantCatalogListRowQueryService $tenantCatalogListRowQueryService,
         protected TenantDeliveryTypeService $tenantDeliveryTypeService,
+        protected TenantCurrencySettingsService $tenantCurrencySettingsService,
     ) {}
 
     /**
@@ -147,6 +154,134 @@ class SettingsController extends Controller
         ]);
     }
 
+    public function currency(Request $request)
+    {
+        $tenant = $this->tenantResolver->getCurrentTenant($request);
+        $this->authorizeCurrencySettingsAccess($request, $tenant);
+
+        $settings = $this->tenantCurrencySettingsService->effectiveSettings($tenant);
+
+        return view('admin.settings.currency', [
+            'tenant' => $tenant,
+            'currencySettings' => $settings,
+            'latestRates' => $this->tenantCurrencySettingsService->latestRates($tenant),
+            'canManageCurrencySettings' => $this->canManageCurrencySettings($request, $tenant),
+            'availableCurrencies' => [
+                'TRY' => 'TL',
+                'USD' => 'USD',
+                'EUR' => 'EUR',
+            ],
+            'availableRateSources' => [
+                'tcmb' => 'TCMB',
+            ],
+            'availableRateTypes' => [
+                'forex_selling' => 'Döviz Satış',
+            ],
+            'availableStaleDays' => [
+                1 => '1 günden eskiyse uyar',
+                2 => '2 günden eskiyse uyar',
+                3 => '3 günden eskiyse uyar',
+            ],
+            'availableRefreshPolicies' => $settings['available_refresh_policies'],
+        ]);
+    }
+
+    public function updateCurrency(Request $request)
+    {
+        $tenant = $this->tenantResolver->getCurrentTenant($request);
+        $this->authorizeCurrencySettingsAccess($request, $tenant);
+
+        $availableRefreshPolicies = array_keys($this->tenantCurrencySettingsService->availableRefreshPolicies());
+        $validated = $request->validate([
+            'base_currency' => ['required', Rule::in(['TRY', 'USD', 'EUR'])],
+            'default_quote_currency' => ['required', Rule::in(['TRY', 'USD', 'EUR'])],
+            'enabled_quote_currencies' => ['required', 'array', 'min:1'],
+            'enabled_quote_currencies.*' => ['required', Rule::in(['TRY', 'USD', 'EUR'])],
+            'currency_rate_source' => ['required', Rule::in(['tcmb'])],
+            'currency_rate_type' => ['required', Rule::in(['forex_selling'])],
+            'currency_stale_after_days' => ['required', 'integer', 'min:1', 'max:3'],
+            'currency_refresh_policy' => ['required', Rule::in($availableRefreshPolicies)],
+        ], [
+            'enabled_quote_currencies.required' => 'En az bir teklif para birimi seçilmelidir.',
+            'enabled_quote_currencies.min' => 'En az bir teklif para birimi seçilmelidir.',
+        ]);
+
+        if (! in_array($validated['default_quote_currency'], $validated['enabled_quote_currencies'], true)) {
+            return back()
+                ->withErrors(['default_quote_currency' => 'Varsayılan teklif para birimi seçili para birimleri içinde olmalıdır.'])
+                ->withInput();
+        }
+
+        $normalized = $this->tenantCurrencySettingsService->validateAndNormalize($tenant, $validated);
+        $this->tenantCurrencySettingsService->persist($tenant, $normalized);
+
+        return redirect()
+            ->route('admin.settings.currency')
+            ->with('success', 'Para birimi ve kur ayarları kaydedildi.');
+    }
+
+    public function refreshCurrencyRates(Request $request)
+    {
+        $tenant = $this->tenantResolver->getCurrentTenant($request);
+        $this->authorizeCurrencySettingsAccess($request, $tenant);
+        $settings = $this->tenantCurrencySettingsService->effectiveSettings($tenant);
+
+        try {
+            $result = $this->tenantCurrencySettingsService->refreshRates($tenant);
+        } catch (\Throwable $exception) {
+            $this->logCurrencyRefreshFailure($tenant, $settings, $exception);
+
+            return redirect()
+                ->route('admin.settings.currency')
+                ->withErrors(['currency_refresh' => $this->currencyRefreshErrorMessage($exception)]);
+        }
+
+        $resolvedDate = (string) ($result['resolved_rate_date'] ?? now()->toDateString());
+
+        return redirect()
+            ->route('admin.settings.currency')
+            ->with('success', 'Kurlar güncellendi. Kullanılan tarih: ' . $resolvedDate);
+    }
+
+    private function currencyRefreshErrorMessage(\Throwable $exception): string
+    {
+        if ($exception instanceof ConnectionException) {
+            return 'TCMB bağlantısı kurulamadı. Son kayıtlı kurlar korunuyor.';
+        }
+
+        if ($exception instanceof ExchangeRateProviderException) {
+            return match ($exception->reason) {
+                'invalid_xml', 'missing_currency' => 'Kur verisi okunamadı. Son kayıtlı kurlar korunuyor.',
+                default => 'Kurlar güncellenemedi. Son kayıtlı veriler korunuyor.',
+            };
+        }
+
+        if ($exception instanceof ExchangeRateNotFoundException) {
+            return 'Kurlar güncellenemedi. Son kayıtlı veriler korunuyor.';
+        }
+
+        return 'Kurlar güncellenemedi. Son kayıtlı veriler korunuyor.';
+    }
+
+    private function logCurrencyRefreshFailure(TenantAccount $tenant, array $settings, \Throwable $exception): void
+    {
+        $context = [
+            'tenant_id' => $tenant->id,
+            'provider' => $settings['rate_source'] ?? null,
+            'rate_type' => $settings['rate_type'] ?? null,
+            'requested_date' => now()->toDateString(),
+            'exception_class' => $exception::class,
+            'exception_message' => $exception->getMessage(),
+        ];
+
+        if ($exception instanceof ExchangeRateProviderException) {
+            $context['reason'] = $exception->reason;
+            $context['status'] = $exception->context['status'] ?? null;
+            $context['provider_date'] = $exception->context['date'] ?? null;
+        }
+
+        Log::error('Currency refresh failed.', $context);
+    }
     private function settingsTabs(): array
     {
         return [
@@ -1002,4 +1137,31 @@ class SettingsController extends Controller
     {
         return config('prodelya_domains.force_https') ? 'https' : 'http';
     }
+
+    private function authorizeCurrencySettingsAccess(Request $request, TenantAccount $tenant): void
+    {
+        if (! $this->canManageCurrencySettings($request, $tenant)) {
+            abort(403, 'Para birimi ve kur ayarlarını görüntüleme yetkiniz yok.');
+        }
+    }
+
+    private function canManageCurrencySettings(Request $request, TenantAccount $tenant): bool
+    {
+        $user = $request->user();
+
+        if (! $user) {
+            return false;
+        }
+
+        return $user->hasPermissionInTenant('manage_users', $tenant->id)
+            || $user->canViewFinancialData($tenant->id);
+    }
 }
+
+
+
+
+
+
+
+
