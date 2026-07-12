@@ -779,6 +779,30 @@
                             </div>
                         </div>
 
+                        @if($canManageProcessDepthSettings)
+                            <div class="setup-module-block">
+                                <div class="setup-module-head">
+                                    <div>
+                                        <h4 class="setup-module-title">Süreç Derinliği</h4>
+                                        <div class="setup-module-desc">Seçilen çalışma şeklinin teklif, sipariş ve operasyon ekranlarındaki ayrıntı seviyesine etkisini belirler.</div>
+                                    </div>
+                                    <span class="badge {{ ($processDepthSummary['effective']['source'] ?? 'package_default') === 'tenant_override' ? 'badge-blue' : 'badge-green' }}">{{ $processDepthSummary['effective']['source_label'] ?? 'Paket varsayılanı' }}</span>
+                                </div>
+                                <div class="setup-info-list">
+                                    <div class="setup-info-row"><div class="setup-info-key">Etkin çalışma şekli</div><div class="setup-info-val">{{ $processDepthSummary['effective']['label'] ?? 'Standart Akış' }}</div></div>
+                                    <div class="setup-info-row"><div class="setup-info-key">Seçimin kaynağı</div><div class="setup-info-val">{{ $processDepthSummary['effective']['source_label'] ?? 'Paket varsayılanı' }}</div></div>
+                                    <div class="setup-info-row"><div class="setup-info-key">Paket varsayılanı</div><div class="setup-info-val">{{ $processDepthSummary['package_default']['label'] ?? 'Standart Akış' }}</div></div>
+                                </div>
+                                <div class="setup-note-box">{{ $processDepthSummary['manage_note'] ?? 'Bu ayar modül erişimini veya kullanıcı yetkilerini değiştirmez.' }}</div>
+                                <div class="setup-note-box">{{ $processDepthSummary['support_note'] ?? 'Seçimin etkisi, Süreç Derinliği desteği eklenen operasyon ekranlarında uygulanır.' }}</div>
+                                <div class="setup-link-list">
+                                    @if($processDepthSummary['settings_route'])
+                                        <a class="setup-action-link primary" href="{{ $processDepthSummary['settings_route'] }}">Ayarı Aç <span>Git</span></a>
+                                    @endif
+                                </div>
+                            </div>
+                        @endif
+
                         <div class="setup-module-block">
                             <div class="setup-module-head">
                                 <div>

@@ -80,6 +80,35 @@
             @error('notes')<p class="pd-input-error">{{ $message }}</p>@enderror
         </div>
 
+        @php
+            $processDepthValue = old('process_depth', $package->process_depth ?: \App\Support\ProcessDepth\ProcessDepth::default());
+            $processDepthOptions = [
+                \App\Support\ProcessDepth\ProcessDepth::FAST => 'Hızlı Akış',
+                \App\Support\ProcessDepth\ProcessDepth::STANDARD => 'Standart Akış',
+                \App\Support\ProcessDepth\ProcessDepth::CONTROLLED => 'Kontrollü Akış',
+            ];
+        @endphp
+
+        <div class="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-4">
+            <div class="flex items-start justify-between gap-3" style="margin-bottom: 12px;">
+                <div>
+                    <div class="pd-card-title" style="font-size: 16px;">Varsayılan Süreç Derinliği</div>
+                    <p class="pd-card-subtitle" style="margin-top: 4px;">Bu seçim paketi kullanan Abone Firmalar için varsayılan çalışma şeklini belirler. Abone Firma kendi ayarından farklı bir seçim yapabilir.</p>
+                </div>
+                <span class="pd-badge pd-badge-blue">Lisans değil</span>
+            </div>
+            <div>
+                <label class="pd-label" for="process_depth">Varsayılan Süreç Derinliği</label>
+                <select id="process_depth" name="process_depth" class="pd-input">
+                    @foreach($processDepthOptions as $value => $label)
+                        <option value="{{ $value }}" @selected($processDepthValue === $value)>{{ $label }}</option>
+                    @endforeach
+                </select>
+                <p class="text-sm text-gray-600" style="margin-top: 8px;">Bu alan modül veya feature erişimini değiştirmez; yalnız desteklenen operasyon ekranlarındaki varsayılan çalışma şeklini belirler.</p>
+                @error('process_depth')<p class="pd-input-error">{{ $message }}</p>@enderror
+            </div>
+        </div>
+
         <div class="pd-form-actions mt-4">
             <button type="submit" class="pd-btn pd-btn-primary">Kaydet</button>
             <a href="{{ route('admin.super.packages.index') }}" class="pd-btn pd-btn-light">Listeye Dön</a>

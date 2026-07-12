@@ -15,8 +15,6 @@ class TenantSettingsDomainReadinessTest extends TestCase
 {
     use RefreshDatabase;
 
-    protected bool $seed = true;
-
     private const CENTRAL_HOST = 'prodelya_core.test';
 
     private User $platformAdmin;
@@ -26,6 +24,7 @@ class TenantSettingsDomainReadinessTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->seed();
 
         config(['app.url' => 'http://' . self::CENTRAL_HOST]);
 

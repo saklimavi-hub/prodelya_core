@@ -2,6 +2,7 @@
 
 namespace App\Services\ProcessDepth;
 
+use App\Models\Package;
 use App\Models\TenantAccount;
 use App\Models\TenantSetting;
 use App\Services\PackageCatalogService;
@@ -26,11 +27,21 @@ class TenantProcessDepthResolver
             $this->logInvalidDepth('tenant_override', $tenant, (string) $tenantOverride);
         }
 
+        return $this->resolvePackageDefaultInternal($tenant, true);
+    }
+
+    public function resolvePackageDefault(TenantAccount $tenant): array
+    {
+        return $this->resolvePackageDefaultInternal($tenant, false);
+    }
+
+    protected function resolvePackageDefaultInternal(TenantAccount $tenant, bool $allowSystemFallback): array
+    {
         $packageKey = trim((string) ($tenant->package_key ?? ''));
         if ($packageKey !== '') {
             $package = $this->packageCatalogService->getPackageByKey($packageKey);
 
-            if ($package) {
+            if ($package instanceof Package) {
                 $rawPackageDepth = $package->getRawOriginal('process_depth');
 
                 if (is_string($rawPackageDepth) && trim($rawPackageDepth) !== '') {
@@ -48,7 +59,9 @@ class TenantProcessDepthResolver
             }
         }
 
-        return $this->resolvedPayload(ProcessDepth::default(), 'system_default');
+        $source = $allowSystemFallback ? 'system_default' : 'package_default';
+
+        return $this->resolvedPayload(ProcessDepth::default(), $source);
     }
 
     protected function resolvedPayload(string $depth, string $source): array

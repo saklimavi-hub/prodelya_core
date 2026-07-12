@@ -19,6 +19,7 @@ use App\Services\TenantCompanyProfileService;
 use App\Services\TenantCatalog\TenantCatalogListRowQueryService;
 use App\Services\TenantDeliveryTypeService;
 use App\Services\TenantResolver;
+use App\Services\ProcessDepth\TenantProcessDepthResolver;
 use App\Services\TenantSubscriptionStatusService;
 use App\Services\TenantUsageService;
 use App\Services\WorkFolderPathService;
@@ -44,6 +45,7 @@ class SettingsController extends Controller
         protected TenantCatalogListRowQueryService $tenantCatalogListRowQueryService,
         protected TenantDeliveryTypeService $tenantDeliveryTypeService,
         protected TenantCurrencySettingsService $tenantCurrencySettingsService,
+        protected TenantProcessDepthResolver $tenantProcessDepthResolver,
     ) {}
 
     /**
@@ -74,6 +76,9 @@ class SettingsController extends Controller
         );
         $domainSummary = $this->buildDomainSummary($tenant);
         $deliveryTypeSummary = $this->buildDeliveryTypeSummary($tenant);
+        
+        $canManageProcessDepthSettings = $this->canManageProcessDepthSettings($request, $tenant);
+        $processDepthSummary = $this->buildProcessDepthSummary($tenant, $canManageProcessDepthSettings);
 
         return view('admin.settings.index', [
             'tenant' => $tenant,
@@ -110,6 +115,8 @@ class SettingsController extends Controller
             'moduleCategories' => $moduleCategories,
             'storageSummary' => $this->buildStorageSummary($workFolderRootName),
             'deliveryTypeSummary' => $deliveryTypeSummary,
+            'canManageProcessDepthSettings' => $canManageProcessDepthSettings,
+            'processDepthSummary' => $processDepthSummary,
         ]);
     }
 
@@ -1120,6 +1127,22 @@ class SettingsController extends Controller
         ];
     }
 
+    private function buildProcessDepthSummary(TenantAccount $tenant, bool $canManage): array
+    {
+        $effective = $this->tenantProcessDepthResolver->resolve($tenant);
+        $packageDefault = $this->tenantProcessDepthResolver->resolvePackageDefault($tenant);
+
+        return [
+            'effective' => $effective,
+            'package_default' => $packageDefault,
+            'settings_route' => $canManage && Route::has('admin.settings.process-depth')
+                ? route('admin.settings.process-depth')
+                : null,
+            'description' => 'Seçilen çalışma şeklinin teklif, sipariş ve operasyon ekranlarındaki ayrıntı seviyesine etkisini belirler.',
+            'manage_note' => 'Bu ayar modül erişimini veya kullanıcı yetkilerini değiştirmez.',
+            'support_note' => 'Seçimin etkisi, Süreç Derinliği desteği eklenen operasyon ekranlarında uygulanır.',
+        ];
+    }
     private function panelBaseHost(): string
     {
         $host = strtolower(trim((string) config('prodelya_domains.panel_domain')));
@@ -1138,6 +1161,16 @@ class SettingsController extends Controller
         return config('prodelya_domains.force_https') ? 'https' : 'http';
     }
 
+    private function canManageProcessDepthSettings(Request $request, TenantAccount $tenant): bool
+    {
+        $user = $request->user();
+
+        if (! $user) {
+            return false;
+        }
+
+        return $user->hasPermissionInTenant('manage_users', $tenant->id);
+    }
     private function authorizeCurrencySettingsAccess(Request $request, TenantAccount $tenant): void
     {
         if (! $this->canManageCurrencySettings($request, $tenant)) {

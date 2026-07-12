@@ -17,6 +17,7 @@ use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\CatalogSearchController;
 use App\Http\Controllers\Admin\ProductHubLiveProductInfoController;
 use App\Http\Controllers\Admin\SettingsController;
+use App\Http\Controllers\Admin\ProcessDepthSettingsController;
 use App\Http\Controllers\Admin\TenantPackageOverviewController;
 use App\Http\Controllers\Admin\TenantUpgradeRequestController;
 use App\Http\Controllers\Admin\UserController;
@@ -631,6 +632,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:web', 'resolve.tenant'
     Route::post('/settings', [SettingsController::class, 'update'])->middleware('module.enabled:tenant_settings')->name('settings.update');
     Route::get('/settings/company-profile', [SettingsController::class, 'editCompanyProfile'])->middleware('module.enabled:tenant_settings')->name('settings.company-profile.edit');
     Route::post('/settings/company-profile', [SettingsController::class, 'updateCompanyProfile'])->middleware('module.enabled:tenant_settings')->name('settings.company-profile.update');
+    Route::get('/settings/process-depth', [ProcessDepthSettingsController::class, 'show'])->middleware(['module.enabled:tenant_settings', 'permission.check:manage_users'])->name('settings.process-depth');
+    Route::put('/settings/process-depth', [ProcessDepthSettingsController::class, 'update'])->middleware(['module.enabled:tenant_settings', 'permission.check:manage_users'])->name('settings.process-depth.update');
     Route::prefix('/settings/delivery-types')->name('settings.delivery-types.')->middleware('module.enabled:tenant_settings')->group(function () {
         Route::get('/', [TenantDeliveryTypeController::class, 'index'])->name('index');
         Route::post('/', [TenantDeliveryTypeController::class, 'store'])->name('store');

@@ -32,10 +32,14 @@
             </div>
         </div>
         <div class="pd-section-body">
-            <div class="pd-grid pd-grid-2">
+            <div class="pd-grid pd-grid-3">
                 <div>
                     <div class="text-sm text-gray-600">Açıklama</div>
                     <div class="font-medium">{{ $package->description ?: 'Veri yok' }}</div>
+                </div>
+                <div>
+                    <div class="text-sm text-gray-600">Varsayılan Süreç Derinliği</div>
+                    <div class="font-medium">{{ $package->processDepthLabel() }}</div>
                 </div>
                 <div>
                     <div class="text-sm text-gray-600">Notlar</div>

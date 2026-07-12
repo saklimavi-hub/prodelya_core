@@ -9,6 +9,7 @@ use App\Models\TenantModule;
 use App\Models\TenantSetting;
 use App\Services\ModuleFeatureCatalogService;
 use App\Services\PackageCatalogService;
+use App\Support\ProcessDepth\ProcessDepth;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -228,7 +229,7 @@ class PackageController extends Controller
 
     private function validatePackage(Request $request, ?Package $package = null): array
     {
-        return $request->validate([
+        $validated = $request->validate([
             'key' => [
                 'required',
                 'string',
@@ -244,9 +245,14 @@ class PackageController extends Controller
             'monthly_price' => ['nullable', 'numeric', 'min:0'],
             'yearly_price' => ['nullable', 'numeric', 'min:0'],
             'currency' => ['required', Rule::in(['TRY', 'USD', 'EUR'])],
+            'process_depth' => ['nullable', Rule::in(ProcessDepth::values())],
             'sort_order' => ['nullable', 'integer', 'min:0'],
             'notes' => ['nullable', 'string'],
         ]);
+
+        $validated['process_depth'] = ProcessDepth::normalize($validated['process_depth'] ?? null);
+
+        return $validated;
     }
 
     private function moduleCatalogRows(Package $package): array

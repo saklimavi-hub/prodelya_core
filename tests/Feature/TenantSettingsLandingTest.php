@@ -17,8 +17,6 @@ class TenantSettingsLandingTest extends TestCase
 {
     use RefreshDatabase;
 
-    protected bool $seed = true;
-
     private const CENTRAL_HOST = 'prodelya_core.test';
 
     private User $adminUser;
@@ -27,6 +25,7 @@ class TenantSettingsLandingTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->seed();
 
         $this->adminUser = User::query()->where('email', 'admin@prodelya.local')->firstOrFail();
         $this->tenant = TenantAccount::query()->firstOrFail();

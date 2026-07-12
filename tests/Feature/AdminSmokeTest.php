@@ -61,6 +61,7 @@ class AdminSmokeTest extends TestCase
             'print service quotes create' => ['/admin/print-service-quotes/create', 403],
             'orders index' => ['/admin/orders', 200],
             'orders create' => ['/admin/orders/create', 302],
+            'process depth settings' => ['/admin/settings/process-depth', 200],
             'product data hub index' => ['/admin/product-data-hub', 403],
             'product data hub sources' => ['/admin/product-data-hub/sources', 403],
             'product data hub product mappings' => ['/admin/product-data-hub/product-mappings', 403],
