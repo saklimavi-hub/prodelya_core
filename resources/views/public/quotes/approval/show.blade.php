@@ -695,8 +695,9 @@
                             <div class="quote-approval-kicker">Onay</div>
                             <h3>Teklif uygunsa</h3>
                             <p class="quote-approval-muted quote-approval-small">Teklifi kabul edip sipariş sürecinin başlamasını sağlayabilirsiniz.</p>
-                            <form method="POST" action="{{ route('public.quotes.approval.approve', ['token' => $request->token]) }}">
+                            <form method="POST">
                                 @csrf
+                                <input type="hidden" name="decision" value="approve">
                                 <input type="hidden" name="customer_note" value="">
                                 <button type="submit" class="quote-approval-button quote-approval-button-green quote-approval-button-block" @disabled(!$canRespond)>Teklifi Onayla</button>
                             </form>
@@ -706,8 +707,9 @@
                             <div class="quote-approval-kicker">Revize</div>
                             <h3>Değişiklik isteyin</h3>
                             <p class="quote-approval-muted quote-approval-small">Teslim tarihi, baskı notu veya miktar gibi değişiklikleri yazabilirsiniz.</p>
-                            <form method="POST" action="{{ route('public.quotes.approval.revision', ['token' => $request->token]) }}">
+                            <form method="POST">
                                 @csrf
+                                <input type="hidden" name="decision" value="revision">
                                 <textarea class="quote-approval-textarea" name="customer_note" placeholder="Örnek: Teslim tarihi ve baskı notu güncellensin." @disabled(!$canRespond)>{{ old('customer_note') }}</textarea>
                                 @error('customer_note')
                                     <div class="quote-approval-error">{{ $message }}</div>
@@ -720,8 +722,9 @@
                             <div class="quote-approval-kicker">Red</div>
                             <h3>Teklifi reddedin</h3>
                             <p class="quote-approval-muted quote-approval-small">İsterseniz kısa bir açıklama ekleyerek teklifi reddedebilirsiniz.</p>
-                            <form method="POST" action="{{ route('public.quotes.approval.reject', ['token' => $request->token]) }}">
+                            <form method="POST">
                                 @csrf
+                                <input type="hidden" name="decision" value="reject">
                                 <textarea class="quote-approval-textarea" name="customer_note" placeholder="İsterseniz kısa bir açıklama ekleyebilirsiniz." @disabled(!$canRespond)>{{ old('customer_note') }}</textarea>
                                 <button type="submit" class="quote-approval-button quote-approval-button-red quote-approval-button-block" @disabled(!$canRespond)>Teklifi Reddet</button>
                             </form>

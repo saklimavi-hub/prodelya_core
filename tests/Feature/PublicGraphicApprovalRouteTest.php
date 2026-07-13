@@ -79,8 +79,9 @@ class PublicGraphicApprovalRouteTest extends TestCase
         $response->assertSee('Grafik Onayı');
         $response->assertSee($graphic->orderItem->product_name);
         $response->assertSee('Grafiği Onayla');
-        $response->assertSee(route('public.graphics.approval.approve', ['token' => $approvalRequest->token]), false);
-        $response->assertSee(route('public.graphics.approval.revision', ['token' => $approvalRequest->token]), false);
+        $response->assertDontSee($approvalRequest->token);
+        $response->assertDontSee(route('public.graphics.approval.approve', ['token' => $approvalRequest->token]), false);
+        $response->assertDontSee(route('public.graphics.approval.revision', ['token' => $approvalRequest->token]), false);
         $this->assertSame(GraphicApprovalRequest::STATUS_VIEWED, $approvalRequest->fresh()->status);
         $this->assertSame(route('public.graphics.approval.show', ['token' => $approvalRequest->token]), $approvalRequest->fresh()->publicUrl());
     }

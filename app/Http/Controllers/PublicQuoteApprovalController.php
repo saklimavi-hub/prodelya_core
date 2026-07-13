@@ -65,6 +65,16 @@ class PublicQuoteApprovalController extends Controller
         return view('public.quotes.approval.show', $this->buildViewPayload($approvalRequest));
     }
 
+    public function respond(Request $request, string $token): RedirectResponse
+    {
+        return match ((string) $request->input('decision')) {
+            'approve' => $this->approve($request, $token),
+            'revision' => $this->requestRevision($request, $token),
+            'reject' => $this->reject($request, $token),
+            default => abort(404),
+        };
+    }
+
     public function approve(Request $request, string $token): RedirectResponse
     {
         $approvalRequest = $this->resolvePublicApprovalRequest($token);

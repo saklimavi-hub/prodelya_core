@@ -63,9 +63,10 @@ class PublicQuoteApprovalRouteTest extends TestCase
         $response->assertOk();
         $response->assertSee($quote->document_number);
         $response->assertSee('Teklifi Onayla');
-        $response->assertSee(route('public.quotes.approval.approve', ['token' => $approvalRequest->token]), false);
-        $response->assertSee(route('public.quotes.approval.revision', ['token' => $approvalRequest->token]), false);
-        $response->assertSee(route('public.quotes.approval.reject', ['token' => $approvalRequest->token]), false);
+        $response->assertDontSee($approvalRequest->token);
+        $response->assertDontSee(route('public.quotes.approval.approve', ['token' => $approvalRequest->token]), false);
+        $response->assertDontSee(route('public.quotes.approval.revision', ['token' => $approvalRequest->token]), false);
+        $response->assertDontSee(route('public.quotes.approval.reject', ['token' => $approvalRequest->token]), false);
         $this->assertSame(QuoteApprovalRequest::STATUS_VIEWED, $approvalRequest->fresh()->status);
 
         $method = new ReflectionMethod($service, 'resolvePublicQuoteUrl');

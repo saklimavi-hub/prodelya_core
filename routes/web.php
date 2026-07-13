@@ -105,12 +105,14 @@ Route::get('/takip/is-formu/{token}/dosya/{attachment}', [PublicWorkFormAttachme
     ->whereNumber('attachment');
 Route::prefix('/teklif/onay/{token}')->name('public.quotes.approval.')->group(function () {
     Route::get('/', [PublicQuoteApprovalController::class, 'show'])->name('show');
+    Route::post('/', [PublicQuoteApprovalController::class, 'respond'])->name('respond');
     Route::post('/onayla', [PublicQuoteApprovalController::class, 'approve'])->name('approve');
     Route::post('/revize-iste', [PublicQuoteApprovalController::class, 'requestRevision'])->name('revision');
     Route::post('/reddet', [PublicQuoteApprovalController::class, 'reject'])->name('reject');
 });
 Route::prefix('/grafik/onay/{token}')->name('public.graphics.approval.')->group(function () {
     Route::get('/', [PublicGraphicApprovalController::class, 'show'])->name('show');
+    Route::post('/', [PublicGraphicApprovalController::class, 'respond'])->name('respond');
     Route::post('/onayla', [PublicGraphicApprovalController::class, 'approve'])->name('approve');
     Route::post('/revize-iste', [PublicGraphicApprovalController::class, 'requestRevision'])->name('revision');
 });

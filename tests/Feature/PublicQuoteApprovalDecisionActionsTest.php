@@ -28,8 +28,9 @@ class PublicQuoteApprovalDecisionActionsTest extends TestCase
             ->assertSee('Teklifi Onayla')
             ->assertSee('Revize İste')
             ->assertSee('Teklifi Reddet')
-            ->assertSee(route('public.quotes.approval.approve', ['token' => $context['request']->token]), false)
-            ->assertSee(route('public.quotes.approval.revision', ['token' => $context['request']->token]), false)
-            ->assertSee(route('public.quotes.approval.reject', ['token' => $context['request']->token]), false);
+            ->assertDontSee($context['request']->token)
+            ->assertDontSee(route('public.quotes.approval.approve', ['token' => $context['request']->token]), false)
+            ->assertDontSee(route('public.quotes.approval.revision', ['token' => $context['request']->token]), false)
+            ->assertDontSee(route('public.quotes.approval.reject', ['token' => $context['request']->token]), false);
     }
 }

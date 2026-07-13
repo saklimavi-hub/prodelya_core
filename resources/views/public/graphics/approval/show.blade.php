@@ -325,8 +325,9 @@
                     <div class="ga-action-card">
                         <span class="ga-label">Onay</span>
                         <div class="ga-copy" style="margin-top:0;">Grafik sizin için uygunsa hemen onaylayabilirsiniz.</div>
-                        <form method="POST" action="{{ route('public.graphics.approval.approve', ['token' => $request->token]) }}" style="margin-top:12px;">
+                        <form method="POST" style="margin-top:12px;">
                             @csrf
+                            <input type="hidden" name="decision" value="approve">
                             <input type="hidden" name="customer_note" value="">
                             <button type="submit" class="ga-button ga-button-green">Grafiği Onayla</button>
                         </form>
@@ -335,8 +336,9 @@
                     <div class="ga-action-card">
                         <span class="ga-label">Revize</span>
                         <div class="ga-copy" style="margin-top:0;">Değişmesini istediğiniz noktayı kısa bir notla iletebilirsiniz.</div>
-                        <form method="POST" action="{{ route('public.graphics.approval.revision', ['token' => $request->token]) }}" style="margin-top:12px;">
+                        <form method="POST" style="margin-top:12px;">
                             @csrf
+                            <input type="hidden" name="decision" value="revision">
                             <label class="ga-label" for="revision_note">Revize Notu</label>
                             <textarea class="ga-textarea" id="revision_note" name="customer_note" placeholder="Örnek: Logo biraz daha yukarı alınsın.">{{ old('customer_note') }}</textarea>
                             @error('customer_note')
