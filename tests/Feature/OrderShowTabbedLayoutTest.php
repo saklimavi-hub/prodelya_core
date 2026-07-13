@@ -29,16 +29,21 @@ class OrderShowTabbedLayoutTest extends TestCase
 
         $response->assertOk()
             ->assertSee('Genel Özet')
-            ->assertSee('Sipariş Özeti')
             ->assertSee('Sipariş Kalemleri')
             ->assertSee('Sipariş Akışı')
+            ->assertSee('Yardımcı İşlemler')
+            ->assertSee('Aktif Odak')
+            ->assertSee('Hızlı İşlemler')
+            ->assertSee('Çalışma Şekli')
             ->assertSee('İş Formu')
             ->assertSee('Grafik')
             ->assertSee('Tedarik')
             ->assertSee('Üretim')
             ->assertSee('Teslimat')
             ->assertSee('Finans')
-            ->assertSee('Geçmiş');
+            ->assertSee('Geçmiş')
+            ->assertSee('data-sticky-layout="true"', false)
+            ->assertSee('data-sticky-sidebar="true"', false);
 
         $this->assertSame(1, substr_count($response->getContent(), 'Sipariş Detayı'));
     }

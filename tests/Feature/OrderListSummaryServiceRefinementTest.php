@@ -61,6 +61,7 @@ class OrderListSummaryServiceRefinementTest extends TestCase
 
         $this->assertSame('Tedarik Bekliyor', $row['operation_status_label']);
         $this->assertSame('Tedarik bekliyor', $row['next_action_label']);
+        $this->assertSame('procurement_pending', $row['workflow_focus_key']);
     }
 
     public function test_printed_graphic_waiting_item_still_counts_as_graphic_waiting_when_no_higher_priority_blocker_exists(): void
@@ -87,9 +88,10 @@ class OrderListSummaryServiceRefinementTest extends TestCase
 
         $this->assertSame('Grafik Bekliyor', $row['operation_status_label']);
         $this->assertSame('Grafik kontrol et', $row['next_action_label']);
+        $this->assertSame('graphic_pending', $row['workflow_focus_key']);
     }
 
-    public function test_procurement_waiting_masks_graphic_waiting_before_graphic_summary_label(): void
+    public function test_graphic_waiting_now_takes_priority_over_procurement_when_both_are_open(): void
     {
         $order = $this->createOrder([
             'document_number' => 'SP-SUM-1003',
@@ -110,8 +112,9 @@ class OrderListSummaryServiceRefinementTest extends TestCase
             'payments',
         ]), true);
 
-        $this->assertSame('Tedarik Bekliyor', $row['operation_status_label']);
-        $this->assertSame('Tedarik bekliyor', $row['next_action_label']);
+        $this->assertSame('Grafik Bekliyor', $row['operation_status_label']);
+        $this->assertSame('Grafik kontrol et', $row['next_action_label']);
+        $this->assertSame('graphic_pending', $row['workflow_focus_key']);
     }
 
     public function test_completed_and_payment_pending_filters_stay_consistent_with_permission_rules(): void

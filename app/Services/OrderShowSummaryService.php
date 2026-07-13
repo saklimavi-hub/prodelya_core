@@ -9,6 +9,7 @@ use App\Models\OrderItemPrintProduction;
 use App\Models\OrderItemProcurement;
 use App\Models\OrderItemWorkForm;
 use App\Models\OrderItemWorkFormDelivery;
+use App\Support\WorkFormActivityLabelResolver;
 use Illuminate\Support\Collection;
 
 class OrderShowSummaryService
@@ -17,11 +18,24 @@ class OrderShowSummaryService
         protected OrderListSummaryService $orderListSummaryService,
         protected FinanceSummaryService $financeSummaryService,
         protected OrderFinanceSummaryService $orderFinanceSummaryService,
+        protected OrderDetailProcessDepthPresenter $orderDetailProcessDepthPresenter,
+        protected WorkFormActivityLabelResolver $activityLabelResolver,
     ) {
     }
 
     public function build(Order $order, bool $canViewFinancialData): array
     {
+        $order->loadMissing([
+            'tenant',
+            'workForms.orderItem',
+            'workForms.attachments',
+            'workForms.activityLogs.creator',
+            'procurements.orderItem',
+            'printProductions.orderItemPrint.orderItem',
+            'printProductions.workForm.attachments',
+            'deliveries.workForm.attachments',
+        ]);
+
         $overview = $this->orderListSummaryService->buildRow($order, $canViewFinancialData);
         $finance = $canViewFinancialData ? $this->financeSummaryService->summarizeOrder($order) : null;
         $financeOverview = $canViewFinancialData
@@ -32,14 +46,32 @@ class OrderShowSummaryService
                 'printProductions',
             ]))
             : null;
+        $processDepth = $this->orderDetailProcessDepthPresenter->present($order, $overview);
 
         return [
-            'overview' => $overview,
+            'overview' => array_merge($overview, [
+                'process_depth' => $processDepth,
+            ]),
             'finance' => $finance,
             'finance_overview' => $financeOverview,
             'module_cards' => $this->buildModuleCards($order, $overview, $canViewFinancialData, $finance),
             'item_rows' => $this->buildItemRows($order, $canViewFinancialData),
+            'history_rows' => $this->buildHistoryRows($order),
         ];
+    }
+
+    private function buildHistoryRows(Order $order): Collection
+    {
+        return $order->workForms
+            ->flatMap(fn (OrderItemWorkForm $form) => $form->activityLogs)
+            ->sortByDesc('created_at')
+            ->values()
+            ->map(fn ($log) => [
+                'created_at_label' => optional($log->created_at)->format('d.m.Y H:i') ?: '-',
+                'created_at_short_label' => optional($log->created_at)->format('d.m H:i') ?: '-',
+                'label' => $this->activityLabelResolver->title((string) $log->action_type),
+                'note' => $log->note ?: 'İşlem kaydı',
+            ]);
     }
 
     private function buildModuleCards(Order $order, array $overview, bool $canViewFinancialData, ?array $finance): array

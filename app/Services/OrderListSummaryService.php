@@ -83,16 +83,21 @@ class OrderListSummaryService
                 ], true)
             );
 
-        [$generalStatusLabel, $generalStatusBadge] = $this->generalStatus($isCancelled, $isProblematic, $isCompleted);
-        [$operationStatusLabel, $operationStatusBadge] = $this->operationStatus(
+        $workflowFocusKey = $this->workflowFocusKey(
             $isCancelled,
             $isProblematic,
             $isCompleted,
             $isDeliveryPending,
+            $graphicPending,
             $pendingProcurement,
             $pendingProduction,
-            $graphicPending
+            $isPaymentPending,
+            $canViewFinancialData
         );
+
+        [$generalStatusLabel, $generalStatusBadge] = $this->generalStatus($isCancelled, $isProblematic, $isCompleted);
+        [$operationStatusLabel, $operationStatusBadge] = $this->operationStatus($workflowFocusKey, $pendingProcurement, $pendingProduction);
+        $nextActionLabel = $this->nextAction($workflowFocusKey);
 
         $stickyPanel = [
             'order_id' => $order->id,
@@ -104,17 +109,8 @@ class OrderListSummaryService
             'general_status_badge' => $generalStatusBadge,
             'operation_status_label' => $operationStatusLabel,
             'operation_status_badge' => $operationStatusBadge,
-            'next_action_label' => $this->nextAction(
-                $isCancelled,
-                $isProblematic,
-                $isCompleted,
-                $isDeliveryPending,
-                $pendingProcurement,
-                $pendingProduction,
-                $graphicPending,
-                $isPaymentPending,
-                $canViewFinancialData
-            ),
+            'next_action_label' => $nextActionLabel,
+            'workflow_focus_key' => $workflowFocusKey,
             'links' => [
                 'show' => route('admin.orders.show', $order),
                 'work_form' => $workForms->first() ? route('admin.work-forms.show', $workForms->first()) : null,
@@ -160,17 +156,8 @@ class OrderListSummaryService
             'payment_status_badge' => $this->paymentBadge((string) ($financeSummary['payment_status'] ?? '')),
             'balance_due_label' => $financeSummary ? $this->money((float) ($financeSummary['balance_due'] ?? 0), $order->currency) : null,
             'grand_total_label' => $financeSummary ? $this->money((float) ($financeSummary['grand_total'] ?? 0), $order->currency) : null,
-            'next_action_label' => $this->nextAction(
-                $isCancelled,
-                $isProblematic,
-                $isCompleted,
-                $isDeliveryPending,
-                $pendingProcurement,
-                $pendingProduction,
-                $graphicPending,
-                $isPaymentPending,
-                $canViewFinancialData
-            ),
+            'next_action_label' => $nextActionLabel,
+            'workflow_focus_key' => $workflowFocusKey,
             'is_cancelled' => $isCancelled,
             'is_completed' => $isCompleted,
             'is_problematic' => $isProblematic,
@@ -273,91 +260,84 @@ class OrderListSummaryService
     }
 
     private function operationStatus(
-        bool $isCancelled,
-        bool $isProblematic,
-        bool $isCompleted,
-        bool $isDeliveryPending,
+        string $workflowFocusKey,
         ?OrderItemProcurement $pendingProcurement,
-        ?OrderItemPrintProduction $pendingProduction,
-        bool $graphicPending
+        ?OrderItemPrintProduction $pendingProduction
     ): array {
-        if ($isCancelled) {
-            return ['İptal', 'red'];
-        }
-
-        if ($isProblematic) {
-            return ['Problemli', 'red'];
-        }
-
-        if ($isCompleted) {
-            return ['Tamamlandı', 'green'];
-        }
-
-        if ($isDeliveryPending) {
-            return ['Teslimat Bekliyor', 'orange'];
-        }
-
-        if ($pendingProcurement) {
-            return [$pendingProcurement->safeStatusLabel(), 'amber'];
-        }
-
-        if ($graphicPending) {
-            return ['Grafik Bekliyor', 'amber'];
-        }
-
-        if ($pendingProduction) {
-            return [match ($pendingProduction->production_status) {
+        return match ($workflowFocusKey) {
+            'cancelled' => ['İptal', 'red'],
+            'problem' => ['Problemli', 'red'],
+            'completed' => ['Tamamlandı', 'green'],
+            'delivery_pending' => ['Teslimat Bekliyor', 'orange'],
+            'graphic_pending' => ['Grafik Bekliyor', 'amber'],
+            'procurement_pending' => [$pendingProcurement?->safeStatusLabel() ?: 'Tedarik Bekliyor', 'amber'],
+            'production_pending' => [match ($pendingProduction?->production_status) {
                 OrderItemPrintProduction::STATUS_PENDING => 'Üretim Bekliyor',
                 OrderItemPrintProduction::STATUS_COMPLETED => 'Teslimat Bekliyor',
                 default => 'Üretimde',
-            }, 'blue'];
-        }
-
-        return ['Siparişi İncele', 'gray'];
+            }, 'blue'],
+            default => ['Siparişi İncele', 'gray'],
+        };
     }
 
-    private function nextAction(
+    private function nextAction(string $workflowFocusKey): string
+    {
+        return match ($workflowFocusKey) {
+            'completed', 'payment_pending' => 'Tahsilat bekliyor',
+            'delivery_pending' => 'Teslimat planla',
+            'graphic_pending' => 'Grafik kontrol et',
+            'procurement_pending' => 'Tedarik bekliyor',
+            'production_pending' => 'Üretim bekliyor',
+            default => 'Siparişi incele',
+        };
+    }
+
+    private function workflowFocusKey(
         bool $isCancelled,
         bool $isProblematic,
         bool $isCompleted,
         bool $isDeliveryPending,
+        bool $graphicPending,
         ?OrderItemProcurement $pendingProcurement,
         ?OrderItemPrintProduction $pendingProduction,
-        bool $graphicPending,
         bool $isPaymentPending,
         bool $canViewFinancialData
     ): string {
-        if ($isCancelled || $isProblematic) {
-            return 'Siparişi incele';
+        if ($isCancelled) {
+            return 'cancelled';
+        }
+
+        if ($isProblematic) {
+            return 'problem';
         }
 
         if ($isCompleted) {
             return $canViewFinancialData && $isPaymentPending
-                ? 'Tahsilat bekliyor'
-                : 'Sipariş tamamlandı';
+                ? 'payment_pending'
+                : 'completed';
         }
 
         if ($isDeliveryPending) {
-            return 'Teslimat planla';
-        }
-
-        if ($pendingProcurement) {
-            return 'Tedarik bekliyor';
+            return 'delivery_pending';
         }
 
         if ($graphicPending) {
-            return 'Grafik kontrol et';
+            return 'graphic_pending';
+        }
+
+        if ($pendingProcurement) {
+            return 'procurement_pending';
         }
 
         if ($pendingProduction) {
-            return 'Üretim bekliyor';
+            return 'production_pending';
         }
 
         if ($canViewFinancialData && $isPaymentPending) {
-            return 'Tahsilat bekliyor';
+            return 'payment_pending';
         }
 
-        return 'Siparişi incele';
+        return 'review';
     }
 
     private function isCancelled(Order $order): bool

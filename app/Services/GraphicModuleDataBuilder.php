@@ -7,6 +7,7 @@ use App\Models\OrderItemPrintGraphic;
 use App\Models\OrderItemWorkForm;
 use App\Models\OrderItemWorkFormActivityLog;
 use App\Models\OrderItemWorkFormAttachment;
+use App\Support\WorkFormActivityLabelResolver;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
@@ -14,7 +15,8 @@ use Illuminate\Support\Facades\Storage;
 class GraphicModuleDataBuilder
 {
     public function __construct(
-        protected WorkFormQrCodeService $qrCodeService
+        protected WorkFormQrCodeService $qrCodeService,
+        protected WorkFormActivityLabelResolver $activityLabelResolver
     ) {
     }
 
@@ -364,16 +366,10 @@ class GraphicModuleDataBuilder
     private function historyLabel(OrderItemWorkFormActivityLog $log): string
     {
         return match ($log->action_type) {
-            'graphic_visual_added' => 'Grafik görseli eklendi',
-            'customer_approval_added' => 'Müşteri onay dosyası eklendi',
             'status_updated' => $log->new_status
                 ? 'Durum güncellendi: ' . $this->statusLabel($log->new_status, ucfirst(str_replace('_', ' ', (string) $log->new_status)))
                 : 'Durum güncellendi',
-            'work_form_created' => 'İş Formu oluşturuldu',
-            'procurement_request_created' => 'Tedarik kaydı oluşturuldu',
-            'production_operation_created' => 'Üretim operasyonu oluşturuldu',
-            'delivery_record_created' => 'Teslimat kaydı oluşturuldu',
-            default => 'İşlem kaydı oluşturuldu',
+            default => $this->activityLabelResolver->sentence((string) $log->action_type),
         };
     }
 
@@ -753,3 +749,5 @@ class GraphicModuleDataBuilder
         return (string) preg_replace_callback('/\d+/', fn (array $matches) => str_pad($matches[0], 4, '0', STR_PAD_LEFT), $sequenceCode);
     }
 }
+
+

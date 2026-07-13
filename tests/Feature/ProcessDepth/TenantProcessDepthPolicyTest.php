@@ -30,7 +30,10 @@ class TenantProcessDepthPolicyTest extends TestCase
         $map = $policy->forDepth('standard');
 
         $this->assertSame('standard', $map['operation_card_density']);
-        $this->assertTrue($map['show_quality_control_section']);
+        $this->assertTrue($map['show_extended_readiness_details']);
+        $this->assertFalse($map['show_evidence_sections']);
+        $this->assertFalse($map['show_quality_control_section']);
+        $this->assertFalse($map['show_advanced_activity_timeline']);
     }
 
     public function test_controlled_capability_map_is_returned(): void
@@ -74,3 +77,4 @@ class TenantProcessDepthPolicyTest extends TestCase
         $this->assertSame('fallback', $policy->capability($tenant->fresh(), 'missing_capability', 'fallback'));
     }
 }
+

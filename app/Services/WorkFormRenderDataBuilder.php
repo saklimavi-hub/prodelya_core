@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\OrderItemWorkForm;
 use App\Models\OrderItemWorkFormAttachment;
 use App\Services\ProductDataHub\ProductHubSafeImageUrlService;
+use App\Support\WorkFormActivityLabelResolver;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Collection;
 
@@ -14,6 +15,7 @@ class WorkFormRenderDataBuilder
         protected WorkFormQrCodeService $qrCodeService,
         protected TenantCompanyProfileService $tenantCompanyProfileService,
         protected ProductHubSafeImageUrlService $safeImageUrlService,
+        protected WorkFormActivityLabelResolver $activityLabelResolver,
     ) {
     }
 
@@ -146,47 +148,7 @@ class WorkFormRenderDataBuilder
 
     private function humanizeActionType(string $actionType): string
     {
-        return match ($actionType) {
-            'work_form_created' => 'İş Formu oluşturuldu',
-            'graphic_visual_added' => 'Grafik görseli eklendi',
-            'customer_approval_added' => 'Müşteri onay dosyası eklendi',
-            'procurement_needed' => 'Tedarik kaydı oluşturuldu',
-            'procurement_request_created' => 'Tedarik talebi açıldı',
-            'supplier_ordered' => 'Tedarikçiye sipariş verildi',
-            'procurement_partially_received' => 'Tedarik kalemi kısmi geldi',
-            'procurement_fully_received' => 'Tedarik kalemi tamamen geldi',
-            'procurement_cancelled' => 'Tedarik kaydı iptal edildi',
-            'customer_supplied_product_waiting' => 'Müşteri ürünü bekleniyor',
-            'customer_supplied_product_received' => 'Müşteri ürünü geldi',
-            'procurement_not_required' => 'Tedarik gerekmiyor',
-            'production_operation_created' => 'Üretim operasyonu oluşturuldu',
-            'production_assigned_internal' => 'İş iç üretime atandı',
-            'production_assigned_external' => 'İş dış üretime atandı',
-            'production_started' => 'Üretim başlatıldı',
-            'production_sent_to_subcontractor' => 'İş fason firmaya gönderildi',
-            'production_returned_from_subcontractor' => 'İş fason firmadan döndü',
-            'production_qc_started' => 'Kalite kontrol başlatıldı',
-            'production_qc_passed' => 'Kalite kontrol uygun bulundu',
-            'production_qc_failed' => 'Kalite kontrolde sorun tespit edildi',
-            'production_completed' => 'Üretim tamamlandı',
-            'production_issue_reported' => 'Üretim sorunu bildirildi',
-            'production_cancelled' => 'Üretim operasyonu iptal edildi',
-            'production_photo_added' => 'Üretim fotoğrafı eklendi',
-            'delivery_record_created' => 'Teslimat kaydı oluşturuldu',
-            'delivery_preparing' => 'Teslimat hazırlığı başlatıldı',
-            'delivery_ready' => 'Teslimata hazır olarak işaretlendi',
-            'delivery_shipped' => 'Kalem kargoya verildi',
-            'courier_out_for_delivery' => 'Kurye teslimata çıktı',
-            'delivery_partially_completed' => 'Kalem kısmi teslim edildi',
-            'delivery_completed' => 'Kalem teslim edildi',
-            'delivery_issue_reported' => 'Teslimat sorunu bildirildi',
-            'delivery_cancelled' => 'Teslimat kaydı iptal edildi',
-            'delivery_details_updated' => 'Teslimat bilgileri güncellendi',
-            'delivery_photo_added' => 'Teslimat fotoğrafı eklendi',
-            'delivery_document_added' => 'Teslimat belgesi eklendi',
-            'attachment_added' => 'Dosya eklendi',
-            default => ucfirst(str_replace('_', ' ', $actionType)),
-        };
+        return $this->activityLabelResolver->sentence($actionType);
     }
 
     private function resolvePreviewUrl(OrderItemWorkFormAttachment $attachment): ?string
@@ -257,3 +219,4 @@ class WorkFormRenderDataBuilder
         ];
     }
 }
+

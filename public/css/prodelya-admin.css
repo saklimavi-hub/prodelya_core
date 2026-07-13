@@ -22,6 +22,18 @@
   --pd-purple-soft: #f3e8ff;
   --pd-gray: #6b7280;
   --pd-gray-soft: #f9fafb;
+  --pd-space-4: 4px;
+  --pd-space-6: 6px;
+  --pd-space-8: 8px;
+  --pd-space-10: 10px;
+  --pd-space-12: 12px;
+  --pd-space-16: 16px;
+  --pd-space-20: 20px;
+  --pd-space-page: var(--pd-gap);
+  --pd-space-section: var(--pd-space-12);
+  --pd-space-card: var(--pd-space-10);
+  --pd-space-inline: var(--pd-space-8);
+  --pd-space-tight: var(--pd-space-6);
   --pd-page-padding-x: 18px;
   --pd-sidebar-width: 272px;
   --pd-summary-width: 302px;
@@ -133,17 +145,50 @@ textarea:focus {
 
 .pd-page-shell,
 .pd-stack-md,
-.pd-stack-lg {
+.pd-stack-lg,
+.pd-page-stack,
+.pd-section-stack,
+.pd-card-stack,
+.pd-two-column-layout {
   display: grid;
 }
 
 .pd-page-shell,
-.pd-stack-md {
-  gap: 14px;
+.pd-stack-md,
+.pd-page-stack,
+.pd-two-column-layout {
+  gap: var(--pd-space-page);
+}
+
+.pd-section-stack {
+  gap: var(--pd-space-section);
+}
+
+.pd-card-stack {
+  gap: var(--pd-space-card);
 }
 
 .pd-stack-lg {
   gap: 18px;
+}
+
+.pd-inline-stack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pd-space-inline);
+}
+
+.pd-tight-stack {
+  display: grid;
+  gap: var(--pd-space-tight);
+}
+
+@media (max-width: 760px) {
+  .pd-page-stack,
+  .pd-section-stack,
+  .pd-two-column-layout {
+    gap: 10px;
+  }
 }
 
 .pd-layout {

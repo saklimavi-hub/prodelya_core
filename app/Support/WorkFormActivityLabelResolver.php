@@ -1,0 +1,96 @@
+<?php
+
+namespace App\Support;
+
+class WorkFormActivityLabelResolver
+{
+    public function title(string $actionType): string
+    {
+        return match ($actionType) {
+            'work_form_created' => 'İş Formu Oluşturuldu',
+            'graphic_visual_added' => 'Grafik Görseli Eklendi',
+            'customer_approval_added' => 'Müşteri Onay Dosyası Eklendi',
+            'procurement_needed' => 'Tedarik İhtiyacı Oluşturuldu',
+            'procurement_request_created' => 'Tedarik Kaydı Oluşturuldu',
+            'supplier_ordered' => 'Tedarikçiye Sipariş Verildi',
+            'procurement_partially_received' => 'Tedarik Kalemi Kısmi Geldi',
+            'procurement_fully_received' => 'Tedarik Kalemi Tamamen Geldi',
+            'procurement_cancelled' => 'Tedarik Kaydı İptal Edildi',
+            'customer_supplied_product_waiting' => 'Müşteri Ürünü Bekleniyor',
+            'customer_supplied_product_received' => 'Müşteri Ürünü Geldi',
+            'procurement_not_required' => 'Tedarik Gerekmiyor',
+            'production_operation_created' => 'Üretim Operasyonu Oluşturuldu',
+            'production_assigned_internal' => 'İş İç Üretime Atandı',
+            'production_assigned_external' => 'İş Dış Üretime Atandı',
+            'production_started' => 'Üretim Başlatıldı',
+            'production_sent_to_subcontractor' => 'İş Fasona Gönderildi',
+            'production_returned_from_subcontractor' => 'İş Fasondan Döndü',
+            'production_qc_started' => 'Kalite Kontrol Başlatıldı',
+            'production_qc_passed' => 'Kalite Kontrol Uygun Bulundu',
+            'production_qc_failed' => 'Kalite Kontrolde Sorun Tespit Edildi',
+            'production_completed' => 'Üretim Tamamlandı',
+            'production_issue_reported' => 'Üretim Sorunu Bildirildi',
+            'production_cancelled' => 'Üretim Operasyonu İptal Edildi',
+            'production_photo_added' => 'Üretim Fotoğrafı Eklendi',
+            'delivery_record_created' => 'Teslimat Kaydı Oluşturuldu',
+            'delivery_preparing' => 'Teslimat Hazırlığı Başlatıldı',
+            'delivery_ready' => 'Teslimata Hazır Olarak İşaretlendi',
+            'delivery_shipped' => 'Kalem Kargoya Verildi',
+            'courier_out_for_delivery' => 'Kurye Teslimata Çıktı',
+            'delivery_partially_completed' => 'Kalem Kısmi Teslim Edildi',
+            'delivery_completed' => 'Kalem Teslim Edildi',
+            'delivery_issue_reported' => 'Teslimat Sorunu Bildirildi',
+            'delivery_cancelled' => 'Teslimat Kaydı İptal Edildi',
+            'delivery_details_updated' => 'Teslimat Bilgileri Güncellendi',
+            'delivery_photo_added' => 'Teslimat Fotoğrafı Eklendi',
+            'delivery_document_added' => 'Teslimat Belgesi Eklendi',
+            'attachment_added' => 'Dosya Eklendi',
+            default => str_replace('_', ' ', \Illuminate\Support\Str::headline($actionType)),
+        };
+    }
+
+    public function sentence(string $actionType): string
+    {
+        return match ($actionType) {
+            'work_form_created' => 'İş Formu oluşturuldu',
+            'graphic_visual_added' => 'Grafik görseli eklendi',
+            'customer_approval_added' => 'Müşteri onay dosyası eklendi',
+            'procurement_needed' => 'Tedarik ihtiyacı oluşturuldu',
+            'procurement_request_created' => 'Tedarik kaydı oluşturuldu',
+            'supplier_ordered' => 'Tedarikçiye sipariş verildi',
+            'procurement_partially_received' => 'Tedarik kalemi kısmi geldi',
+            'procurement_fully_received' => 'Tedarik kalemi tamamen geldi',
+            'procurement_cancelled' => 'Tedarik kaydı iptal edildi',
+            'customer_supplied_product_waiting' => 'Müşteri ürünü bekleniyor',
+            'customer_supplied_product_received' => 'Müşteri ürünü geldi',
+            'procurement_not_required' => 'Tedarik gerekmiyor',
+            'production_operation_created' => 'Üretim operasyonu oluşturuldu',
+            'production_assigned_internal' => 'İş iç üretime atandı',
+            'production_assigned_external' => 'İş dış üretime atandı',
+            'production_started' => 'Üretim başlatıldı',
+            'production_sent_to_subcontractor' => 'İş fason firmaya gönderildi',
+            'production_returned_from_subcontractor' => 'İş fason firmadan döndü',
+            'production_qc_started' => 'Kalite kontrol başlatıldı',
+            'production_qc_passed' => 'Kalite kontrol uygun bulundu',
+            'production_qc_failed' => 'Kalite kontrolde sorun tespit edildi',
+            'production_completed' => 'Üretim tamamlandı',
+            'production_issue_reported' => 'Üretim sorunu bildirildi',
+            'production_cancelled' => 'Üretim operasyonu iptal edildi',
+            'production_photo_added' => 'Üretim fotoğrafı eklendi',
+            'delivery_record_created' => 'Teslimat kaydı oluşturuldu',
+            'delivery_preparing' => 'Teslimat hazırlığı başlatıldı',
+            'delivery_ready' => 'Teslimata hazır olarak işaretlendi',
+            'delivery_shipped' => 'Kalem kargoya verildi',
+            'courier_out_for_delivery' => 'Kurye teslimata çıktı',
+            'delivery_partially_completed' => 'Kalem kısmi teslim edildi',
+            'delivery_completed' => 'Kalem teslim edildi',
+            'delivery_issue_reported' => 'Teslimat sorunu bildirildi',
+            'delivery_cancelled' => 'Teslimat kaydı iptal edildi',
+            'delivery_details_updated' => 'Teslimat bilgileri güncellendi',
+            'delivery_photo_added' => 'Teslimat fotoğrafı eklendi',
+            'delivery_document_added' => 'Teslimat belgesi eklendi',
+            'attachment_added' => 'Dosya eklendi',
+            default => ucfirst(str_replace('_', ' ', $actionType)),
+        };
+    }
+}

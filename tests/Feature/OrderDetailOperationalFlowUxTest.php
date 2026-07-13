@@ -41,10 +41,14 @@ class OrderDetailOperationalFlowUxTest extends TestCase
 
         $response->assertOk();
         $response->assertSee('Genel Özet');
+        $response->assertSee('Sipariş Kalemleri');
         $response->assertSee('Sipariş Akışı');
-        $response->assertSee('Bu alan siparişin grafik, tedarik, üretim, teslimat ve finans sürecini tek ekranda takip etmek için kullanılır.');
-        $response->assertSee('Kısa Özet');
-        $response->assertSee('Sıradaki İşlem');
+        $response->assertSee('Grafik, tedarik, üretim ve teslimat aynı akışta; finans ayrı hatta izlenir.');
+        $response->assertSee('Yardımcı İşlemler');
+        $response->assertSee('Aktif Odak');
+        $response->assertSee('Hızlı İşlemler');
+        $response->assertSee('Şu an');
+        $response->assertSee('Sıradaki işlem');
         $response->assertSee('İş Formu');
         $response->assertSee('Grafik');
         $response->assertSee('Tedarik');
@@ -52,6 +56,8 @@ class OrderDetailOperationalFlowUxTest extends TestCase
         $response->assertSee('Teslimat');
         $response->assertSee('Finans');
         $response->assertSee('Geçmiş');
+        $response->assertSee('data-sticky-layout="true"', false);
+        $response->assertSee('data-sticky-sidebar="true"', false);
         $response->assertSee($order->document_number);
         $response->assertSee((string) $order->customer?->legal_name);
         $response->assertDontSee($workForm->public_tracking_token, false);
@@ -77,10 +83,11 @@ class OrderDetailOperationalFlowUxTest extends TestCase
 
         $response->assertOk();
         $response->assertSee('Genel Özet');
-        $response->assertDontSee('Genel Toplam');
-        $response->assertDontSee('Bakiye');
-        $response->assertDontSee('Ödenen');
+        $response->assertDontSee('Açık Bakiye');
+        $response->assertDontSee('Kalan Bakiye');
+        $response->assertDontSee('Finans Özeti');
         $response->assertDontSee(route('admin.finance.show', $order), false);
+        $response->assertDontSee('<th>Tutar</th>', false);
         $response->assertDontSee('KDV');
         $response->assertDontSee('Tahsilat');
         $response->assertDontSee('500,00 TL');
