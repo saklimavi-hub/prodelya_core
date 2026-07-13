@@ -7,6 +7,9 @@ use App\Models\OrderItemPrintGraphic;
 use App\Models\OrderItemWorkForm;
 use App\Models\OrderItemWorkFormActivityLog;
 use App\Models\OrderItemWorkFormAttachment;
+use App\Services\ProcessDepth\TenantProcessDepthPolicy;
+use App\Services\ProcessDepth\TenantProcessDepthResolver;
+use App\Support\ProcessDepth\ProcessDepth;
 use App\Support\WorkFormActivityLabelResolver;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
@@ -16,7 +19,9 @@ class GraphicModuleDataBuilder
 {
     public function __construct(
         protected WorkFormQrCodeService $qrCodeService,
-        protected WorkFormActivityLabelResolver $activityLabelResolver
+        protected WorkFormActivityLabelResolver $activityLabelResolver,
+        protected TenantProcessDepthResolver $processDepthResolver,
+        protected TenantProcessDepthPolicy $processDepthPolicy,
     ) {
     }
 
@@ -65,10 +70,12 @@ class GraphicModuleDataBuilder
     ): array
     {
         $relations = [
+            'tenant',
             'attachments.uploader',
             'activityLogs.attachment',
             'systemWorkFolder',
             'printGraphics.latestAttachment',
+            'printGraphics.attachments',
             'printGraphics.orderItemPrint',
         ];
 
@@ -106,6 +113,13 @@ class GraphicModuleDataBuilder
         $actionStepTabs = $this->buildActionStepTabs($activeStepKey, $customerApprovalEnabled);
 
         $workflowHistory = $this->mapWorkflowHistory($workForm);
+        $processDepth = $this->buildProcessDepthPayload(
+            $workForm,
+            $selectedOperation,
+            $operationCards,
+            $workflowHistory,
+            $customerApprovalEnabled
+        );
 
         return [
             'workForm' => $workForm,
@@ -136,6 +150,107 @@ class GraphicModuleDataBuilder
             'operationSummaryLines' => $this->aggregateStatusParts($operations),
             'nextActionLabel' => $this->nextActionLabel($operations),
             'customerApprovalEnabled' => $customerApprovalEnabled,
+            'processDepth' => $processDepth,
+        ];
+    }
+
+    private function buildProcessDepthPayload(
+        OrderItemWorkForm $workForm,
+        ?OrderItemPrintGraphic $selectedOperation,
+        Collection $operationCards,
+        array $workflowHistory,
+        bool $customerApprovalEnabled
+    ): array {
+        $resolved = $workForm->tenant
+            ? $this->processDepthResolver->resolve($workForm->tenant)
+            : [
+                'key' => ProcessDepth::default(),
+                'label' => ProcessDepth::label(ProcessDepth::default()),
+                'source' => 'system_default',
+                'source_label' => ProcessDepth::sourceLabel('system_default'),
+                'is_overridden' => false,
+            ];
+
+        $depthKey = (string) ($resolved['key'] ?? ProcessDepth::default());
+        $capabilities = $this->processDepthPolicy->forDepth($depthKey);
+        $selectedOperationCard = $selectedOperation
+            ? $operationCards->first(fn (array $card) => $card['id'] === $selectedOperation->id)
+            : null;
+        $primaryAction = $this->buildPrimaryAction($workForm, $selectedOperationCard, $customerApprovalEnabled);
+
+        return array_merge($resolved, [
+            'presentation' => [
+                'density' => (string) ($capabilities['operation_card_density'] ?? 'standard'),
+                'show_operation_overview' => $depthKey !== ProcessDepth::FAST,
+                'show_visibility_details' => $depthKey !== ProcessDepth::FAST,
+                'show_customer_approval_details' => $depthKey !== ProcessDepth::FAST,
+                'show_revision_details' => $depthKey !== ProcessDepth::FAST,
+                'show_readiness_details' => (bool) ($capabilities['show_extended_readiness_details'] ?? false),
+                'show_attachment_list' => (bool) ($capabilities['show_evidence_sections'] ?? false),
+                'show_full_activity_history' => (bool) ($capabilities['show_advanced_activity_timeline'] ?? false),
+                'show_operation_status_sidebar' => $depthKey !== ProcessDepth::FAST,
+                'show_recent_activity_sidebar' => $depthKey === ProcessDepth::CONTROLLED,
+                'show_compact_history_only' => $depthKey === ProcessDepth::FAST,
+                'history_limit' => match ($depthKey) {
+                    ProcessDepth::FAST => 1,
+                    ProcessDepth::STANDARD => 3,
+                    default => count($workflowHistory),
+                },
+                'branch_class' => match ($depthKey) {
+                    ProcessDepth::FAST => 'pd-graphic-depth-fast',
+                    ProcessDepth::CONTROLLED => 'pd-graphic-depth-controlled',
+                    default => 'pd-graphic-depth-standard',
+                },
+            ],
+            'primary_action' => $primaryAction,
+        ]);
+    }
+
+    private function buildPrimaryAction(
+        OrderItemWorkForm $workForm,
+        ?array $selectedOperationCard,
+        bool $customerApprovalEnabled
+    ): array {
+        if ($selectedOperationCard === null) {
+            return [
+                'label' => 'Grafik Operasyonunu Aç',
+                'url' => route('admin.graphics.show', $workForm),
+                'step' => 'summary',
+            ];
+        }
+
+        $step = 'summary';
+        $label = 'Operasyon Özeti';
+
+        if (($selectedOperationCard['status_key'] ?? null) === OrderItemPrintGraphic::STATUS_REVISION_REQUESTED) {
+            $step = 'upload';
+            $label = 'Revizeyi Yükle';
+        } elseif (($selectedOperationCard['status_key'] ?? null) === OrderItemPrintGraphic::STATUS_WAITING_VISUAL) {
+            $step = 'upload';
+            $label = empty($selectedOperationCard['attachment']) ? 'Görsel Yükle' : 'Görseli Güncelle';
+        } elseif (
+            $customerApprovalEnabled
+            && ($selectedOperationCard['customer_approval']['send_url'] ?? null)
+            && ($selectedOperationCard['customer_approval_label'] ?? null) !== 'Onaylandı'
+        ) {
+            $step = 'approval';
+            $label = 'Müşteri Onayına Gönder';
+        } elseif (($selectedOperationCard['can_mark_production_ready'] ?? false) === true) {
+            $step = 'ready';
+            $label = 'Üretime Hazır İşaretle';
+        } elseif (!empty($selectedOperationCard['attachment'])) {
+            $step = 'upload';
+            $label = 'Görseli Güncelle';
+        }
+
+        return [
+            'label' => $label,
+            'step' => $step,
+            'url' => route('admin.graphics.show', [
+                'workForm' => $workForm,
+                'operation' => $selectedOperationCard['id'],
+                'step' => $step,
+            ]),
         ];
     }
 
@@ -278,6 +393,23 @@ class GraphicModuleDataBuilder
                 'visibility_label' => $attachment->isCustomerVisible() ? 'Müşteriye Açık' : 'İç Kayıt',
                 'created_at' => optional($attachment->created_at)->format('d.m.Y H:i'),
             ] : null,
+            'attachments' => $graphic->attachments
+                ->sortByDesc('id')
+                ->values()
+                ->map(fn (OrderItemWorkFormAttachment $item) => [
+                    'id' => $item->id,
+                    'file_name' => $item->file_name ?: basename((string) $item->file_path),
+                    'kind_label' => $item->attachment_type === 'customer_approval'
+                        ? 'Müşteri Onay Dosyası'
+                        : ($item->isImage()
+                            ? 'Grafik Görseli'
+                            : strtoupper(pathinfo((string) ($item->file_name ?: $item->file_path), PATHINFO_EXTENSION) ?: 'DOSYA') . ' dosyası'),
+                    'visibility' => $item->visibility,
+                    'visibility_label' => $item->isCustomerVisible() ? 'Müşteriye Açık' : 'İç Kayıt',
+                    'uploaded_at' => optional($item->created_at)->format('d.m.Y H:i'),
+                    'open_url' => $this->resolvePreviewUrl($item),
+                ])
+                ->all(),
             'print_meta' => [
                 'print_type' => $print?->print_type ?: '-',
                 'print_option' => $print?->print_option ?: '-',
@@ -749,5 +881,9 @@ class GraphicModuleDataBuilder
         return (string) preg_replace_callback('/\d+/', fn (array $matches) => str_pad($matches[0], 4, '0', STR_PAD_LEFT), $sequenceCode);
     }
 }
+
+
+
+
 
 

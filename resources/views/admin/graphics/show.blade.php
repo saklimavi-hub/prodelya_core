@@ -10,6 +10,9 @@
     $productPreview = $productPreview ?? null;
     $selectedOperation = $selectedOperationCard;
     $selectedAttachment = $selectedOperation['attachment'] ?? null;
+    $selectedAttachments = collect($selectedOperation['attachments'] ?? [])->values();
+    $customerVisibleAttachments = $selectedAttachments->where('visibility', 'customer_visible')->values();
+    $internalAttachments = $selectedAttachments->where('visibility', '!=', 'customer_visible')->values();
     $selectedApprovalCard = $customerApprovalEnabled && $selectedOperation ? ($selectedOperation['customer_approval'] ?? null) : null;
     $selectedLatestApprovalRequest = data_get($selectedApprovalCard, 'latest_request');
     $orderUrl = route('admin.orders.show', $workForm->order_id);
@@ -17,6 +20,24 @@
     $activeStep = $activeActionStep ?? 'summary';
     $activeStepTab = collect($actionStepTabs ?? [])->firstWhere('is_active', true);
     $activeStepLabel = $activeStepTab['label'] ?? 'İşlem Adımı';
+    $processDepth = $processDepth ?? [];
+    $depthKey = (string) data_get($processDepth, 'key', 'standard');
+    $depthLabel = (string) data_get($processDepth, 'label', 'Standart Akış');
+    $depthPresentation = (array) data_get($processDepth, 'presentation', []);
+    $primaryAction = (array) data_get($processDepth, 'primary_action', []);
+    $showOperationOverview = (bool) data_get($depthPresentation, 'show_operation_overview', true);
+    $showVisibilityDetails = (bool) data_get($depthPresentation, 'show_visibility_details', true);
+    $showCustomerApprovalDetails = (bool) data_get($depthPresentation, 'show_customer_approval_details', true);
+    $showRevisionDetails = (bool) data_get($depthPresentation, 'show_revision_details', true);
+    $showReadinessDetails = (bool) data_get($depthPresentation, 'show_readiness_details', false);
+    $showAttachmentList = (bool) data_get($depthPresentation, 'show_attachment_list', false);
+    $showFullActivityHistory = (bool) data_get($depthPresentation, 'show_full_activity_history', false);
+    $showOperationStatusSidebar = (bool) data_get($depthPresentation, 'show_operation_status_sidebar', true);
+    $showRecentActivitySidebar = (bool) data_get($depthPresentation, 'show_recent_activity_sidebar', false);
+    $showCompactHistoryOnly = (bool) data_get($depthPresentation, 'show_compact_history_only', false);
+    $historySectionTitle = $showFullActivityHistory ? 'Ayrıntılı Activity History' : 'Kısa Activity History';
+    $visibleHistory = collect($workflowHistory ?? [])->take((int) data_get($depthPresentation, 'history_limit', count($workflowHistory ?? [])))->values();
+    $latestHistory = $visibleHistory->first();
     $buildShowUrl = function (array $params = []) use ($showUrl, $selectedOperation, $activeStep): string {
         $query = array_filter([
             'operation' => $params['operation'] ?? ($selectedOperation['id'] ?? null),
@@ -33,12 +54,42 @@
 @endphp
 
 <style>
-    .gg-page {
+    .pd-page-stack,
+    .pd-section-stack {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) 296px;
-        gap: 16px;
+        gap: 14px;
+    }
+
+    .pd-card-stack {
+        display: grid;
+        gap: 12px;
+    }
+
+    .pd-inline-stack {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .pd-tight-stack {
+        display: grid;
+        gap: 8px;
+    }
+
+    .pd-two-column-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 330px;
+        gap: 14px;
         align-items: start;
+    }
+
+    .gg-page {
         padding-bottom: 20px;
+    }
+
+    .gg-main,
+    .gg-side {
+        min-width: 0;
     }
 
     .gg-card {
@@ -48,9 +99,6 @@
         overflow: hidden;
     }
 
-    .gg-card + .gg-card {
-        margin-top: 14px;
-    }
 
     .gg-card-body {
         padding: 14px;
@@ -77,9 +125,6 @@
         flex-wrap: wrap;
     }
 
-    .gg-topbar {
-        margin-bottom: 14px;
-    }
 
     .gg-btn,
     .gg-btn:visited {
@@ -527,8 +572,6 @@
     .gg-sticky {
         position: sticky;
         top: 18px;
-        display: grid;
-        gap: 12px;
     }
 
     .gg-link-box {
@@ -541,9 +584,6 @@
         word-break: break-word;
     }
 
-    .gg-side-section + .gg-side-section {
-        margin-top: 12px;
-    }
 
     .gg-side-title {
         font-size: 14px;
@@ -614,9 +654,12 @@
         margin: 0 auto;
     }
 
-    @media (max-width: 1180px) {
+    @media (max-width: 1100px) {
+        .pd-two-column-layout {
+            grid-template-columns: 1fr;
+        }
+
         .gg-summary-layout,
-        .gg-page,
         .gg-workspace {
             grid-template-columns: 1fr;
         }
@@ -656,7 +699,8 @@
     <div class="gg-flash gg-flash-error">{{ $errors->first() }}</div>
 @endif
 
-<div class="gg-topbar">
+<div class="pd-page-stack">
+<div class="gg-topbar pd-inline-stack">
     <a href="{{ route('admin.graphics.index') }}" class="gg-btn">Listeye Dön</a>
     <a href="{{ route('admin.work-forms.show', $workForm) }}" class="gg-btn">İş Formu</a>
     <a href="{{ $orderUrl }}" class="gg-btn">Sipariş Detayı</a>
@@ -664,14 +708,14 @@
     <a href="{{ $trackingUrl }}" target="_blank" rel="noopener" class="gg-btn">Müşteri Takip Linki</a>
 </div>
 
-<div class="gg-page">
-    <div class="gg-main">
+<div class="gg-page pd-two-column-layout {{ data_get($depthPresentation, 'branch_class', 'pd-graphic-depth-standard') }}" data-graphic-process-depth="{{ $depthKey }}" data-graphic-depth-branch="{{ $depthKey }}" data-graphic-depth-marker="true" data-sticky-layout="true">
+    <div class="gg-main pd-page-stack" data-graphic-sticky-main="true">
         <div class="gg-card">
             <div class="gg-card-body">
                 <div class="gg-header-row">
                     <div>
-                        <h3 class="gg-section-title">Genel Durum</h3>
-                        <div class="gg-note">İlk ekranda sipariş, seçili iş ve görsel durumu kompakt olarak görünür.</div>
+                        <h3 class="gg-section-title">{{ $depthLabel }}</h3>
+                        <div class="gg-note">Grafik ekranı mevcut gerçek operasyon modelini korur; İş Özeti ve görünüm yoğunluğu süreç derinliğine göre değişir.</div>
                     </div>
                     <span class="gg-badge {{ match($generalGraphicStatusKey) {
                         'production_ready', 'approved' => 'gg-badge-green',
@@ -735,6 +779,38 @@
             </div>
         </div>
 
+        @if($depthKey === 'fast' && $selectedOperation)
+            <div class="gg-card" data-testid="graphic-depth-fast-panel">
+                <div class="gg-card-body">
+                    <div class="gg-preview-head" style="margin-bottom: 12px;">
+                        <div>
+                            <h3 class="gg-section-title">Tek Operasyon Odağı</h3>
+                            <div class="gg-note">Hızlı akışta yalnız seçili operasyon, kısa durum ve tek aktif adım görünür.</div>
+                        </div>
+                        <span class="gg-badge {{ $selectedOperation['status_badge'] }}">{{ $selectedOperation['status_label'] }}</span>
+                    </div>
+                    <div class="gg-mini-grid">
+                        <div>
+                            <div class="gg-label">Operasyon</div>
+                            <div class="gg-value">{{ $selectedOperation['title'] }}</div>
+                        </div>
+                        <div>
+                            <div class="gg-label">Son hareket</div>
+                            <div class="gg-note">{{ data_get($latestHistory, 'label', 'Henüz hareket yok') }}</div>
+                        </div>
+                        <div>
+                            <div class="gg-label">Müşteri Onayı</div>
+                            <div class="gg-value">{{ $selectedOperation['customer_approval_label'] }}</div>
+                        </div>
+                        <div>
+                            <div class="gg-label">Üretime Hazır</div>
+                            <div class="gg-note">{{ data_get($selectedOperation, 'production_ready_guidance.label', 'Ayrı izlenir') }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        @endif
+
         <div class="gg-card">
             <div class="gg-card-body">
                 <div class="gg-preview-head" style="margin-bottom: 12px;">
@@ -747,7 +823,7 @@
                     @endif
                 </div>
 
-                @if(!empty($operationTabs))
+                @if($showOperationOverview && !empty($operationTabs))
                     <div class="gg-operation-tabs" data-testid="graphic-operation-tabs" style="margin-bottom: 14px;">
                         @foreach($operationTabs as $operationTab)
                             <a
@@ -799,11 +875,19 @@
                                     <div class="gg-value">{{ $selectedAttachment['file_name'] ?? data_get($productPreview, 'title', 'Görsel bulunamadı') }}</div>
                                     <div class="gg-subvalue">{{ $selectedAttachment['created_at'] ?? 'Ürün görseli referans olarak kullanılıyor.' }}</div>
                                 </div>
-                                <div class="gg-box">
-                                    <div class="gg-label">Görünürlük</div>
-                                    <div class="gg-value">{{ $selectedAttachment['visibility_label'] ?? ($selectedOperation['visibility_default'] === 'customer_visible' ? 'Müşteriye Açık' : 'İç Kayıt') }}</div>
-                                    <div class="gg-subvalue">Büyük önizleme tam alan standardıyla gösterilir.</div>
-                                </div>
+                                @if($showVisibilityDetails)
+                                    <div class="gg-box">
+                                        <div class="gg-label">Görünürlük</div>
+                                        <div class="gg-value">{{ $selectedAttachment['visibility_label'] ?? ($selectedOperation['visibility_default'] === 'customer_visible' ? 'Müşteriye Açık' : 'İç Kayıt') }}</div>
+                                        <div class="gg-subvalue">Büyük önizleme tam alan standardıyla gösterilir.</div>
+                                    </div>
+                                @else
+                                    <div class="gg-box">
+                                        <div class="gg-label">Kısa Durum</div>
+                                        <div class="gg-value">{{ $selectedOperation['status_label'] }}</div>
+                                        <div class="gg-subvalue">{{ $selectedOperation['customer_approval_label'] }}</div>
+                                    </div>
+                                @endif
                             </div>
 
                             <div class="gg-file-chip-row">
@@ -838,7 +922,7 @@
                                         <span class="gg-badge gg-badge-gray">{{ $activeStepLabel }}</span>
                                     </div>
 
-                                    <div class="gg-step-tabs" data-testid="graphic-action-step-tabs">
+                                    @if($showOperationOverview)<div class="gg-step-tabs" data-testid="graphic-action-step-tabs">
                                         @foreach($actionStepTabs as $stepTab)
                                             <a
                                                 href="{{ $buildShowUrl(['step' => $stepTab['key']]) }}"
@@ -847,7 +931,7 @@
                                                 {{ $stepTab['label'] }}
                                             </a>
                                         @endforeach
-                                    </div>
+                                    </div>@endif
 
                                     <div class="gg-flow-column" style="margin-top: 12px;">
                                         @if($activeStep === 'upload')
@@ -892,7 +976,7 @@
                                                         <input type="text" name="note" value="{{ $selectedOperation['graphic_note'] }}" placeholder="Grafik notu girin">
                                                     </div>
                                                     <div class="gg-full gg-actions">
-                                                        <button type="submit" class="gg-btn gg-btn-primary">Görsel Yükle</button>
+                                                        <button type="submit" class="gg-btn">Görsel Yükle</button>
                                                     </div>
                                                 </form>
                                             </div>
@@ -900,28 +984,40 @@
                                             <div class="gg-step-panel gg-step-panel--summary" data-testid="graphic-step-panel-summary">
                                                 <div class="gg-step-panel-head">
                                                     <div>
-                                                        <h4 class="gg-step-panel-title">2. Operasyon Özeti</h4>
+                                                        <h4 class="gg-step-panel-title">2. İş Özeti</h4>
                                                         <div class="gg-step-panel-sub">Seçili operasyonun görünürlüğü, onay durumu ve notları burada toplanır.</div>
                                                     </div>
                                                     <span class="gg-badge gg-badge-blue">Bilgi</span>
                                                 </div>
                                                 <div class="gg-mini-grid">
-                                                    <div>
-                                                        <div class="gg-label">Görünürlük</div>
-                                                        <div class="gg-value">{{ $selectedAttachment['visibility_label'] ?? ($selectedOperation['visibility_default'] === 'customer_visible' ? 'Müşteriye Açık' : 'İç Kayıt') }}</div>
-                                                    </div>
-                                                    <div>
-                                                        <div class="gg-label">{{ $customerApprovalEnabled ? 'Müşteri Onayı' : 'Onay Durumu' }}</div>
-                                                        <div class="gg-value">{{ $selectedOperation['customer_approval_label'] }}</div>
-                                                    </div>
+                                                    @if($showVisibilityDetails)
+                                                        <div>
+                                                            <div class="gg-label">Görünürlük</div>
+                                                            <div class="gg-value">{{ $selectedAttachment['visibility_label'] ?? ($selectedOperation['visibility_default'] === 'customer_visible' ? 'Müşteriye Açık' : 'İç Kayıt') }}</div>
+                                                        </div>
+                                                    @endif
+                                                    @if($showCustomerApprovalDetails)
+                                                        <div>
+                                                            <div class="gg-label">{{ $customerApprovalEnabled ? 'Müşteri Onayı' : 'Onay Durumu' }}</div>
+                                                            <div class="gg-value">{{ $selectedOperation['customer_approval_label'] }}</div>
+                                                        </div>
+                                                    @endif
                                                     <div>
                                                         <div class="gg-label">Grafik Notu</div>
                                                         <div class="gg-note">{{ filled($selectedOperation['graphic_note']) ? $selectedOperation['graphic_note'] : 'Henüz not yok' }}</div>
                                                     </div>
-                                                    <div>
-                                                        <div class="gg-label">Revize Notu</div>
-                                                        <div class="gg-note">{{ filled($selectedOperation['customer_note']) ? $selectedOperation['customer_note'] : 'Henüz revize notu yok' }}</div>
-                                                    </div>
+                                                    @if($showRevisionDetails)
+                                                        <div>
+                                                            <div class="gg-label">Revize Notu</div>
+                                                            <div class="gg-note">{{ filled($selectedOperation['customer_note']) ? $selectedOperation['customer_note'] : 'Henüz revize notu yok' }}</div>
+                                                        </div>
+                                                    @endif
+                                                    @if($showReadinessDetails)
+                                                        <div>
+                                                            <div class="gg-label">Üretime Hazır</div>
+                                                            <div class="gg-note">{{ data_get($selectedOperation, 'production_ready_guidance.label', 'Ayrı izlenir') }}</div>
+                                                        </div>
+                                                    @endif
                                                 </div>
                                             </div>
                                         @elseif($activeStep === 'approval')
@@ -1056,17 +1152,34 @@
                             </div>
                         </div>
                     </div>
+                @if($showAttachmentList)
+                        <div class="gg-card" style="margin-top: 14px;">
+                            <div class="gg-card-body" data-testid="graphic-controlled-attachment-block">
+                                <div class="gg-preview-head" style="margin-bottom: 10px;">
+                                    <div>
+                                        <h3 class="gg-section-title">Visibility ve Dosya Ayrımı</h3>
+                                        <div class="gg-note">Customer-visible ve iç ekip dosyaları ayrıştırılır; file_path gösterilmez.</div>
+                                    </div>
+                                </div>
+                                <div class="gg-summary-grid" style="grid-template-columns: repeat(2, minmax(0, 1fr));">
+                                    <div class="gg-box"><div class="gg-label">Müşteriye Açık</div><div class="gg-subvalue">{{ $customerVisibleAttachments->count() }} kayıt</div>@foreach($customerVisibleAttachments as $item)<div class="gg-note">{{ $item['file_name'] }} · {{ $item['uploaded_at'] ?: '-' }}</div>@endforeach</div>
+                                    <div class="gg-box"><div class="gg-label">İç Kayıt</div><div class="gg-subvalue">{{ $internalAttachments->count() }} kayıt</div>@foreach($internalAttachments as $item)<div class="gg-note">{{ $item['file_name'] }} · {{ $item['uploaded_at'] ?: '-' }}</div>@endforeach</div>
+                                </div>
+                            </div>
+                        </div>
+                    @endif
                 @else
                     <div class="gg-link-box">Bu iş formu için baskı operasyonu bulunmuyor.</div>
                 @endif
             </div>
         </div>
 
-        <div class="gg-card">
+        @if(! $showCompactHistoryOnly)
+        <div class="gg-card" data-testid="graphic-history-block">
             <div class="gg-card-body">
-                <h3 class="gg-section-title">Workflow Geçmişi</h3>
+                <h3 class="gg-section-title">{{ $historySectionTitle }}</h3>
                 <div class="gg-history" style="margin-top: 12px;">
-                    @foreach($workflowHistory as $history)
+                    @foreach($visibleHistory as $history)
                         <div class="gg-history-row">
                             <div class="gg-note">{{ $history['at'] ?: '-' }}</div>
                             <div>
@@ -1083,14 +1196,15 @@
                 </div>
             </div>
         </div>
+        @endif
     </div>
 
-    <div class="gg-side">
-        <div class="gg-sticky">
+    <div class="gg-side pd-section-stack" data-sticky-sidebar="true" data-sticky-responsive="stack-under-1100">
+        <div class="gg-sticky pd-section-stack">
             <div class="gg-card">
-                <div class="gg-card-body">
+                <div class="gg-card-body pd-card-stack">
                     <div class="gg-side-section">
-                        <div class="gg-side-title">İş Özeti</div>
+                        <div class="gg-side-title">Grafik Özeti</div>
                         <div class="gg-mini-grid">
                             <div class="gg-full">
                                 <div class="gg-label">Sipariş No</div>
@@ -1120,8 +1234,65 @@
                         </div>
                     </div>
 
+                    <div class="gg-side-section" data-canonical-focus-panel="true">
+                        <div class="gg-side-title">Aktif Odak</div>
+                        <div class="gg-mini-grid">
+                            <div class="gg-full"><div class="gg-label">Şu an</div><div class="gg-value">{{ $selectedOperation['status_label'] ?? $generalGraphicStatusLabel }}</div></div>
+                            <div class="gg-full"><div class="gg-label">Sıradaki işlem</div><div class="gg-value">{{ $primaryAction['label'] ?? $nextActionLabel }}</div></div>
+                            <div class="gg-full"><div class="gg-label">Müşteri Onayı</div><div class="gg-value">{{ $selectedOperation['customer_approval_label'] ?? $approvalStatusLabel }}</div></div>
+                            <div class="gg-full"><div class="gg-label">Üretime Hazır</div><div class="gg-note">{{ data_get($selectedOperation, 'production_ready_guidance.label', 'Ayrı izlenir') }}</div></div>
+                        </div>
+                        <div class="gg-actions" style="margin-top: 12px;">
+                            <a href="{{ $primaryAction['url'] ?? $showUrl }}" class="gg-btn gg-btn-primary pd-graphic-depth-primary-cta">{{ $primaryAction['label'] ?? 'Grafik Operasyonunu Aç' }}</a>
+                        </div>
+                    </div>
+
+                    @if($showOperationStatusSidebar && !empty($operationTabs))
+                    <div class="gg-side-section" data-testid="graphic-operation-status-sidebar">
+                        <div class="gg-side-title">Operasyon Durumu</div>
+                        <div class="gg-mini-grid">
+                            @foreach($operationTabs as $operationTab)
+                                <div class="gg-full"><div class="gg-label">{{ $operationTab['sequence_code'] }}</div><div><span class="gg-badge {{ $operationTab['status_badge'] }}">{{ $operationTab['status_label'] }}</span></div></div>
+                            @endforeach
+                        </div>
+                    </div>
+                    @endif
+
+                    @if($showReadinessDetails && $showRecentActivitySidebar)
+                    <div class="gg-side-section" data-testid="graphic-readiness-sidebar">
+                        <div class="gg-side-title">Readiness / Onay Özeti</div>
+                        <div class="pd-tight-stack">
+                            <div class="gg-link-box">
+                                <strong>Üretime Hazır</strong><br>
+                                {{ data_get($selectedOperation, 'production_ready_guidance.label', 'Ayrı izlenir') }}
+                            </div>
+                            @if($showCustomerApprovalDetails)
+                            <div class="gg-link-box">
+                                <strong>{{ $customerApprovalEnabled ? 'Müşteri Onayı' : 'Onay Durumu' }}</strong><br>
+                                {{ data_get($selectedLatestApprovalRequest, 'status_label', $selectedOperation['customer_approval_label'] ?? $approvalStatusLabel) }}
+                            </div>
+                            @endif
+                            @if($showVisibilityDetails)
+                            <div class="gg-link-box">
+                                <strong>Görünürlük</strong><br>
+                                {{ $selectedAttachment['visibility_label'] ?? ($selectedOperation['visibility_default'] === 'customer_visible' ? 'Müşteriye Açık' : 'İç Kayıt') }}
+                            </div>
+                            @endif
+                        </div>
+                    </div>
+                    @endif
+
+                    @if($showRecentActivitySidebar)
+                    <div class="gg-side-section" data-testid="graphic-recent-activities-sidebar">
+                        <div class="gg-side-title">Son Faaliyetler</div>
+                        @foreach(collect($workflowHistory)->take(3) as $history)
+                            <div class="gg-link-box"><strong>{{ $history['label'] }}</strong><br>{{ $history['at'] ?: '-' }} · {{ $history['visibility'] }}</div>
+                        @endforeach
+                    </div>
+                    @endif
+
                     <div class="gg-side-section">
-                        <div class="gg-side-title">Kısayollar</div>
+                        <div class="gg-side-title">Hızlı İşlemler</div>
                         <div class="gg-quick-links" data-testid="graphic-quick-links">
                             <a href="{{ route('admin.work-forms.show', $workForm) }}" class="gg-quick-link">
                                 <span>İş Formu</span>
@@ -1153,6 +1324,7 @@
             </div>
         </div>
     </div>
+</div>
 </div>
 
 <div class="gg-lightbox" data-lightbox-modal>
@@ -1316,3 +1488,15 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 @endsection
+
+
+
+
+
+
+
+
+
+
+
+
