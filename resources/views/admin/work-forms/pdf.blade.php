@@ -490,6 +490,27 @@
             </tbody>
         </table>
     </div>
+    <div class="wf-section">
+        <div class="wf-section-title">4. Üretim / Fason Exact Satırlar</div>
+        <table class="wf-table">
+            <thead><tr><th>No</th><th>Baskı</th><th>Yol</th><th>Durum</th><th>Grafik / Tedarik</th><th>Miktar</th><th>Foto</th></tr></thead>
+            <tbody>
+            @forelse($exactProductionRows as $productionRow)
+                <tr>
+                    <td>{{ data_get($productionRow, 'sequence', '-') }}</td>
+                    <td>{{ data_get($productionRow, 'print_type', '-') }}<br>{{ data_get($productionRow, 'print_option', '-') }}</td>
+                    <td>{{ data_get($productionRow, 'production_type_label', '-') }}</td>
+                    <td>{{ data_get($productionRow, 'production_status_label', '-') }}</td>
+                    <td>Grafik: {{ data_get($productionRow, 'graphic_status_label', '-') }}<br>Tedarik: {{ data_get($productionRow, 'procurement_status_label', '-') }}</td>
+                    <td>Plan {{ data_get($productionRow, 'planned_quantity', 0) }} / Tam {{ data_get($productionRow, 'completed_quantity', 0) }} / Kalan {{ data_get($productionRow, 'remaining_quantity', 0) }}</td>
+                    <td>{{ data_get($productionRow, 'photo_count', 0) }}</td>
+                </tr>
+            @empty
+                <tr><td colspan="7">Exact üretim satırı snapshot'ta bulunmuyor.</td></tr>
+            @endforelse
+            </tbody>
+        </table>
+    </div>
 
     <div class="wf-section">
         <div class="wf-section-title">4. Grafik</div>

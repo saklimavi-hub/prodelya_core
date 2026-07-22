@@ -42,6 +42,7 @@ class ProductionDataBuilder
 
         $productSnapshot = is_array($workForm?->product_snapshot) ? $workForm->product_snapshot : [];
         $procurementSnapshot = is_array($workForm?->procurement_snapshot) ? $workForm->procurement_snapshot : [];
+        $subcontractTracking = $this->subcontractTrackingSnapshot($production);
         $readiness = $production ? $this->readinessResolver->resolve($production) : null;
         $finalGraphic = $readiness['final_graphic_attachment'] ?? null;
         $procurementStatus = (string) ($readiness['procurement_status'] ?? data_get($procurementSnapshot, 'procurement_status', ''));
@@ -150,6 +151,7 @@ class ProductionDataBuilder
             'start_status_tone' => $this->startStatusTone($uiCanStart, $readiness, $preparationRequired, $preparationReady),
             'readiness_warnings' => $this->readinessWarnings($workForm, $readiness),
             'public_status_label' => $this->publicStatusLabel($productionStatus),
+            'subcontract_tracking' => $subcontractTracking,
         ];
     }
 
@@ -194,6 +196,49 @@ class ProductionDataBuilder
         ];
     }
 
+    private function buildWorkFormProductionRowSnapshot(OrderItemPrintProduction $production, array $snapshot): array
+    {
+        $tracking = (array) data_get($snapshot, 'subcontract_tracking', []);
+        $baseline = (array) data_get($tracking, 'send_baseline', []);
+        $sentQuantity = data_get($baseline, 'remaining_quantity_at_send');
+        $receivedQuantity = in_array($production->production_status, [
+            OrderItemPrintProduction::STATUS_RETURNED_FROM_SUBCONTRACTOR,
+            OrderItemPrintProduction::STATUS_COMPLETED,
+        ], true) ? (float) $production->completed_quantity : null;
+
+        return [
+            'production_id' => $production->id,
+            'order_item_print_id' => $production->order_item_print_id,
+            'sequence' => data_get($snapshot, 'print_sequence', '-'),
+            'print_type' => data_get($snapshot, 'print_type', '-'),
+            'print_option' => data_get($snapshot, 'print_option', '-'),
+            'production_type' => $production->production_type,
+            'production_type_label' => $production->safeProductionTypeLabel(),
+            'operator_name' => $production->assignedUser?->name,
+            'production_unit_name' => $production->production_unit_name,
+            'production_company_name' => data_get($snapshot, 'production_company_name'),
+            'planned_quantity' => (float) $production->planned_quantity,
+            'completed_quantity' => (float) $production->completed_quantity,
+            'remaining_quantity' => (float) $production->remaining_quantity,
+            'sent_quantity' => $sentQuantity !== null ? (float) $sentQuantity : null,
+            'received_from_subcontractor_quantity' => $receivedQuantity,
+            'remaining_from_subcontractor_quantity' => $sentQuantity !== null ? max(round((float) $sentQuantity - (float) ($receivedQuantity ?? 0), 4), 0.0) : null,
+            'prior_internal_completed_quantity' => data_get($baseline, 'completed_quantity_before_send'),
+            'legacy_subcontract_baseline_missing' => in_array($production->production_type, [OrderItemPrintProduction::TYPE_EXTERNAL, OrderItemPrintProduction::TYPE_OUTSOURCED], true) && $sentQuantity === null,
+            'production_status' => $production->production_status,
+            'production_status_label' => $production->safeStatusLabel(),
+            'graphic_status_label' => data_get($snapshot, 'graphic_status_label', '-'),
+            'procurement_status_label' => data_get($snapshot, 'procurement_status_label', '-'),
+            'qc_status_label' => ($production->qc_status === 'gerekli_degil' || ($production->qc_status === OrderItemPrintProduction::QC_WAITING && $production->production_status !== OrderItemPrintProduction::STATUS_QUALITY_CONTROL)) ? 'Kalite Kontrol Gerekli Değil' : $production->safeQcStatusLabel(),
+            'qc_required' => $production->qc_status !== 'gerekli_degil',
+            'public_status_label' => $this->publicStatusLabel($production->production_status),
+            'final_graphic' => data_get($snapshot, 'final_graphic'),
+            'photo_count' => 0,
+            'photos' => [],
+            'is_outsourced' => in_array($production->production_type, [OrderItemPrintProduction::TYPE_EXTERNAL, OrderItemPrintProduction::TYPE_OUTSOURCED], true),
+            'process_steps' => [],
+        ];
+    }
     public function publicStatusLabel(string $productionStatus): string
     {
         return match ($productionStatus) {
@@ -210,6 +255,32 @@ class ProductionDataBuilder
         };
     }
 
+    private function subcontractTrackingSnapshot(?OrderItemPrintProduction $production): array
+    {
+        if (!$production) {
+            return [];
+        }
+
+        $existing = is_array($production->production_snapshot) ? $production->production_snapshot : [];
+        $tracking = (array) data_get($existing, 'subcontract_tracking', []);
+
+        if (
+            $production->production_status === OrderItemPrintProduction::STATUS_SENT_TO_SUBCONTRACTOR
+            && !is_array(data_get($tracking, 'send_baseline'))
+        ) {
+            $tracking['send_baseline'] = [
+                'captured_at' => optional($production->sent_to_subcontractor_at ?: now())->toAtomString(),
+                'production_id' => $production->id,
+                'order_item_print_id' => $production->order_item_print_id,
+                'planned_quantity_at_send' => round((float) $production->planned_quantity, 4),
+                'completed_quantity_before_send' => round((float) $production->completed_quantity, 4),
+                'remaining_quantity_at_send' => round((float) $production->remaining_quantity, 4),
+                'source' => 'production_snapshot.send_baseline',
+            ];
+        }
+
+        return $tracking;
+    }
     private function resolvePrintSequence(?OrderItemWorkForm $workForm, OrderItemPrint $print): ?string
     {
         $rows = collect($workForm?->print_snapshot ?? []);

@@ -6,6 +6,7 @@ use App\Models\OrderItemWorkForm;
 use App\Models\OrderItemWorkFormActivityLog;
 use App\Models\OrderItemWorkFormAttachment;
 use App\Models\OrderItemPrintGraphic;
+use App\Models\OrderItemPrintProduction;
 use App\Models\OrderItemWorkFormDelivery;
 use App\Models\User;
 use App\Services\Notifications\NotificationEventService;
@@ -84,6 +85,27 @@ class WorkFormAttachmentService
         return $this->storeForPrintGraphic($graphic, $file, 'customer_approval', $meta, $user);
     }
 
+    public function attachProductionPhotoToPrintProduction(
+        OrderItemPrintProduction $production,
+        UploadedFile $file,
+        ?string $note = null,
+        ?string $visibility = null,
+        ?User $user = null
+    ): OrderItemWorkFormAttachment {
+        $production->loadMissing('workForm');
+        $workForm = $production->workForm;
+
+        if (!$workForm) {
+            throw new \InvalidArgumentException('Üretim operasyonuna bağlı aktif bir iş formu bulunamadı.');
+        }
+
+        $attachment = $this->storeAttachment($workForm, $file, 'production_photo', $note, $visibility, $user);
+        $attachment->forceFill([
+            'order_item_print_id' => $production->order_item_print_id,
+        ])->save();
+
+        return $attachment->fresh();
+    }
     public function updateLatestAttachment(OrderItemPrintGraphic $graphic, OrderItemWorkFormAttachment $attachment, ?User $user = null): OrderItemPrintGraphic
     {
         $this->guardGraphicAttachmentAssociation($graphic, $attachment);

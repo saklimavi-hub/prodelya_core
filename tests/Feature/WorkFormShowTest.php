@@ -51,12 +51,13 @@ class WorkFormShowTest extends TestCase
         $response->assertSee('Tedarik');
         $response->assertSee('Tedarik Durumu');
         $response->assertSee('Kaynak Tipi');
-        $response->assertSee('Tedarik Bekliyor');
+        $response->assertSee('Talep Hazırlanacak');
         $response->assertSee('Ürününüz hazırlanıyor');
         $response->assertSee('Üretim Durumu');
         $response->assertSee('Üretim Tipi');
         $response->assertSee('Planlanan Miktar');
-        $response->assertSee('Klişe / Kalıp Durumu');
+        $response->assertSee('Tamamlanan / Kalan');
+        $response->assertDontSee('Klişe / Kalıp Durumu');
         $response->assertSee('Müşteriye Görünen Durum');
         $response->assertSee('Üretim bekliyor');
         $response->assertSee('<svg', false);

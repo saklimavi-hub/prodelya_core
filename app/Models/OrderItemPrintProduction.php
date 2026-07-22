@@ -232,7 +232,7 @@ class OrderItemPrintProduction extends Model
     {
         return [
             self::STATUS_PENDING => 'Üretim Bekliyor',
-            self::STATUS_INTERNAL => 'İç Üretimde',
+            self::STATUS_INTERNAL => 'İç Baskıda',
             self::STATUS_PARTIALLY_COMPLETED => 'Kısmi Basıldı',
             self::STATUS_SENT_TO_SUBCONTRACTOR => 'Fasona Gönderildi',
             self::STATUS_RETURNED_FROM_SUBCONTRACTOR => 'Fasondan Geldi',

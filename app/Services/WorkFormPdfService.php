@@ -20,7 +20,7 @@ class WorkFormPdfService
 
     public function buildViewData(OrderItemWorkForm $workForm): array
     {
-        $data = $this->renderDataBuilder->build($workForm);
+        $data = $this->renderDataBuilder->build($workForm, false);
 
         $data['pdfQrDataUri'] = $this->qrCodeService->qrDataUri($workForm, 144, 1);
         $data['safeProductImageUrlForPdf'] = $this->safeImageUrlService->resolveFromSnapshot(

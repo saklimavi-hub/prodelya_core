@@ -582,6 +582,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:web', 'resolve.tenant'
 
     Route::prefix('productions')->name('productions.')->middleware('module.enabled:production')->group(function () {
         Route::get('/', [ProductionController::class, 'index'])->name('index');
+        Route::get('/{production}/operator', [ProductionController::class, 'operator'])->name('operator')->whereNumber('production');
+        Route::get('/{production}/subcontract-assignment', [ProductionController::class, 'subcontractAssignment'])->name('subcontract-assignment')->whereNumber('production');
+        Route::get('/{production}/subcontract-tracking', [ProductionController::class, 'subcontractTracking'])->name('subcontract-tracking')->whereNumber('production');
         Route::get('/{production}', [ProductionController::class, 'show'])->name('show')->whereNumber('production');
         Route::patch('/{production}/status', [ProductionController::class, 'updateStatus'])->name('update-status')->whereNumber('production');
         Route::patch('/{production}/assignment', [ProductionController::class, 'updateAssignment'])->name('update-assignment')->whereNumber('production');

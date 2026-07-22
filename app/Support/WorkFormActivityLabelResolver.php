@@ -6,7 +6,9 @@ class WorkFormActivityLabelResolver
 {
     public function title(string $actionType): string
     {
-        return match ($actionType) {
+        $key = $this->normalizeActionType($actionType);
+
+        return match ($key) {
             'work_form_created' => 'İş Formu Oluşturuldu',
             'graphic_visual_added' => 'Grafik Görseli Eklendi',
             'customer_approval_added' => 'Müşteri Onay Dosyası Eklendi',
@@ -21,13 +23,18 @@ class WorkFormActivityLabelResolver
             'procurement_not_required' => 'Tedarik Gerekmiyor',
             'production_operation_created' => 'Üretim Operasyonu Oluşturuldu',
             'production_assigned_internal' => 'İş İç Üretime Atandı',
-            'production_assigned_external' => 'İş Dış Üretime Atandı',
+            'production_assigned_external' => 'İş Dış Baskı / Fasona Atandı',
             'production_started' => 'Üretim Başlatıldı',
+            'production_route_changed' => 'Üretim Yolu Değiştirildi',
+            'production_subcontractor_reassigned' => 'Fason Firma Değiştirildi',
+            'assigned_to_internal_production' => 'İş iç üretime atandı',
+            'assigned_to_external_production' => 'İş dış baskı / fasona atandı',
             'production_sent_to_subcontractor' => 'İş Fasona Gönderildi',
             'production_returned_from_subcontractor' => 'İş Fasondan Döndü',
             'production_qc_started' => 'Kalite Kontrol Başlatıldı',
             'production_qc_passed' => 'Kalite Kontrol Uygun Bulundu',
             'production_qc_failed' => 'Kalite Kontrolde Sorun Tespit Edildi',
+            'production_partially_completed' => 'Kısmi üretim kaydedildi',
             'production_completed' => 'Üretim Tamamlandı',
             'production_issue_reported' => 'Üretim Sorunu Bildirildi',
             'production_cancelled' => 'Üretim Operasyonu İptal Edildi',
@@ -51,7 +58,9 @@ class WorkFormActivityLabelResolver
 
     public function sentence(string $actionType): string
     {
-        return match ($actionType) {
+        $key = $this->normalizeActionType($actionType);
+
+        return match ($key) {
             'work_form_created' => 'İş Formu oluşturuldu',
             'graphic_visual_added' => 'Grafik görseli eklendi',
             'customer_approval_added' => 'Müşteri onay dosyası eklendi',
@@ -66,13 +75,18 @@ class WorkFormActivityLabelResolver
             'procurement_not_required' => 'Tedarik gerekmiyor',
             'production_operation_created' => 'Üretim operasyonu oluşturuldu',
             'production_assigned_internal' => 'İş iç üretime atandı',
-            'production_assigned_external' => 'İş dış üretime atandı',
+            'production_assigned_external' => 'İş dış baskı / fasona atandı',
             'production_started' => 'Üretim başlatıldı',
+            'production_route_changed' => 'Üretim yolu değiştirildi',
+            'production_subcontractor_reassigned' => 'Fason firma değiştirildi',
+            'assigned_to_internal_production' => 'İş iç üretime atandı',
+            'assigned_to_external_production' => 'İş dış baskı / fasona atandı',
             'production_sent_to_subcontractor' => 'İş fason firmaya gönderildi',
             'production_returned_from_subcontractor' => 'İş fason firmadan döndü',
             'production_qc_started' => 'Kalite kontrol başlatıldı',
             'production_qc_passed' => 'Kalite kontrol uygun bulundu',
             'production_qc_failed' => 'Kalite kontrolde sorun tespit edildi',
+            'production_partially_completed' => 'Kısmi üretim kaydedildi',
             'production_completed' => 'Üretim tamamlandı',
             'production_issue_reported' => 'Üretim sorunu bildirildi',
             'production_cancelled' => 'Üretim operasyonu iptal edildi',
@@ -92,5 +106,12 @@ class WorkFormActivityLabelResolver
             'attachment_added' => 'Dosya eklendi',
             default => ucfirst(str_replace('_', ' ', $actionType)),
         };
+    }
+
+    private function normalizeActionType(string $actionType): string
+    {
+        $key = strtolower((string) preg_replace('/[^A-Za-z0-9]+/', '_', trim($actionType)));
+
+        return trim($key, '_');
     }
 }

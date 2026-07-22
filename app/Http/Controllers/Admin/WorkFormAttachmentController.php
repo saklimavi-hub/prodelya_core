@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\OrderItemPrintGraphic;
+use App\Models\OrderItemPrintProduction;
 use App\Models\OrderItemWorkForm;
 use App\Models\OrderItemWorkFormAttachment;
 use App\Services\TenantResolver;
@@ -47,6 +48,8 @@ class WorkFormAttachmentController extends Controller
             'visibility' => ['nullable', Rule::in(['internal', 'customer_visible'])],
             'order_item_print_graphic_id' => ['nullable', 'integer'],
             'section' => ['nullable', 'string', 'max:50'],
+            'redirect_to' => ['nullable', 'string', 'max:120'],
+            'redirect_production_id' => ['nullable', 'integer'],
         ]);
 
         $graphicId = (int) ($validated['order_item_print_graphic_id'] ?? 0);
@@ -85,6 +88,19 @@ class WorkFormAttachmentController extends Controller
                     'updated_by' => $request->user()?->id,
                 ])->save();
             }
+                } elseif ($validated['attachment_type'] === 'production_photo' && (int) ($validated['redirect_production_id'] ?? 0) > 0) {
+            /** @var OrderItemPrintProduction $production */
+            $production = $workForm->printProductions()
+                ->where('tenant_account_id', $tenant->id)
+                ->findOrFail((int) $validated['redirect_production_id']);
+
+            $this->attachmentService->attachProductionPhotoToPrintProduction(
+                $production,
+                $request->file('file'),
+                $validated['note'] ?? null,
+                $validated['visibility'] ?? 'internal',
+                $request->user()
+            );
         } else {
             $this->attachmentService->store(
                 $workForm,
@@ -164,6 +180,20 @@ class WorkFormAttachmentController extends Controller
             'admin.graphics.show',
             'admin.deliveries.show',
         ];
+
+        if (in_array($requestedRoute, ['admin.productions.operator', 'admin.productions.subcontract-tracking'], true) && Route::has($requestedRoute)) {
+            $productionId = (int) $request->input('redirect_production_id', 0);
+            if ($productionId > 0) {
+                $production = OrderItemPrintProduction::query()
+                    ->where('tenant_account_id', $workForm->tenant_account_id)
+                    ->where('work_form_id', $workForm->id)
+                    ->find($productionId);
+
+                if ($production) {
+                    return [$requestedRoute, ['production' => $production]];
+                }
+            }
+        }
 
         if (in_array($requestedRoute, $allowedRoutes, true) && Route::has($requestedRoute)) {
             if ($requestedRoute === 'admin.deliveries.show') {

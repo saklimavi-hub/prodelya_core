@@ -610,6 +610,51 @@
             box-shadow: none;
         }
     }
+
+    .pd-ui-v1-work-form-production {
+        display: grid;
+        gap: 10px;
+    }
+
+    .pd-work-form-production__print-row {
+        border: 1px solid var(--wf-line);
+        border-radius: 8px;
+        padding: 10px;
+        page-break-inside: avoid;
+        background: #fff;
+    }
+
+    .pd-work-form-production__print-key {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+        font-weight: 700;
+        color: var(--wf-title);
+    }
+
+    .pd-work-form-production__route,
+    .pd-work-form-production__metrics,
+    .pd-work-form-production__process,
+    .pd-work-form-production__media {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 8px;
+    }
+
+    .pd-work-form-production__summary {
+        color: var(--wf-muted);
+        font-size: 12px;
+        margin-top: 4px;
+    }
+
+    .pd-work-form-production__photos {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 8px;
+        width: 100%;
+    }
 </style>
 
 <div class="wf-shell">
@@ -664,14 +709,10 @@
                         <td class="wf-meta-value">v{{ $workForm->version }}</td>
                     </tr>
                     <tr>
-                        <td class="wf-meta-label">Takip</td>
-                        <td class="wf-meta-note">{{ $workForm->public_tracking_token }}</td>
-                    </tr>
-                    <tr>
                         <td class="wf-meta-label">Public Link</td>
                         <td class="wf-meta-note">
                             <a href="{{ $trackingUrl }}" target="_blank" rel="noopener" class="wf-link">
-                                {{ $trackingUrl }}
+                                Müşteri takip ekranını aç
                             </a>
                         </td>
                     </tr>
@@ -891,6 +932,69 @@
             </div>
         </div>
 
+        <div class="wf-section">
+            <div class="wf-section-title">4. Üretim / Fason Exact Satırlar</div>
+            <div class="pd-ui-v1-work-form-production">
+                @forelse($exactProductionRows as $productionRow)
+                    <div class="pd-work-form-production__print-row">
+                        <div class="pd-work-form-production__print-key">
+                            <span>{{ data_get($productionRow, 'sequence', '-') }}</span>
+                            <span>{{ data_get($productionRow, 'print_type', '-') }}</span>
+                            <span>{{ data_get($productionRow, 'production_type_label', '-') }}</span>
+                            <span class="wf-badge wf-badge-blue">{{ data_get($productionRow, 'production_status_label', '-') }}</span>
+                        </div>
+                        <div class="pd-work-form-production__summary">
+                            {{ data_get($productionRow, 'print_option', '-') }} · {{ data_get($productionRow, 'planned_quantity', 0) }} {{ data_get($productSnapshot, 'unit', '') }}
+                        </div>
+                        <div class="pd-work-form-production__route">
+                            @if(data_get($productionRow, 'is_outsourced'))
+                                <span class="wf-badge wf-badge-gray">Fason Firma: {{ data_get($productionRow, 'production_company_name') ?: 'Atanmamış' }}</span>
+                            @else
+                                <span class="wf-badge wf-badge-gray">Operatör: {{ data_get($productionRow, 'operator_name') ?: 'Operatör kaydı yok' }}</span>
+                                <span class="wf-badge wf-badge-gray">Birim: {{ data_get($productionRow, 'production_unit_name') ?: '-' }}</span>
+                            @endif
+                        </div>
+                        <div class="pd-work-form-production__metrics">
+                            <span class="wf-badge wf-badge-green">Planlanan {{ data_get($productionRow, 'planned_quantity', 0) }}</span>
+                            <span class="wf-badge wf-badge-green">Tamamlanan {{ data_get($productionRow, 'completed_quantity', 0) }}</span>
+                            <span class="wf-badge wf-badge-amber">Kalan {{ data_get($productionRow, 'remaining_quantity', 0) }}</span>
+                            @if(data_get($productionRow, 'is_outsourced'))
+                                @if(data_get($productionRow, 'prior_internal_completed_quantity') !== null)<span class="wf-badge wf-badge-gray">Önceden Tamamlanan {{ data_get($productionRow, 'prior_internal_completed_quantity') }}</span>@endif
+                                @if(data_get($productionRow, 'sent_quantity') !== null)<span class="wf-badge wf-badge-blue">Fasona Gönderilen {{ data_get($productionRow, 'sent_quantity') }}</span>@endif
+                                @if(data_get($productionRow, 'received_from_subcontractor_quantity') !== null)<span class="wf-badge wf-badge-green">Fasondan Gelen {{ data_get($productionRow, 'received_from_subcontractor_quantity') }}</span>@endif
+                                @if(data_get($productionRow, 'remaining_from_subcontractor_quantity') !== null)<span class="wf-badge wf-badge-amber">Fasonda Kalan {{ data_get($productionRow, 'remaining_from_subcontractor_quantity') }}</span>@endif
+                            @endif
+                        </div>
+                        @if(data_get($productionRow, 'legacy_subcontract_baseline_missing'))
+                            <div class="pd-work-form-production__summary">Bu eski kayıtta fason başlangıç miktarı ayrı izlenemiyor.</div>
+                        @endif
+                        <div class="pd-work-form-production__process">
+                            <span class="wf-badge wf-badge-gray">Grafik: {{ data_get($productionRow, 'graphic_status_label', '-') }}</span>
+                            <span class="wf-badge wf-badge-gray">Tedarik: {{ data_get($productionRow, 'procurement_status_label', '-') }}</span>
+                            <span class="wf-badge wf-badge-gray">QC: {{ data_get($productionRow, 'qc_status_label', 'Kalite Kontrol Gerekli Değil') }}</span>
+                        </div>
+                        <div class="pd-work-form-production__media">
+                            <span class="wf-badge wf-badge-gray">Grafik Çalışması: {{ data_get($productionRow, 'final_graphic.file_name', 'Final Grafik Yok') }}</span>
+                            <span class="wf-badge wf-badge-gray">Üretim Fotoğrafları: {{ data_get($productionRow, 'photo_count', 0) }}</span>
+                            @if(!empty(data_get($productionRow, 'photos', [])))
+                                <div class="pd-work-form-production__photos">
+                                    @foreach(data_get($productionRow, 'photos', []) as $photo)
+                                        <div class="wf-thumb">
+                                            @if($photo['is_image'] && $photo['preview_url'])<img src="{{ $photo['preview_url'] }}" alt="{{ $photo['file_name'] }}">@endif
+                                            <div class="wf-thumb-type">{{ $photo['file_name'] }}</div>
+                                            <div class="wf-thumb-meta">{{ $photo['created_at'] ?: '-' }}</div>
+                                            @if(filled($photo['note']))<div class="wf-thumb-meta">{{ $photo['note'] }}</div>@endif
+                                        </div>
+                                    @endforeach
+                                </div>
+                            @endif
+                        </div>
+                    </div>
+                @empty
+                    <div class="wf-placeholder-note">Exact üretim satırı bulunmuyor.</div>
+                @endforelse
+            </div>
+        </div>
         @php
             $workFormSetupItems = collect(data_get($productionSnapshot, 'setup_summary.items', []))->values();
         @endphp

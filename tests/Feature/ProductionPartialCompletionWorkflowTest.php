@@ -85,7 +85,8 @@ class ProductionPartialCompletionWorkflowTest extends TestCase
             ]));
 
         $show->assertOk();
-        $show->assertSee('Üretilen Adet');
+        $show->assertSee('Tamamlanan');
+        $show->assertSee('Kalan');
         $show->assertSee('20');
         $show->assertDontSee('group_code', false);
         $show->assertDontSee('file_path', false);

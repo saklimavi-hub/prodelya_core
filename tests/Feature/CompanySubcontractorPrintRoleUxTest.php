@@ -148,11 +148,11 @@ class CompanySubcontractorPrintRoleUxTest extends TestCase
         $production = $this->createProduction('SP-FASON-UX-001');
 
         $show = $this->actingAs($this->owner, 'web')
-            ->get($this->tenantUrl('/admin/productions/' . $production->id . '?tab=islemler'));
+            ->get($this->tenantUrl('/admin/productions/' . $production->id . '/subcontract-assignment'));
 
         $show->assertOk()
-            ->assertSee('Atama / Sorumluluk')
-            ->assertSee('Fason Firma')
+            ->assertSee('Fason firma seçimi')
+            ->assertSee('Seçilen Firmaya Ata')
             ->assertSee($allowedPrintCompany->legal_name)
             ->assertSee($allowedProductionCompany->legal_name)
             ->assertDontSee($plainCompany->legal_name)
@@ -262,7 +262,15 @@ class CompanySubcontractorPrintRoleUxTest extends TestCase
 
         app(WorkFormCreationService::class)->createForOrder($order, $this->owner);
 
-        return $print->fresh(['production'])->production->fresh([
+        $production = $print->fresh(['production'])->production;
+        $production->forceFill([
+            'production_type' => OrderItemPrintProduction::TYPE_OUTSOURCED,
+            'production_status' => OrderItemPrintProduction::STATUS_PENDING,
+            'production_company_id' => null,
+            'sent_to_subcontractor_at' => null,
+        ])->save();
+
+        return $production->fresh([
             'productionCompany',
             'orderItemPrint.subcontractorCompany',
             'order.customer',

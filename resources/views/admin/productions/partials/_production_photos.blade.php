@@ -11,56 +11,20 @@
 <div class="prd-stack">
     <section class="prd-card">
         <h2 class="prd-section-title">Fotoğraflar</h2>
-        <p class="prd-section-subtitle">Üretim fotoğraflarını buradan ekleyin ve son yüklemeleri hızlıca gözden geçirin.</p>
+        <p class="prd-section-subtitle">Üretim fotoğrafları burada salt okunur incelenir. Yeni fotoğraf ekleme operator veya fason takip ekranındaki canonical akıştan yapılır.</p>
 
-        @if($workForm)
-            <div class="prd-grid-2">
-                <div class="prd-photo-card">
-                    <h3 class="prd-side-title">Fotoğraf Yükle</h3>
-                    <form method="POST" action="{{ route('admin.work-forms.attachments.store', $workForm) }}" enctype="multipart/form-data">
-                        @csrf
-                        <input type="hidden" name="attachment_type" value="production_photo">
-                        <input type="hidden" name="visibility" value="internal">
-
-                        <div style="padding: 28px 20px; border: 2px dashed #d7e3ff; border-radius: 12px; background: #f8fbff; text-align:center;">
-                            <div style="font-size: 15px; font-weight: 700; color: #182230;">Dosyaları buraya sürükleyin veya yüklemek için seçin</div>
-                            <div style="margin-top:6px; color:#667085; font-size:12px;">JPG, PNG veya PDF, maksimum 10 MB</div>
-                            <div style="margin-top:14px;">
-                                <input type="file" name="file" accept="image/*,application/pdf" required class="form-control">
-                            </div>
-                        </div>
-
-                        <div style="margin-top:12px;">
-                            <label class="form-label" for="photo_note">Not</label>
-                            <input id="photo_note" class="form-control" type="text" name="note" maxlength="1000" placeholder="Kısa açıklama">
-                        </div>
-
-                        <div class="prd-form-actions">
-                            <button type="submit" class="btn btn-sm btn-primary">Fotoğrafı Yükle</button>
-                        </div>
-                    </form>
-                </div>
-
-                <div class="prd-photo-card">
-                    <h3 class="prd-side-title">Son Yüklenen Fotoğraflar</h3>
-                    <div class="prd-grid-2">
-                        <div class="prd-info-card">
-                            <span class="prd-info-label">Toplam Fotoğraf</span>
-                            <div class="prd-info-value">{{ $productionPhotos->count() }}</div>
-                        </div>
-                        <div class="prd-info-card">
-                            <span class="prd-info-label">Son Yükleme</span>
-                            <div class="prd-info-value" style="font-size:14px;">
-                                {{ $productionPhotos->isNotEmpty() ? optional($productionPhotos->first()->created_at)->format('d.m.Y H:i') : 'Henüz yok' }}
-                            </div>
-                        </div>
-                    </div>
-                    <div class="prd-soft-message" style="margin-top:12px;">
-                        Yüklenen görseller üretim takibi için kullanılır. Son fotoğraflar aşağıdaki galeride kart görünümüyle listelenir.
-                    </div>
+        <div class="prd-grid-2">
+            <div class="prd-info-card">
+                <span class="prd-info-label">Toplam Fotoğraf</span>
+                <div class="prd-info-value">{{ $productionPhotos->count() }}</div>
+            </div>
+            <div class="prd-info-card">
+                <span class="prd-info-label">Son Yükleme</span>
+                <div class="prd-info-value" style="font-size:14px;">
+                    {{ $productionPhotos->isNotEmpty() ? optional($productionPhotos->first()->created_at)->format('d.m.Y H:i') : 'Henüz yok' }}
                 </div>
             </div>
-        @endif
+        </div>
     </section>
 
     <section class="prd-card">

@@ -60,12 +60,16 @@ class WorkFormPdfTest extends TestCase
         $this->assertStringContainsString('İŞ FORMU', $html);
         $this->assertStringContainsString('İç üretim', $html);
         $this->assertStringContainsString('Tedarik Durumu', $html);
-        $this->assertStringContainsString('Tedarik Bekliyor', $html);
+        $this->assertStringContainsString('Talep Hazırlanacak', $html);
         $this->assertStringContainsString('Ürününüz hazırlanıyor', $html);
         $this->assertStringContainsString('Üretim Durumu', $html);
         $this->assertStringContainsString('Üretim Bekliyor', $html);
         $this->assertStringContainsString('Planlanan / Tamamlanan', $html);
-        $this->assertStringContainsString('Kalan / Klişe Durumu', $html);
+        $this->assertStringContainsString('Kaynak Tipi', $html);
+        $this->assertStringContainsString('Gelen Miktar', $html);
+        $this->assertStringContainsString('Kalan Miktar', $html);
+        $this->assertStringContainsString('Kalan', $html);
+        $this->assertStringNotContainsString('Kalan / Klişe Durumu', $html);
         $this->assertStringNotContainsString('unit_price', $html);
         $this->assertStringNotContainsString('grand_total', $html);
         $this->assertStringNotContainsString('print_total', $html);

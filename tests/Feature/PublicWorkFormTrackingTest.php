@@ -156,6 +156,11 @@ class PublicWorkFormTrackingTest extends TestCase
         $this->prepareProductionForStart($production, 'public-track-ready.jpg');
         $workflow = app(ProductionWorkflowService::class);
 
+        $workflow->updateAssignment($production->fresh(), [
+            'production_type' => OrderItemPrintProduction::TYPE_INTERNAL,
+            'production_unit_name' => 'UV Hattı 1',
+            'assigned_to' => $this->adminUser->id,
+        ], $this->adminUser, 'Operatör seçildi');
         $workflow->assignInternal($production->fresh(), $this->adminUser, 'UV Hattı 1');
         $response = $this->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->get(route('public.work-forms.track', $workForm->fresh()->public_tracking_token));

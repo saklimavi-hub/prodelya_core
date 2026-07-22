@@ -238,8 +238,8 @@
                 @endif
             </div>
             <div class="prd-form-actions">
-                <a href="{{ $tabUrl('islemler') }}" class="btn btn-sm btn-primary">Durumu Güncelle</a>
-                <a href="{{ $tabUrl('fotograflar') }}" class="btn btn-sm btn-outline-primary">Fotoğraf Ekle</a>
+                <a href="{{ route($canonicalRouteName, $production) }}" class="btn btn-sm btn-primary">{{ $canonicalActionLabel }}</a>
+                <a href="{{ $tabUrl('fotograflar') }}" class="btn btn-sm btn-outline-primary">Fotoğrafları İncele</a>
             </div>
         </section>
     </div>

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\OrderItemWorkForm;
 use App\Models\OrderItemWorkFormAttachment;
+use App\Models\OrderItemPrintProduction;
 use App\Services\ProductDataHub\ProductHubSafeImageUrlService;
 use App\Support\WorkFormActivityLabelResolver;
 use Illuminate\Support\Facades\Storage;
@@ -16,12 +17,30 @@ class WorkFormRenderDataBuilder
         protected TenantCompanyProfileService $tenantCompanyProfileService,
         protected ProductHubSafeImageUrlService $safeImageUrlService,
         protected WorkFormActivityLabelResolver $activityLabelResolver,
+        protected ProductionDataBuilder $productionDataBuilder,
     ) {
     }
 
-    public function build(OrderItemWorkForm $workForm): array
+    public function build(OrderItemWorkForm $workForm, bool $useLiveProductionRows = true): array
     {
-        $workForm->loadMissing(['tenant', 'attachments', 'activityLogs.attachment', 'systemWorkFolder']);
+        $workForm->loadMissing([
+            'tenant',
+            'attachments.uploader',
+            'activityLogs.attachment',
+            'systemWorkFolder',
+        ]);
+
+        if ($useLiveProductionRows) {
+            $workForm->loadMissing([
+                'printProductions.orderItemPrint.subcontractorCompany',
+                'printProductions.orderItemPrint.tenantPrintSetting.standardPrintType',
+                'printProductions.orderItemPrint.graphicOperation.latestAttachment',
+                'printProductions.graphicOperation.latestAttachment',
+                'printProductions.productionCompany',
+                'printProductions.assignedUser',
+                'procurement',
+            ]);
+        }
 
         $attachments = $workForm->attachments
             ->sortBy(static function (OrderItemWorkFormAttachment $attachment): string {
@@ -51,6 +70,9 @@ class WorkFormRenderDataBuilder
         $deliveryAttachments = $this->mapAttachments(
             $attachments->whereIn('attachment_type', ['delivery_photo', 'delivery_document'])
         );
+        $exactProductionRows = $useLiveProductionRows
+            ? $this->buildLiveProductionRows($workForm, $productionPhotos)
+            : collect((array) data_get($productionSnapshot, 'production_rows', []))->values();
 
         $primaryGraphicAttachmentId = data_get($graphicSnapshot, 'primary_visual_attachment_id');
         $primaryGraphicAttachment = $primaryGraphicAttachmentId
@@ -82,6 +104,7 @@ class WorkFormRenderDataBuilder
             'productionSnapshot' => $productionSnapshot,
             'deliverySnapshot' => $deliverySnapshot,
             'publicProductionStatusLabel' => $this->resolvePublicProductionStatusLabel($productionSnapshot),
+            'exactProductionRows' => $exactProductionRows,
             'graphicAttachments' => $graphicAttachments,
             'primaryGraphicAttachment' => $primaryGraphicAttachment,
             'productionPhotos' => $productionPhotos,
@@ -108,6 +131,8 @@ class WorkFormRenderDataBuilder
         return $attachments
             ->map(fn (OrderItemWorkFormAttachment $attachment) => [
                 'id' => $attachment->id,
+                'order_item_print_id' => $attachment->order_item_print_id,
+                'order_item_print_graphic_id' => $attachment->order_item_print_graphic_id,
                 'attachment_type' => $attachment->attachment_type,
                 'file_path' => $attachment->file_path,
                 'file_name' => $attachment->file_name ?: basename((string) $attachment->file_path),
@@ -120,10 +145,125 @@ class WorkFormRenderDataBuilder
                 'is_image' => $attachment->isImage(),
                 'is_document' => $attachment->isDocument(),
                 'preview_url' => $this->resolvePreviewUrl($attachment),
+                'created_at' => optional($attachment->created_at)->format('d.m.Y H:i'),
+                'uploader_name' => $attachment->uploader?->name,
             ])
             ->values();
     }
 
+    private function buildLiveProductionRows(OrderItemWorkForm $workForm, Collection $productionPhotos): Collection
+    {
+        $productions = $workForm->printProductions
+            ->sortBy(fn (OrderItemPrintProduction $production): string => (string) data_get(
+                $this->productionDataBuilder->build($production->orderItemPrint, $workForm, $production),
+                'print_sequence',
+                str_pad((string) $production->id, 10, '0', STR_PAD_LEFT)
+            ))
+            ->values();
+
+        return $productions
+            ->map(function (OrderItemPrintProduction $production) use ($workForm, $productionPhotos, $productions): array {
+                $snapshot = $this->productionDataBuilder->build($production->orderItemPrint, $workForm, $production);
+                $photos = $this->photosForProduction($productionPhotos, $production, $productions->count());
+                $baseline = (array) data_get($snapshot, 'subcontract_tracking.send_baseline', []);
+                $sentQuantity = data_get($baseline, 'remaining_quantity_at_send');
+                $receivedQuantity = in_array($production->production_status, [
+                    OrderItemPrintProduction::STATUS_RETURNED_FROM_SUBCONTRACTOR,
+                    OrderItemPrintProduction::STATUS_COMPLETED,
+                ], true) ? (float) $production->completed_quantity : null;
+
+                return [
+                    'production_id' => $production->id,
+                    'order_item_print_id' => $production->order_item_print_id,
+                    'sequence' => data_get($snapshot, 'print_sequence', '-'),
+                    'print_type' => data_get($snapshot, 'print_type', '-'),
+                    'print_option' => data_get($snapshot, 'print_option', '-'),
+                    'production_type' => data_get($snapshot, 'production_type'),
+                    'production_type_label' => data_get($snapshot, 'production_type_label', '-'),
+                    'operator_name' => $production->assignedUser?->name,
+                    'production_unit_name' => data_get($snapshot, 'production_unit_name'),
+                    'production_company_name' => data_get($snapshot, 'production_company_name'),
+                    'planned_quantity' => (float) data_get($snapshot, 'planned_quantity', 0),
+                    'completed_quantity' => (float) data_get($snapshot, 'completed_quantity', 0),
+                    'remaining_quantity' => (float) data_get($snapshot, 'remaining_quantity', 0),
+                    'sent_quantity' => $sentQuantity !== null ? (float) $sentQuantity : null,
+                    'received_from_subcontractor_quantity' => $receivedQuantity,
+                    'remaining_from_subcontractor_quantity' => $sentQuantity !== null ? max(round((float) $sentQuantity - (float) ($receivedQuantity ?? 0), 4), 0.0) : null,
+                    'prior_internal_completed_quantity' => data_get($baseline, 'completed_quantity_before_send'),
+                    'legacy_subcontract_baseline_missing' => $this->isOutsourced($production) && $sentQuantity === null,
+                    'production_status' => data_get($snapshot, 'production_status'),
+                    'production_status_label' => data_get($snapshot, 'production_status_label', '-'),
+                    'graphic_status_label' => data_get($snapshot, 'graphic_status_label', '-'),
+                    'procurement_status_label' => data_get($snapshot, 'procurement_status_label', '-'),
+                    'qc_status_label' => $this->qualityControlLabel($snapshot, $production),
+                    'qc_required' => data_get($snapshot, 'qc_status') !== 'gerekli_degil',
+                    'public_status_label' => data_get($snapshot, 'public_status_label', '-'),
+                    'final_graphic' => data_get($snapshot, 'final_graphic'),
+                    'photo_count' => $photos->count(),
+                    'photos' => $photos->take(3)->values()->all(),
+                    'is_outsourced' => $this->isOutsourced($production),
+                    'process_steps' => $this->processSteps($production, $snapshot),
+                ];
+            })
+            ->values();
+    }
+
+    private function photosForProduction(Collection $productionPhotos, OrderItemPrintProduction $production, int $productionCount): Collection
+    {
+        return $productionPhotos
+            ->filter(function (array $photo) use ($production, $productionCount): bool {
+                $printId = (int) ($photo['order_item_print_id'] ?? 0);
+
+                return $printId === (int) $production->order_item_print_id
+                    || ($printId === 0 && $productionCount === 1);
+            })
+            ->values();
+    }
+
+    private function qualityControlLabel(array $snapshot, ?OrderItemPrintProduction $production = null): string
+    {
+        $status = (string) data_get($snapshot, 'qc_status', 'gerekli_degil');
+        $productionStatus = (string) data_get($snapshot, 'production_status', $production?->production_status);
+
+        if ($status === 'gerekli_degil' || ($status === OrderItemPrintProduction::QC_WAITING && $productionStatus !== OrderItemPrintProduction::STATUS_QUALITY_CONTROL)) {
+            return 'Kalite Kontrol Gerekli Değil';
+        }
+
+        return (string) data_get($snapshot, 'qc_status_label', 'Bekliyor');
+    }
+
+    private function processSteps(OrderItemPrintProduction $production, array $snapshot): array
+    {
+        $steps = [
+            'Grafik: ' . data_get($snapshot, 'graphic_status_label', '-'),
+            'Tedarik: ' . data_get($snapshot, 'procurement_status_label', '-'),
+        ];
+
+        if ($this->isOutsourced($production)) {
+            $steps[] = filled($production->production_company_id) ? 'Fason Atama: Tamamlandı' : 'Fason Atama: Bekliyor';
+            $steps[] = 'Fason: ' . data_get($snapshot, 'production_status_label', '-');
+        } else {
+            $steps[] = 'İç Baskı: ' . data_get($snapshot, 'production_status_label', '-');
+        }
+
+        if (data_get($snapshot, 'qc_status') !== 'gerekli_degil') {
+            $steps[] = 'QC: ' . $this->qualityControlLabel($snapshot);
+        }
+
+        $steps[] = ((string) data_get($snapshot, 'production_status') === OrderItemPrintProduction::STATUS_COMPLETED)
+            ? 'Teslimata Hazır'
+            : 'Teslimata Hazır Değil';
+
+        return $steps;
+    }
+
+    private function isOutsourced(OrderItemPrintProduction $production): bool
+    {
+        return in_array($production->production_type, [
+            OrderItemPrintProduction::TYPE_EXTERNAL,
+            OrderItemPrintProduction::TYPE_OUTSOURCED,
+        ], true);
+    }
     private function mapWorkflowHistory(OrderItemWorkForm $workForm): array
     {
         if ($workForm->activityLogs->isEmpty()) {

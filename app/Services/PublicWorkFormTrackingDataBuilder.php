@@ -285,7 +285,7 @@ class PublicWorkFormTrackingDataBuilder
             return 'Kalite kontrol tamamlandı';
         }
 
-        return $this->publicStatusLabel(data_get($productionSnapshot, 'qc_status'), 'quality');
+        return 'Kalite kontrol gerekli değil';
     }
 
     private function formatQuantity(mixed $quantity, ?string $unit): string

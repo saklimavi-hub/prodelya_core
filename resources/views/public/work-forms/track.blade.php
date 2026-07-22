@@ -300,7 +300,7 @@
                     <div class="pt-print-card">
                         <div class="pt-print-title">{{ $print['type'] }}</div>
                         <div class="pt-muted">{{ $print['option'] }}</div>
-                        <div class="pt-muted" style="margin-top:6px;">{{ $print['production_type'] }} / {{ $print['quantity'] }}</div>
+                        <div class="pt-muted" style="margin-top:6px;">{{ $print['quantity'] }}</div>
                         @if(filled($print['note']))
                             <div class="pt-muted" style="margin-top:8px;">{{ $print['note'] }}</div>
                         @endif

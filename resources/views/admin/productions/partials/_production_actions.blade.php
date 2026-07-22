@@ -5,7 +5,7 @@
     $remainingQuantity = (float) $production->remaining_quantity;
     $statusActions = [
         'assign_internal' => 'Üretime Başla',
-        'assign_external' => 'Dış Üretime Ata',
+        'assign_external' => 'Fasona Gönder',
         'sent_to_subcontractor' => 'Fasona Gönder',
         'returned_from_subcontractor' => 'Fasondan Geldi',
         'partial' => 'Kısmi Üretildi',
@@ -118,8 +118,8 @@
                     </div>
 
                     <div style="margin-top:12px;">
-                        <label class="form-label" for="assignment_note">Not</label>
-                        <textarea id="assignment_note" name="production_note" class="form-control" rows="4" placeholder="Operasyon notu">{{ $production->production_note }}</textarea>
+                        <label class="form-label" for="assignment_note">Not / Rota Değişim Gerekçesi</label>
+                        <textarea id="assignment_note" name="production_note" class="form-control" rows="4" placeholder="Operasyon notu; başlamış veya kısmi işte rota değişimi için gerekçe zorunludur">{{ $production->production_note }}</textarea>
                     </div>
 
                     @if($canViewFinancialData && $isExternal)
@@ -170,7 +170,11 @@
                         @if(!$isExternal)
                             <input type="hidden" name="production_unit_name" value="{{ $production->production_unit_name ?: 'İç üretim hattı' }}">
                         @endif
-                        <button type="submit" class="btn btn-sm btn-success w-100">Üretime Başla</button>
+                        @if(!$isExternal && !$production->assigned_to)
+                            <button type="button" class="btn btn-sm btn-secondary w-100" disabled>Operatör seçin</button>
+                        @else
+                            <button type="submit" class="btn btn-sm btn-success w-100">{{ $isExternal ? 'Fasona Gönder' : 'Üretime Başla' }}</button>
+                        @endif
                     </form>
                 </div>
 

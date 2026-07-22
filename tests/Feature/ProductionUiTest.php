@@ -66,7 +66,7 @@ class ProductionUiTest extends TestCase
         $response->assertSee('UI Üretim Kalemi');
         $response->assertSee('UI-PRD-001');
         $response->assertSee('UV Baskı');
-        $response->assertSee('Grafik henüz üretime hazır değil.');
+        $response->assertSee('Bu baskı için grafik üretime hazır değil.');
         $response->assertDontSee('unit_price', false);
         $response->assertDontSee('KDV', false);
         $response->assertDontSee('grand_total', false);
@@ -75,7 +75,7 @@ class ProductionUiTest extends TestCase
         $response->assertDontSee('print_unit_price', false);
     }
 
-    public function test_production_show_renders_snapshot_assignment_forms_links_and_upload_form(): void
+    public function test_production_show_renders_read_only_summary_and_canonical_links(): void
     {
         $production = $this->createProductionRecord([
             'product_name' => 'Detay Üretim Ürünü',
@@ -92,9 +92,11 @@ class ProductionUiTest extends TestCase
         $response->assertSee('UI-DET-PRD');
         $response->assertDontSee('Üretim Ataması');
         $response->assertDontSee('Üretime Başlama Kontrol Kartları');
-        $response->assertSee('Üretim Durumu Adımları');
-        $response->assertSee('Kalite Kontrol');
-        $response->assertSee('Fotoğraf Ekle');
+        $response->assertDontSee('operator-assignment-panel', false);
+        $response->assertDontSee('production_photo', false);
+        $response->assertSee('Sıradaki İşlem');
+        $response->assertSee('Grafiği Aç');
+        $response->assertSee('Fotoğraflar');
         $response->assertSee(route('admin.work-forms.show', $production->workForm), false);
         $response->assertSee(route('admin.orders.show', $production->order), false);
         $response->assertDontSee('price_snapshot', false);
@@ -181,8 +183,9 @@ class ProductionUiTest extends TestCase
                 'cliche_required' => '1',
                 'cliche_status' => OrderItemPrintProduction::CLICHE_READY,
                 'production_note' => 'İç üretim hazırlığı tamam.',
+                'return_to' => 'operator',
             ])
-            ->assertRedirect(route('admin.productions.show', $production));
+            ->assertRedirect(route('admin.productions.operator', $production));
 
         $production = $production->fresh(['workForm.activityLogs']);
         $this->assertSame(OrderItemPrintProduction::TYPE_INTERNAL, $production->production_type);
@@ -192,12 +195,13 @@ class ProductionUiTest extends TestCase
 
         $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->patch(route('admin.productions.update-status', $production), [
-                'action' => 'assign_external',
+            ->patch(route('admin.productions.update-assignment', $production), [
+                'production_type' => OrderItemPrintProduction::TYPE_OUTSOURCED,
                 'production_company_id' => $partner->id,
-                'note' => 'Fason hazırlığı',
+                'production_note' => 'Fason hazırlığı',
+                'return_to' => 'subcontract_assignment',
             ])
-            ->assertRedirect(route('admin.productions.show', $production));
+            ->assertRedirect(route('admin.productions.subcontract-assignment', $production));
 
         $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
@@ -205,7 +209,7 @@ class ProductionUiTest extends TestCase
                 'action' => 'sent_to_subcontractor',
                 'note' => 'Fasona çıktı',
             ])
-            ->assertRedirect(route('admin.productions.show', $production));
+            ->assertRedirect(route('admin.productions.subcontract-tracking', $production));
 
         $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
@@ -213,21 +217,21 @@ class ProductionUiTest extends TestCase
                 'action' => 'returned_from_subcontractor',
                 'note' => 'Fasondan döndü',
             ])
-            ->assertRedirect(route('admin.productions.show', $production));
+            ->assertRedirect(route('admin.productions.subcontract-tracking', $production));
 
         $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->patch(route('admin.productions.update-status', $production), [
                 'action' => 'qc_started',
             ])
-            ->assertRedirect(route('admin.productions.show', $production));
+            ->assertRedirect(route('admin.productions.subcontract-tracking', $production));
 
         $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->patch(route('admin.productions.update-status', $production), [
                 'action' => 'qc_passed',
             ])
-            ->assertRedirect(route('admin.productions.show', $production));
+            ->assertRedirect(route('admin.productions.subcontract-tracking', $production));
 
         $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
@@ -246,8 +250,9 @@ class ProductionUiTest extends TestCase
         $this->assertSame(0.0, (float) $production->remaining_quantity);
         $this->assertGreaterThan($initialVersion, $production->workForm->version);
         $this->assertSame('Üretim tamamlandı', data_get($production->workForm->production_snapshot, 'public_status_label'));
-        $this->assertTrue($production->workForm->activityLogs->contains(fn ($log) => $log->action_type === 'production_assigned_internal'));
-        $this->assertTrue($production->workForm->activityLogs->contains(fn ($log) => $log->action_type === 'production_assigned_external'));
+        $activityTypes = $production->workForm->activityLogs->pluck('action_type');
+        $this->assertTrue($activityTypes->contains(fn ($type) => in_array($type, ['production_assigned_internal', 'production_route_changed'], true)));
+        $this->assertTrue($activityTypes->contains(fn ($type) => in_array($type, ['production_assigned_external', 'production_route_changed'], true)));
         $this->assertTrue($production->workForm->activityLogs->contains(fn ($log) => $log->action_type === 'production_sent_to_subcontractor'));
         $this->assertTrue($production->workForm->activityLogs->contains(fn ($log) => $log->action_type === 'production_returned_from_subcontractor'));
         $this->assertTrue($production->workForm->activityLogs->contains(fn ($log) => $log->action_type === 'production_qc_started'));
@@ -271,7 +276,7 @@ class ProductionUiTest extends TestCase
                 'completed_quantity' => '1000',
             ])
             ->assertRedirect(route('admin.productions.show', $production))
-            ->assertSessionHasErrors('completed_quantity');
+            ->assertInvalid(['completed_quantity']);
 
         $production = $production->fresh();
         $this->assertSame(0.0, (float) $production->completed_quantity);
@@ -284,10 +289,13 @@ class ProductionUiTest extends TestCase
             'product_name' => 'Photo Production',
             'product_code' => 'UI-PHOTO-PRD',
         ]);
+        $production->forceFill([
+            'production_type' => OrderItemPrintProduction::TYPE_INTERNAL,
+        ])->save();
 
         $show = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.productions.show', $production));
+            ->get(route('admin.productions.operator', $production));
 
         $show->assertOk();
         $show->assertSee('Fotoğraf Ekle');
