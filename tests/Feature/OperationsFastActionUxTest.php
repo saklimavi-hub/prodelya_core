@@ -63,13 +63,9 @@ class OperationsFastActionUxTest extends TestCase
             ->get(route('admin.procurements.index', ['supplier_id' => $supplier->id]));
 
         $response->assertOk();
-        $response->assertSee('Talep Aç');
-        $response->assertSee('Sipariş Verildi');
-        $response->assertSee('Kısmi Geldi');
-        $response->assertSee('Tamamı Geldi');
-        $response->assertSee('Toplu Talep Hazırla');
-        $response->assertSee('Birincil Aksiyonlar');
-        $response->assertSee('Diğer Aksiyonlar');
+        $response->assertSee('Talebi Aç');
+        $response->assertSee('Talep Hazırlanacak Tedarikçiler');
+        $response->assertSee('Tedarik Görev Listesi');
         $response->assertSee('Sıradaki İş');
         $response->assertDontSee('Sistem Notu');
         $response->assertDontSee('group_code', false);
@@ -90,8 +86,8 @@ class OperationsFastActionUxTest extends TestCase
             ]));
 
         $detail->assertOk();
-        $detail->assertSee('Talep / Form');
-        $detail->assertSee('Fiyatsız Talep Formunu Aç');
+        $detail->assertSee('Üst Sıradaki İş');
+        $detail->assertSee('Talep No');
         $detail->assertSee($requestRecord->request_number);
         $detail->assertDontSee('group_code', false);
         $detail->assertDontSee('raw_mapping', false);
@@ -110,9 +106,9 @@ class OperationsFastActionUxTest extends TestCase
 
         $index->assertOk();
         $index->assertSee('Üretimi Aç');
-        $index->assertSee('Başla');
-        $index->assertSee('Kısmi Basıldı');
-        $index->assertSee('Tamamı Basıldı');
+        $index->assertSee('Grafiği Gör');
+        $index->assertSee('Bu baskı için grafik üretime hazır değil.');
+        $index->assertDontSee('Tamamı Basıldı');
         $index->assertDontSee('group_code', false);
         $index->assertDontSee('raw_mapping', false);
 
@@ -124,11 +120,12 @@ class OperationsFastActionUxTest extends TestCase
             ]));
 
         $show->assertOk();
-        $show->assertSee('Genel Özet');
-        $show->assertSee('Üretim İlerlemesi');
-        $show->assertSee('Kalan Adet');
+        $show->assertSee('Üretim Detayı · Exact Baskı');
+
+        $show->assertSee('Kalan');
         $show->assertSee('Sıradaki İşlem');
-        $show->assertSee('Fotoğraf Ekle');
+        $show->assertSee('Fotoğraflar');
+        $show->assertDontSee('Fotoğraf Ekle');
         $show->assertDontSee('subcontractor_cost', false);
         $show->assertDontSee('group_code', false);
         $show->assertDontSee('raw_mapping', false);

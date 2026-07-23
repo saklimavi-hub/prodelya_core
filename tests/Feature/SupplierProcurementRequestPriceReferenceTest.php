@@ -3,11 +3,14 @@
 namespace Tests\Feature;
 
 use App\Models\Company;
+use App\Models\ExchangeRate;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\OrderItemProcurement;
+use App\Models\Role;
 use App\Models\Supplier;
 use App\Models\SupplierProcurementRequest;
+use App\Models\SupplierProductRaw;
 use App\Models\SupplierSource;
 use App\Models\TenantAccount;
 use App\Models\TenantSupplierAccess;
@@ -16,6 +19,7 @@ use App\Models\UserRole;
 use App\Services\SupplierProcurementRequestService;
 use App\Services\WorkFormCreationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class SupplierProcurementRequestPriceReferenceTest extends TestCase
@@ -25,6 +29,7 @@ class SupplierProcurementRequestPriceReferenceTest extends TestCase
     protected bool $seed = true;
 
     private const CENTRAL_HOST = 'prodelya_core.test';
+    private const FX_RATE_DATE = '2026-07-14';
 
     private User $adminUser;
     private TenantAccount $tenant;
@@ -42,34 +47,27 @@ class SupplierProcurementRequestPriceReferenceTest extends TestCase
             ->firstOrFail();
     }
 
-    public function test_edit_screen_prefills_supplier_purchase_price_and_shows_sales_reference_for_authorized_user(): void
+    public function test_edit_screen_shows_try_supplier_source_without_identity_rate_for_authorized_user(): void
     {
-        [$supplier, $source] = $this->createSupplierWithAccess('SPR-PRICE-A');
-        $procurement = $this->createProcurement($supplier, $source, 'SP-SPR-PRICE-001', true, 20.00, 2000.00);
-        $procurement->orderItem->update(['discount_rate' => 45]);
-        $requestRecord = $this->createDraftRequest($supplier->id, [$procurement->id]);
+        [$supplier, $source] = $this->createSupplierWithAccess('SPR-PRICE-TRY');
 
-        $response = $this->actingAs($this->adminUser)
-            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.procurements.supplier-requests.edit', $requestRecord));
+        $raw = SupplierProductRaw::query()->create([
+            'tenant_account_id' => $this->tenant->id,
+            'supplier_id' => $supplier->id,
+            'supplier_source_id' => $source->id,
+            'source_product_id' => 'SRC-' . uniqid(),
+            'source_name' => 'TRY Kaynak Ürün',
+            'supplier_product_code' => 'RAW-SPR-TRY-001',
+            'product_name' => 'TRY Tedarik Ürün',
+            'purchase_price' => '9.2000',
+            'currency' => 'TRY',
+            'sync_status' => 'processed',
+        ]);
 
-        $response->assertOk();
-        $response->assertSee('value="9.20"', false);
-        $response->assertSee('value="0.00"', false);
-        $response->assertDontSee('value="45.00"', false);
-        $response->assertSee('Satış Ref: 20,00 TL / adet');
-        $response->assertSee('Satış Toplam: 2.000,00 TL');
-        $response->assertSee('data-sales-unit-price="20.00"', false);
-        $response->assertSee('data-sales-total="2000.00"', false);
-    }
-
-    public function test_edit_screen_can_use_product_detail_supplier_price_snapshot_as_purchase_list_price_source(): void
-    {
-        [$supplier, $source] = $this->createSupplierWithAccess('SPR-PRICE-SOURCE');
-        $procurement = $this->createProcurement($supplier, $source, 'SP-SPR-PRICE-006', false, 20.00, 2000.00, [
-            'list_price' => 11.40,
-        ], [
-            'list_price' => 11.40,
+        $procurement = $this->createProcurement($supplier, $source, 'SP-SPR-TRY-001', false, 20.00, 2000.00, [
+            'product_name' => 'TRY Tedarik Ürün',
+            'product_code' => 'SPR-TRY-001',
+            'supplier_product_raw_id' => $raw->id,
         ]);
         $requestRecord = $this->createDraftRequest($supplier->id, [$procurement->id]);
 
@@ -78,14 +76,38 @@ class SupplierProcurementRequestPriceReferenceTest extends TestCase
             ->get(route('admin.procurements.supplier-requests.edit', $requestRecord));
 
         $response->assertOk();
-        $response->assertSee('value="11.40"', false);
-        $response->assertSee('data-spr-list-price', false);
+        $response->assertSee('Tedarikçi liste:');
+        $response->assertSee('9,20 TL');
+        $response->assertSee('Hesaplanan: <span data-calculated-display>9,20 TL</span>', false);
+        $response->assertDontSee('Kur: 1 TRY');
+        $response->assertDontSee('Satış Ref');
+        $response->assertDontSee('Satış Toplam');
     }
 
-    public function test_missing_purchase_price_shows_zero_warning_and_missing_sales_reference_when_needed(): void
+    public function test_edit_screen_shows_usd_source_try_equivalent_and_rate_from_canonical_snapshot(): void
     {
-        [$supplier, $source] = $this->createSupplierWithAccess('SPR-PRICE-B');
-        $procurement = $this->createProcurement($supplier, $source, 'SP-SPR-PRICE-002', false, null, null);
+        [$supplier, $source] = $this->createSupplierWithAccess('SPR-PRICE-USD');
+        $this->createRate('USD', '46.89280000', self::FX_RATE_DATE);
+
+        $raw = SupplierProductRaw::query()->create([
+            'tenant_account_id' => $this->tenant->id,
+            'supplier_id' => $supplier->id,
+            'supplier_source_id' => $source->id,
+            'source_product_id' => 'SRC-' . uniqid(),
+            'source_name' => 'USD Kaynak Ürün',
+            'supplier_product_code' => 'RAW-SPR-USD-001',
+            'product_name' => 'USD Tedarik Ürün',
+            'purchase_price' => '12.5000',
+            'currency' => 'USD',
+            'sync_status' => 'processed',
+        ]);
+
+        $procurement = $this->createProcurement($supplier, $source, 'SP-SPR-USD-001', false, 586.16, 58616.00, [
+            'product_name' => 'USD Tedarik Ürün',
+            'product_code' => 'SPR-USD-001',
+            'supplier_product_raw_id' => $raw->id,
+        ]);
+        $this->pinProcurementQuoteDate($procurement);
         $requestRecord = $this->createDraftRequest($supplier->id, [$procurement->id]);
 
         $response = $this->actingAs($this->adminUser)
@@ -93,133 +115,93 @@ class SupplierProcurementRequestPriceReferenceTest extends TestCase
             ->get(route('admin.procurements.supplier-requests.edit', $requestRecord));
 
         $response->assertOk();
-        $response->assertSee('value="0.00"', false);
-        $response->assertSee('Liste fiyatı bulunamadı; özel alış fiyatı girin');
-        $response->assertSee('Satış fiyatı referansı bulunamadı');
-        $response->assertSee('data-spr-warning-list', false);
+        $response->assertSee('12,50 USD');
+        $response->assertSee('TL karşılığı: 586,16 TL');
+        $response->assertSee('Kur: 1 USD = 46,8928 TL');
+        $response->assertSee('Kur tarihi: 14.07.2026');
+        $response->assertSee('Hesaplanan: <span data-calculated-display>586,16 TL</span>', false);
+        $response->assertDontSee('Satış Liste');
+        $response->assertDontSee('Satış Toplam');
     }
 
-    public function test_manual_purchase_prices_are_saved_preserved_and_warn_when_above_sales_reference(): void
+    public function test_missing_supplier_price_shows_explicit_warning_without_sales_fallback(): void
     {
-        [$supplier, $source] = $this->createSupplierWithAccess('SPR-PRICE-C');
-        $procurement = $this->createProcurement($supplier, $source, 'SP-SPR-PRICE-003', false, 6.50, 650.00);
+        [$supplier, $source] = $this->createSupplierWithAccess('SPR-PRICE-MISSING');
+        $procurement = $this->createProcurement($supplier, $source, 'SP-SPR-MISSING-001', false, 20.00, 2000.00, [
+            'product_name' => 'Kaynak Eksik Ürün',
+            'product_code' => 'SPR-MISSING-001',
+        ]);
+        $requestRecord = $this->createDraftRequest($supplier->id, [$procurement->id]);
+
+        $response = $this->actingAs($this->adminUser)
+            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
+            ->get(route('admin.procurements.supplier-requests.edit', $requestRecord));
+
+        $response->assertOk();
+        $response->assertSee('Tedarikçi liste fiyatı bulunamadı');
+        $response->assertDontSee('Satış fiyatı referansı bulunamadı');
+        $response->assertDontSee('Satış Ref');
+        $response->assertDontSee('Tedarikçi liste: 0,00');
+    }
+
+    public function test_manual_override_persists_and_renders_calculated_restore_helper(): void
+    {
+        [$supplier, $source] = $this->createSupplierWithAccess('SPR-PRICE-OVERRIDE');
+        $this->createRate('USD', '46.89280000', self::FX_RATE_DATE);
+
+        $raw = SupplierProductRaw::query()->create([
+            'tenant_account_id' => $this->tenant->id,
+            'supplier_id' => $supplier->id,
+            'supplier_source_id' => $source->id,
+            'source_product_id' => 'SRC-' . uniqid(),
+            'source_name' => 'USD Override Kaynak',
+            'supplier_product_code' => 'RAW-SPR-OVERRIDE-001',
+            'product_name' => 'Override Tedarik Ürün',
+            'purchase_price' => '12.5000',
+            'currency' => 'USD',
+            'sync_status' => 'processed',
+        ]);
+
+        $procurement = $this->createProcurement($supplier, $source, 'SP-SPR-OVERRIDE-001', false, 700.00, 70000.00, [
+            'product_name' => 'Override Tedarik Ürün',
+            'product_code' => 'SPR-OVERRIDE-001',
+            'supplier_product_raw_id' => $raw->id,
+        ]);
+        $this->pinProcurementQuoteDate($procurement);
         $requestRecord = $this->createDraftRequest($supplier->id, [$procurement->id]);
         $item = $requestRecord->fresh('items')->items->first();
 
         $response = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->patch(route('admin.procurements.supplier-requests.update', $requestRecord), [
-                'submit_action' => 'request',
+                'submit_action' => 'draft',
                 'items' => [
                     [
                         'id' => $item->id,
                         'requested_quantity' => '100',
-                        'purchase_list_price' => '0,00',
-                        'discount_rate' => '',
-                        'purchase_unit_price' => '7,10',
-                        'note' => 'Özel alış fiyatı',
+                        'purchase_list_price' => '586,16',
+                        'discount_rate' => '50,00',
+                        'purchase_unit_price' => '300,00',
+                        'use_calculated_price' => '0',
+                        'note' => 'Manuel override',
                     ],
                 ],
             ]);
 
         $response->assertRedirect(route('admin.procurements.supplier-requests.edit', $requestRecord));
 
-        $requestRecord = $requestRecord->fresh('items.procurement');
-        $item = $requestRecord->items->first();
-
-        $this->assertSame(SupplierProcurementRequest::STATUS_REQUESTED, $requestRecord->status);
-        $this->assertSame(0.0, (float) $item->purchase_list_price);
-        $this->assertSame(7.10, (float) $item->purchase_unit_price);
-        $this->assertSame(710.0, (float) $item->purchase_total);
-
         $edit = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.procurements.supplier-requests.edit', $requestRecord));
+            ->get(route('admin.procurements.supplier-requests.edit', $requestRecord->fresh()));
 
         $edit->assertOk();
-        $edit->assertSee('value="7.10"', false);
-        $edit->assertSee('Alış fiyatı satış fiyatını aşıyor');
-        $edit->assertSee('Alış toplamı satış toplamını aşıyor');
-        $edit->assertSee('data-manual-unit-price="1"', false);
-        $edit->assertSee('data-spr-manual-badge', false);
+        $edit->assertSee('Hesaplanan: <span data-calculated-display>293,08 TL</span>', false);
+        $edit->assertSee('Hesaplananı kullan');
+        $edit->assertSee('Manuel override aktif.');
+        $edit->assertSee('value="300.00"', false);
     }
 
-    public function test_saved_purchase_discount_is_preserved_and_discount_based_calculation_is_used_when_unit_price_is_blank(): void
-    {
-        [$supplier, $source] = $this->createSupplierWithAccess('SPR-PRICE-D');
-        $procurement = $this->createProcurement($supplier, $source, 'SP-SPR-PRICE-004', true, 20.00, 2000.00);
-        $requestRecord = $this->createDraftRequest($supplier->id, [$procurement->id]);
-        $item = $requestRecord->fresh('items')->items->first();
-
-        $this->actingAs($this->adminUser)
-            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->patch(route('admin.procurements.supplier-requests.update', $requestRecord), [
-                'submit_action' => 'draft',
-                'items' => [
-                    [
-                        'id' => $item->id,
-                        'requested_quantity' => '100',
-                        'purchase_list_price' => '10,00',
-                        'discount_rate' => '20',
-                        'purchase_unit_price' => '',
-                        'note' => 'İskontolu fiyat',
-                    ],
-                ],
-            ])
-            ->assertRedirect(route('admin.procurements.supplier-requests.edit', $requestRecord));
-
-        $item = $item->fresh();
-        $requestRecord = $requestRecord->fresh();
-        $this->assertSame(8.0, (float) $item->purchase_unit_price);
-        $this->assertSame(800.0, (float) $item->purchase_total);
-        $this->assertSame(20.0, (float) $item->discount_rate);
-
-        $edit = $this->actingAs($this->adminUser)
-            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.procurements.supplier-requests.edit', $requestRecord));
-
-        $edit->assertOk();
-        $edit->assertSee('value="20.00"', false);
-        $edit->assertSee('data-spr-row', false);
-        $edit->assertSee('data-spr-list-price', false);
-        $edit->assertSee('data-spr-discount', false);
-        $edit->assertSee('data-spr-unit-price', false);
-        $edit->assertSee('data-spr-total-output', false);
-        $edit->assertSee('data-spr-warning-list', false);
-    }
-
-    public function test_near_sales_price_warning_is_shown_when_purchase_price_is_close_to_sales_reference(): void
-    {
-        [$supplier, $source] = $this->createSupplierWithAccess('SPR-PRICE-CLOSE');
-        $procurement = $this->createProcurement($supplier, $source, 'SP-SPR-PRICE-007', false, 10.00, 1000.00);
-        $requestRecord = $this->createDraftRequest($supplier->id, [$procurement->id]);
-        $item = $requestRecord->fresh('items')->items->first();
-
-        $this->actingAs($this->adminUser)
-            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->patch(route('admin.procurements.supplier-requests.update', $requestRecord), [
-                'submit_action' => 'draft',
-                'items' => [
-                    [
-                        'id' => $item->id,
-                        'requested_quantity' => '100',
-                        'purchase_list_price' => '10,00',
-                        'discount_rate' => '5',
-                        'purchase_unit_price' => '',
-                    ],
-                ],
-            ])
-            ->assertRedirect(route('admin.procurements.supplier-requests.edit', $requestRecord));
-
-        $edit = $this->actingAs($this->adminUser)
-            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.procurements.supplier-requests.edit', $requestRecord));
-
-        $edit->assertOk();
-        $edit->assertSee('Alış fiyatı satış fiyatına çok yakın');
-    }
-
-    public function test_unauthorized_user_does_not_see_purchase_price_or_sales_reference_and_print_stays_priceless(): void
+    public function test_unauthorized_user_does_not_see_purchase_price_fields_and_print_stays_priceless(): void
     {
         [$supplier, $source] = $this->createSupplierWithAccess('SPR-PRICE-E');
         $procurement = $this->createProcurement($supplier, $source, 'SP-SPR-PRICE-005', true, 20.00, 2000.00);
@@ -231,7 +213,8 @@ class SupplierProcurementRequestPriceReferenceTest extends TestCase
             ->get(route('admin.procurements.supplier-requests.edit', $requestRecord));
 
         $response->assertOk();
-        $response->assertDontSee('Alış Liste Fiyatı');
+        $response->assertDontSee('Tedarikçi Liste');
+        $response->assertDontSee('Alış Birim Fiyatı');
         $response->assertDontSee('Satış Ref');
         $response->assertDontSee('Satış Toplam');
 
@@ -240,10 +223,12 @@ class SupplierProcurementRequestPriceReferenceTest extends TestCase
             ->get(route('admin.procurements.supplier-requests.print', $requestRecord));
 
         $print->assertOk();
-        $print->assertDontSee('Alış Liste Fiyatı');
+        $print->assertDontSee('Tedarikçi Liste');
+        $print->assertDontSee('Alış Toplamı');
         $print->assertDontSee('Satış Ref');
         $print->assertDontSee('Satış Toplam');
-        $print->assertDontSee('KDV');
+        $print->assertDontSee('Kur:');
+        $print->assertDontSee('TL karşılığı');
         $print->assertDontSee('group_code', false);
         $print->assertDontSee('raw_mapping', false);
     }
@@ -376,6 +361,41 @@ class SupplierProcurementRequestPriceReferenceTest extends TestCase
         return $item->fresh(['procurement.workForm', 'procurement.order', 'procurement.orderItem'])->procurement;
     }
 
+    private function pinProcurementQuoteDate(OrderItemProcurement $procurement): void
+    {
+        $procurement->order?->forceFill([
+            'quote_date' => self::FX_RATE_DATE,
+        ])->save();
+
+        $procurement->unsetRelation('order');
+    }
+
+
+
+    private function createRate(string $sourceCurrency, string $rate, string $date): void
+    {
+        ExchangeRate::query()
+            ->where('provider', 'tcmb')
+            ->where('rate_type', 'forex_selling')
+            ->where('source_currency', $sourceCurrency)
+            ->where('target_currency', 'TRY')
+            ->whereDate('rate_date', $date)
+            ->delete();
+
+        ExchangeRate::query()->create([
+            'provider' => 'tcmb',
+            'rate_type' => 'forex_selling',
+            'source_currency' => $sourceCurrency,
+            'target_currency' => 'TRY',
+            'rate_date' => $date,
+            'source_unit' => 1,
+            'rate' => $rate,
+            'fetched_at' => now(),
+            'payload_hash' => (string) Str::uuid(),
+            'meta_json' => [],
+        ]);
+    }
+
     private function createProductionUser(): User
     {
         $user = User::query()->create([
@@ -384,7 +404,7 @@ class SupplierProcurementRequestPriceReferenceTest extends TestCase
             'password' => 'password',
         ]);
 
-        $roleId = \App\Models\Role::query()->where('key', 'production')->value('id');
+        $roleId = Role::query()->where('key', 'production')->value('id');
 
         UserRole::query()->create([
             'user_id' => $user->id,

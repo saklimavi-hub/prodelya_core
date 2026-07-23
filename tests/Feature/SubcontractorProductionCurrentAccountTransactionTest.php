@@ -154,7 +154,7 @@ class SubcontractorProductionCurrentAccountTransactionTest extends TestCase
                 'subcontractor_cost_currency' => 'EUR',
                 'subcontractor_cost_note' => 'Fason yaldiz hizmeti',
             ])
-            ->assertRedirect(route('admin.productions.show', $production));
+            ->assertRedirect(route('admin.productions.subcontract-assignment', $production));
 
         $transaction = CurrentAccountTransaction::query()
             ->where('tenant_account_id', $this->tenant->id)

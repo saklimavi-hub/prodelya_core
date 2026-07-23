@@ -19,20 +19,13 @@ class ProductionActionsPanelLayoutTest extends TestCase
         $this->setUpProductionShowFixtures();
     }
 
-    public function test_actions_tab_groups_status_assignment_and_quick_actions(): void
+    public function test_legacy_actions_tab_redirects_to_canonical_internal_operator(): void
     {
         $production = $this->createInternalProductionForShow();
 
-        $response = $this->actingAs($this->adminUser)
+        $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::PRODUCTION_SHOW_HOST])
-            ->get(route('admin.productions.show', $production) . '?tab=islemler');
-
-        $response->assertOk();
-        $response->assertSee('Durum Güncelleme');
-        $response->assertSee('Atama / Sorumluluk');
-        $response->assertSee('Diğer İşlemler');
-        $response->assertSee('Not Ekle');
-        $response->assertSee('Fotoğraf Yükle');
+            ->get(route('admin.productions.show', $production) . '?tab=islemler')
+            ->assertRedirect(route('admin.productions.operator', $production));
     }
 }
-

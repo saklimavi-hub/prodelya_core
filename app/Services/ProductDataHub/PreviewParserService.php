@@ -1438,6 +1438,13 @@ class PreviewParserService
         $normalized['currency'] = $normalized['currency'] ?? ($rawRow['kur'] ?? null);
         $normalized['vat_rate'] = $this->toDecimal($rawRow['kdvorani'] ?? $normalized['vat_rate'] ?? null);
         $normalized['purchase_price'] = $netPrice && $netPrice > 0 ? $netPrice : null;
+        $normalized['supplier_gross_list_price'] = $resolvedListPrice;
+        $normalized['supplier_gross_list_price_source_field'] = $listPrice && $listPrice > 0
+            ? 'listefiyati'
+            : ($closedListPrice && $closedListPrice > 0 ? 'listefiyatkapali' : null);
+        $normalized['supplier_net_price'] = $netPrice;
+        $normalized['supplier_feed_discount_rate'] = $discountRate;
+        $normalized['supplier_net_price_source_field'] = $netPrice && $netPrice > 0 ? 'netfiyat' : null;
         $normalized['net_price_warning'] = $netPriceWarning;
         $normalized['price_policy_warning'] = $netPriceWarning || !($netPrice && $netPrice > 0);
         $normalized['pricing_policy_type'] = $netPriceWarning ? 'net_price' : 'discounted_list_price';

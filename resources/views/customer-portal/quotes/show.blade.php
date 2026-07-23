@@ -155,14 +155,18 @@
                                     </p>
                                 </div>
                         <div>
-                            <span class="label">Birim Satış Fiyatı</span>
+                            <span class="label">{{ $item['unit_price_label'] }}</span>
                             <div class="value">{{ $item['unit_price'] ?: '-' }}</div>
                         </div>
                         <div>
-                            <span class="label">Satır Toplamı</span>
+                            <span class="label">{{ $item['line_total_label'] }}</span>
                             <div class="value">{{ $item['line_total'] ?: '-' }}</div>
                         </div>
                     </div>
+
+                    @if($item['show_commercial_total'])
+                        <p class="muted" style="margin:12px 0 0;">{{ $item['commercial_total_label'] }}: {{ $item['commercial_total_value'] ?: '-' }}</p>
+                    @endif
 
                     @if(! empty($item['prints']))
                         <div class="print-list" style="margin-top:14px;">
@@ -173,8 +177,8 @@
                                         <p class="muted" style="margin:8px 0 0;">
                                             {{ $print['quantity'] }}
                                             @if($print['show_price_details'])
-                                                · Baskı Birim: {{ $print['unit_price'] ?: '-' }}
-                                                · Baskı Toplam: {{ $print['line_total'] ?: '-' }}
+                                                · Baskı Birim Fiyatı: {{ $print['unit_price'] ?: '-' }}
+                                                · Baskı Toplamı: {{ $print['line_total'] ?: '-' }}
                                             @endif
                                         </p>
                                     </div>

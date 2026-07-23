@@ -41,18 +41,19 @@ class PromotionQuoteLiveProductInfoUiTest extends TestCase
             ->get(route('admin.promotion-quotes.create'));
 
         $response->assertOk();
-        $response->assertSee('Canlı Ürün Bilgisi');
-        $response->assertSee('Güncel fiyat');
-        $response->assertSee('Güncel stok');
-        $response->assertSee('Son güncelleme');
-        $response->assertSee('Satış durumu');
-        $response->assertSee('pd-product-live-info__compact-grid', false);
-        $response->assertSee('pd-product-live-info__metric', false);
-        $response->assertSee('pd-product-live-info__header', false);
-        $response->assertSee('pd-product-live-info__status', false);
-        $response->assertSee('Uyarılar');
-        $response->assertSee('Ürün seçildiğinde canlı bilgi burada görünür.');
-        $response->assertSee('Canlı bilgi kontrol ediliyor...');
+        $response->assertDontSee('Canlı Ürün Bilgisi');
+        $response->assertSee('Güncel fiyat:');
+        $response->assertSee('Güncellendi:');
+        $response->assertSee('Kırmızı Ürün');
+        $response->assertSee('Kur bilgisi bulunamadı');
+        $response->assertSee('Teklifte kullanılamaz');
+        $response->assertDontSee('Kategori uyarısı');
+        $response->assertDontSee('Güncel fiyat farklı');
+        $response->assertSee('pd-product-live-info__meta-line', false);
+        $response->assertDontSee('pd-product-live-info__meta-row', false);
+        $response->assertDontSee('pd-product-live-info__meta-bit', false);
+        $response->assertSee('Ürün seçildiğinde güncel stok ve fiyat bilgisi burada görünür.');
+        $response->assertSee('Canlı ürün bilgisi güncelleniyor...');
         $response->assertSee('Canlı ürün bilgisi şu anda alınamadı.');
         $response->assertSee('data-live-product-info-box', false);
         $response->assertSee('data-live-product-info-endpoint=', false);
@@ -63,8 +64,16 @@ class PromotionQuoteLiveProductInfoUiTest extends TestCase
         $response->assertSee('function renderLiveProductInfoPanel(item = {}) {', false);
         $response->assertSee('async function ensureLiveProductInfo(item = {}) {', false);
         $response->assertSee('function buildLiveProductInfoWarnings(payload = {}) {', false);
-        $response->assertSee('Array.from(new Set(chips))', false);
         $response->assertSee('const liveProductInfoState = new Map();', false);
+        $response->assertDontSee('pd-product-live-info__compact-grid', false);
+        $response->assertDontSee('pd-product-live-info__metric', false);
+        $response->assertDontSee('pd-product-live-info__header', false);
+        $response->assertDontSee('pd-product-live-info__status', false);
+        $response->assertDontSee('Uyarılar');
+        $response->assertDontSee('Güncel stok');
+        $response->assertDontSee('Satış durumu');
+        $response->assertDontSee('Ürün güncel ve teklif için uygun.');
+        $this->assertLessThanOrEqual(1, substr_count($response->getContent(), 'Teklife uygun'));
         $response->assertDontSee('group_code', false);
         $response->assertDontSee('raw_payload', false);
         $response->assertDontSee('purchase_price', false);
@@ -87,11 +96,15 @@ class PromotionQuoteLiveProductInfoUiTest extends TestCase
             ->get(route('admin.promotion-quotes.edit', $fixture['quote']));
 
         $response->assertOk();
-        $response->assertSee('Canlı Ürün Bilgisi');
-        $response->assertSee('Güncel fiyat');
-        $response->assertSee('Güncel stok');
-        $response->assertSee('Satış durumu');
+        $response->assertDontSee('Canlı Ürün Bilgisi');
+        $response->assertSee('Güncel fiyat:');
+        $response->assertSee('Güncellendi:');
+        $response->assertSee('Kırmızı Ürün');
+        $response->assertDontSee('Kategori uyarısı');
+        $response->assertDontSee('Güncel fiyat farklı');
         $response->assertSee('data-live-product-info-box', false);
+        $response->assertSee('pd-product-live-info__meta-line', false);
+        $response->assertDontSee('pd-product-live-info__meta-row', false);
         $response->assertSee('"quote_item_id":' . $fixture['item']->id, false);
         $response->assertSee('"tenant_catalog_product_id":' . $fixture['catalog_product']->id, false);
         $response->assertSee('"tenant_catalog_product_variant_id":' . $fixture['catalog_variant']->id, false);
@@ -101,6 +114,10 @@ class PromotionQuoteLiveProductInfoUiTest extends TestCase
         $response->assertSee('data-quote-item-id="${escapeHtml(quoteItemId)}"', false);
         $response->assertSee('data-tenant-catalog-product-id="${escapeHtml(productId)}"', false);
         $response->assertSee('data-tenant-catalog-product-variant-id="${escapeHtml(variantId)}"', false);
+        $response->assertDontSee('pd-product-live-info__compact-grid', false);
+        $response->assertDontSee('pd-product-live-info__metric', false);
+        $response->assertDontSee('pd-product-live-info__header', false);
+        $response->assertDontSee('pd-product-live-info__status', false);
         $response->assertDontSee('raw_payload', false);
         $response->assertDontSee('purchase_price', false);
         $response->assertDontSee('supplier_price', false);
@@ -110,6 +127,7 @@ class PromotionQuoteLiveProductInfoUiTest extends TestCase
         $response->assertDontSee('Guncel fiyat');
         $response->assertDontSee('Guncel stok');
         $response->assertDontSee('Satis durumu');
+        $this->assertLessThanOrEqual(1, substr_count($response->getContent(), 'Teklife uygun'));
     }
 
     private function createQuoteWithCatalogItem(): array
@@ -288,6 +306,8 @@ class PromotionQuoteLiveProductInfoUiTest extends TestCase
             'line_total' => 650,
             'has_print' => true,
             'print_total' => 0,
+            'manual_unit_price' => true,
+            'warning_badges' => ['Kırmızı Ürün'],
             'status' => 'draft',
             'catalog_source' => 'supplier_projection',
             'product_snapshot' => [
@@ -301,6 +321,7 @@ class PromotionQuoteLiveProductInfoUiTest extends TestCase
             'price_snapshot' => [
                 'list_price' => 6.5,
                 'vat_rate' => 20,
+                'manual_unit_price' => true,
             ],
             'stock_snapshot' => [
                 'visible_stock_quantity' => 13600,

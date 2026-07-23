@@ -100,13 +100,34 @@ class CustomerPortalQuotePriceDisplayTest extends TestCase
             ->get('http://' . $this->tenantHost . '/musteri-portal/teklifler/' . $quote->id);
 
         $response->assertOk()
+            ->assertSee('Baskı Dahil Birim Fiyat')
+            ->assertSee('Baskı Dahil Satır Toplamı')
             ->assertSee('15,00 TL')
             ->assertSee('1.500,00 TL')
-            ->assertDontSee('Baskı Birim:')
-            ->assertDontSee('Baskı Toplam:')
+            ->assertDontSee('Baskı Birim Fiyatı:')
+            ->assertDontSee('Baskı Toplamı:')
             ->assertDontSee('supplier_cost')
             ->assertDontSee('profit')
             ->assertDontSee('group_code');
+    }
+
+    public function test_customer_portal_quote_shows_separate_product_and_print_prices_when_breakdown_is_visible(): void
+    {
+        $quote = $this->createQuote('TK-PORTAL-FIYAT-002', true);
+
+        $response = $this->actingAs($this->portalUser, 'customer_portal')
+            ->withServerVariables(['HTTP_HOST' => $this->tenantHost])
+            ->get('http://' . $this->tenantHost . '/musteri-portal/teklifler/' . $quote->id);
+
+        $response->assertOk()
+            ->assertSee('Ürün Birim Fiyatı')
+            ->assertSee('Ürün Toplamı')
+            ->assertSee('5,00 TL')
+            ->assertSee('500,00 TL')
+            ->assertSee('Ürün + Baskı Toplamı')
+            ->assertSee('1.500,00 TL')
+            ->assertSee('Baskı Birim Fiyatı: 10,00 TL')
+            ->assertSee('Baskı Toplamı: 1.000,00 TL');
     }
 
     private function createQuote(string $documentNumber, bool $showPrintPriceDetails): Order

@@ -257,6 +257,7 @@ class FullOperationalFlowSmokeTest extends TestCase
                 'cliche_required' => '0',
                 'cliche_status' => OrderItemPrintProduction::CLICHE_NOT_REQUIRED,
                 'production_note' => 'İç hatta hazırlanıyor.',
+                'return_to' => 'show',
             ])
             ->assertRedirect(route('admin.productions.show', $internalProduction));
 
@@ -266,6 +267,7 @@ class FullOperationalFlowSmokeTest extends TestCase
                 'action' => 'assign_internal',
                 'production_unit_name' => 'UV Hattı 1',
                 'note' => 'İç üretime alındı',
+                'return_to' => 'show',
             ])
             ->assertRedirect(route('admin.productions.show', $internalProduction));
 
@@ -273,6 +275,7 @@ class FullOperationalFlowSmokeTest extends TestCase
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->patch(route('admin.productions.update-status', $internalProduction), [
                 'action' => 'completed',
+                'return_to' => 'show',
             ])
             ->assertRedirect(route('admin.productions.show', $internalProduction));
 
@@ -282,6 +285,7 @@ class FullOperationalFlowSmokeTest extends TestCase
                 'action' => 'assign_external',
                 'production_company_id' => $partner->id,
                 'note' => 'Fason hazırlığı',
+                'return_to' => 'show',
             ])
             ->assertRedirect(route('admin.productions.show', $externalProduction));
 
@@ -290,6 +294,7 @@ class FullOperationalFlowSmokeTest extends TestCase
             ->patch(route('admin.productions.update-status', $externalProduction), [
                 'action' => 'sent_to_subcontractor',
                 'note' => 'Fasona çıktı',
+                'return_to' => 'show',
             ])
             ->assertRedirect(route('admin.productions.show', $externalProduction));
 
@@ -298,6 +303,7 @@ class FullOperationalFlowSmokeTest extends TestCase
             ->patch(route('admin.productions.update-status', $externalProduction), [
                 'action' => 'returned_from_subcontractor',
                 'note' => 'Fasondan döndü',
+                'return_to' => 'show',
             ])
             ->assertRedirect(route('admin.productions.show', $externalProduction));
 
@@ -305,6 +311,7 @@ class FullOperationalFlowSmokeTest extends TestCase
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->patch(route('admin.productions.update-status', $externalProduction), [
                 'action' => 'qc_started',
+                'return_to' => 'show',
             ])
             ->assertRedirect(route('admin.productions.show', $externalProduction));
 
@@ -313,6 +320,7 @@ class FullOperationalFlowSmokeTest extends TestCase
             ->patch(route('admin.productions.update-status', $externalProduction), [
                 'action' => 'qc_failed',
                 'note' => 'Yüzey tekrar kontrol edilecek',
+                'return_to' => 'show',
             ])
             ->assertRedirect(route('admin.productions.show', $externalProduction));
 
@@ -320,6 +328,7 @@ class FullOperationalFlowSmokeTest extends TestCase
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->patch(route('admin.productions.update-status', $externalProduction), [
                 'action' => 'qc_started',
+                'return_to' => 'show',
             ])
             ->assertRedirect(route('admin.productions.show', $externalProduction));
 
@@ -327,6 +336,7 @@ class FullOperationalFlowSmokeTest extends TestCase
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->patch(route('admin.productions.update-status', $externalProduction), [
                 'action' => 'qc_passed',
+                'return_to' => 'show',
             ])
             ->assertRedirect(route('admin.productions.show', $externalProduction));
 
@@ -336,6 +346,7 @@ class FullOperationalFlowSmokeTest extends TestCase
             ->patch(route('admin.productions.update-status', $externalProduction), [
                 'action' => 'completed',
                 'completed_quantity' => '999',
+                'return_to' => 'show',
             ])
             ->assertRedirect(route('admin.productions.show', $externalProduction))
             ->assertSessionHasErrors('completed_quantity');
@@ -344,6 +355,7 @@ class FullOperationalFlowSmokeTest extends TestCase
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->patch(route('admin.productions.update-status', $externalProduction), [
                 'action' => 'completed',
+                'return_to' => 'show',
             ])
             ->assertRedirect(route('admin.productions.show', $externalProduction));
 
@@ -381,7 +393,7 @@ class FullOperationalFlowSmokeTest extends TestCase
             ->post(route('admin.finance.payments.store', $order), [
                 'payment_type' => OrderPayment::TYPE_COLLECTION,
                 'amount' => '100.00',
-                'currency' => 'TL',
+                'currency' => 'TRY',
                 'payment_method' => OrderPayment::METHOD_BANK_TRANSFER,
                 'paid_at' => '2026-06-13T12:30',
                 'payment_reference' => 'FULL-001',
@@ -654,7 +666,7 @@ class FullOperationalFlowSmokeTest extends TestCase
             ->post(route('admin.finance.payments.store', $order), [
                 'payment_type' => OrderPayment::TYPE_COLLECTION,
                 'amount' => '50',
-                'currency' => 'TL',
+                'currency' => 'TRY',
             ])
             ->assertForbidden();
 

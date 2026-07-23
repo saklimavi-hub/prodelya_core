@@ -83,8 +83,8 @@ class DemoTenantFullAccessTest extends TestCase
             ->values()
             ->all();
 
-        $this->assertContains('Müşteri Portalı', $tenantLabels);
-        $this->assertContains('Bildirim Merkezi', $tenantLabels);
+        $this->assertContains('Teklifler', $tenantLabels);
+        $this->assertContains('Cari Kartlar', $tenantLabels);
         $this->assertNotContains('Product Data Hub', $tenantLabels);
         $this->assertNotContains('Kalite Kontrol', $tenantLabels);
     }

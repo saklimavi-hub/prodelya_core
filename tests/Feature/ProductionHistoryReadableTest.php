@@ -30,7 +30,7 @@ class ProductionHistoryReadableTest extends TestCase
                 'production_unit_name' => 'İç Üretim Hattı',
                 'note' => 'Makine hazırlığı tamamlandı.',
             ])
-            ->assertRedirect(route('admin.productions.show', $production));
+            ->assertRedirect(route('admin.productions.operator', $production));
 
         $response = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::PRODUCTION_SHOW_HOST])

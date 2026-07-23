@@ -165,7 +165,7 @@ class CustomerPortalVisibleFilesTest extends TestCase
             ->get($this->tenantUrl('/musteri-portal/siparisler/' . $order->id));
 
         $orderDetail->assertOk()
-            ->assertSee('Müşteri Dosyaları')
+            ->assertSee('Dosyayı Görüntüle')
             ->assertSee('portal-visible.pdf')
             ->assertSee('portal-visible.jpg')
             ->assertDontSee('portal-internal.pdf')
@@ -222,7 +222,7 @@ class CustomerPortalVisibleFilesTest extends TestCase
             ->get($this->tenantUrl('/musteri-portal/siparisler/' . $order->id));
 
         $orderDetailWithoutFiles->assertOk()
-            ->assertDontSee('Müşteri Dosyaları')
+            ->assertDontSee('Dosyayı Görüntüle')
             ->assertDontSee('guard-visible.pdf');
 
         $this->enableVisibleFilesFeature();

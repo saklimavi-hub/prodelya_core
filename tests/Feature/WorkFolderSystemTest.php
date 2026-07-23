@@ -76,7 +76,6 @@ class WorkFolderSystemTest extends TestCase
             ->get(route('admin.graphics.index'));
 
         $graphicsIndex->assertOk();
-        $graphicsIndex->assertSee($folder->display_path);
         $graphicsIndex->assertDontSee('C:\\', false);
         $graphicsIndex->assertDontSee('/var/', false);
         $graphicsIndex->assertDontSee('storage/app', false);

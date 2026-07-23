@@ -22,6 +22,7 @@ use App\Services\ProductFieldDictionaryService;
 use App\Services\ProductDataHub\PreviewParserService;
 use App\Services\ProductDataHub\ProductHubSyncDecisionService;
 use App\Services\ProductDataHub\PozitronSourceProvisioningService;
+use App\Services\ProductDataHub\ProductHubSourceOnboardingPresenter;
 use App\Services\ProductDataHub\RawProductStagingService;
 use App\Services\ProductDataHub\SensitiveDataMasker;
 use App\Services\ProductDataHub\SourceFetchService;
@@ -30,6 +31,7 @@ use App\Services\ProductDataHub\SupplierSourceSyncService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -48,6 +50,7 @@ class SuperAdminSupplierSourceController extends Controller
         private readonly PreviewParserService $previewParser,
         private readonly ProductHubSyncDecisionService $productHubSyncDecisionService,
         private readonly PozitronSourceProvisioningService $pozitronProvisioning,
+        private readonly ProductHubSourceOnboardingPresenter $sourceOnboardingPresenter,
         private readonly RawProductStagingService $rawProductStaging,
         private readonly SensitiveDataMasker $sensitiveDataMasker,
         private readonly SourceFetchService $sourceFetch,
@@ -58,7 +61,7 @@ class SuperAdminSupplierSourceController extends Controller
         // $this->middleware('permission:manage_product_data_hub');
     }
 
-    public function index(Request $request): View
+        public function index(Request $request): View
     {
         $requestedFilter = trim((string) $request->query('filter', ''));
         $showTemp = $request->boolean('show_temp');
@@ -66,7 +69,7 @@ class SuperAdminSupplierSourceController extends Controller
             ? $requestedFilter
             : ($showTemp ? 'temp' : 'active');
         $allSources = $this->buildHydratedSourceFlowCollection();
-        $sources = match ($activeFilter) {
+        $scopeSources = match ($activeFilter) {
             'temp' => $allSources->filter(fn (SupplierSource $source) => (bool) ($source->is_temp_profile ?? false))->values(),
             'archived' => $allSources->filter(fn (SupplierSource $source) => (bool) ($source->is_archived ?? false))->values(),
             'inactive' => $allSources->filter(fn (SupplierSource $source) => $source->status === 'inactive' && !(bool) ($source->is_archived ?? false) && !(bool) ($source->is_temp_profile ?? false))->values(),
@@ -78,21 +81,127 @@ class SuperAdminSupplierSourceController extends Controller
             })->values(),
         };
 
-        $stats = [
-            'total' => $allSources->count(),
-            'active' => $allSources->where('status', 'active')->count(),
-            'inactive' => $allSources->where('status', 'inactive')->count(),
-            'error' => $allSources->where('status', 'error')->count(),
-            'ready' => $allSources->where('is_ready', true)->count(),
-            'temp' => $allSources->where('is_temp_profile', true)->count(),
-            'url_missing' => $allSources->where('has_location', false)->count(),
-            'mapping_missing' => $allSources->where('has_field_mappings', false)->count(),
-            'visible_total' => $sources->count(),
+        $presentedSources = $scopeSources
+            ->map(fn (SupplierSource $source) => $this->sourceOnboardingPresenter->present($source))
+            ->values();
+
+        $search = trim((string) $request->query('search', ''));
+        $statusFilter = trim((string) $request->query('status', 'all'));
+        $formatFilter = trim((string) $request->query('format', 'all'));
+        $readinessFilter = trim((string) $request->query('readiness', 'all'));
+        $sort = trim((string) $request->query('sort', 'supplier'));
+        $perPage = (int) $request->query('per_page', 20);
+        if (!in_array($perPage, [20, 40, 80], true)) {
+            $perPage = 20;
+        }
+
+        $filteredSources = $presentedSources->filter(function (array $source) use ($search, $statusFilter, $formatFilter, $readinessFilter) {
+            $matchesSearch = $search === ''
+                || str_contains(Str::lower($source['supplier_name'] . ' ' . $source['source_name'] . ' ' . $source['profile_key']), Str::lower($search));
+            $matchesStatus = $statusFilter === 'all' || $source['state_key'] === $statusFilter;
+            $matchesFormat = $formatFilter === 'all' || Str::lower($source['format_label']) === Str::lower($formatFilter);
+            $matchesReadiness = match ($readinessFilter) {
+                '80' => $source['readiness_percent'] >= 80,
+                '60' => $source['readiness_percent'] >= 60,
+                'below60' => $source['readiness_percent'] < 60,
+                default => true,
+            };
+
+            return $matchesSearch && $matchesStatus && $matchesFormat && $matchesReadiness;
+        })->values();
+
+        $sortedSources = match ($sort) {
+            'supplier_desc' => $filteredSources->sortByDesc(fn (array $source) => $source['supplier_name'] . ' ' . $source['source_name'])->values(),
+            'readiness' => $filteredSources->sortByDesc('readiness_percent')->values(),
+            'state' => $filteredSources->sortBy(fn (array $source) => $source['state_label'] . ' ' . $source['supplier_name'])->values(),
+            default => $filteredSources->sortBy(fn (array $source) => $source['supplier_name'] . ' ' . $source['source_name'])->values(),
+        };
+
+        $totalVisible = $sortedSources->count();
+        $currentPage = max((int) $request->query('page', 1), 1);
+        $pageItems = $sortedSources->forPage($currentPage, $perPage)->values();
+
+        if ($pageItems->isEmpty() && $totalVisible > 0 && $currentPage > 1) {
+            $currentPage = 1;
+            $pageItems = $sortedSources->forPage($currentPage, $perPage)->values();
+        }
+
+        $sources = new LengthAwarePaginator(
+            $pageItems,
+            $totalVisible,
+            $perPage,
+            $currentPage,
+            [
+                'path' => $request->url(),
+                'query' => $request->query(),
+            ]
+        );
+        $sources->appends($request->query());
+
+        $selectedSourceId = $request->integer('source_id') ?: $request->integer('source') ?: null;
+        $selectedSource = $selectedSourceId
+            ? $pageItems->firstWhere('id', $selectedSourceId)
+            : null;
+        if ($selectedSource === null) {
+            $selectedSource = $pageItems->first();
+        }
+        $selectedSourceOnboarding = $selectedSource;
+
+        $visibleSourceIds = $sortedSources->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $visibleModelSources = $scopeSources
+            ->filter(fn (SupplierSource $source) => in_array((int) $source->id, $visibleSourceIds, true))
+            ->values();
+        $suppliers = $visibleModelSources
+            ->groupBy('supplier_id')
+            ->map(function (Collection $group) {
+                $first = $group->first();
+
+                return [
+                    'supplier' => $first?->supplier,
+                    'source_count' => $group->count(),
+                    'sources' => $group->values(),
+                ];
+            })
+            ->values();
+
+        $tabCounts = [
+            'active' => $allSources->filter(fn (SupplierSource $source) => $source->status === 'active' && !(bool) ($source->is_temp_profile ?? false) && !(bool) ($source->is_archived ?? false))->count(),
+            'temp' => $allSources->filter(fn (SupplierSource $source) => (bool) ($source->is_temp_profile ?? false))->count(),
+            'inactive' => $allSources->filter(fn (SupplierSource $source) => $source->status === 'inactive' && !(bool) ($source->is_archived ?? false) && !(bool) ($source->is_temp_profile ?? false))->count(),
+            'archived' => $allSources->filter(fn (SupplierSource $source) => (bool) ($source->is_archived ?? false))->count(),
+            'all' => $allSources->count(),
         ];
 
-        $suppliers = $this->buildSupplierSummaries($sources, $request);
+        $stats = [
+            'active' => $scopeSources->where('status', 'active')->count(),
+            'setup_missing' => $presentedSources->where('state_key', 'source_info_missing')->count(),
+            'connection_check' => $presentedSources->where('state_key', 'connection_check_required')->count(),
+            'preview_required' => $presentedSources->where('state_key', 'preview_required')->count(),
+            'mapping_required' => $presentedSources->where('state_key', 'mapping_required')->count(),
+            'first_import_ready' => $presentedSources->where('state_key', 'first_import_ready')->count(),
+            'active_sync' => $presentedSources->where('state_key', 'active_sync')->count(),
+            'visible_total' => $totalVisible,
+            'url_missing' => $visibleModelSources->filter(fn (SupplierSource $source) => blank($source->url) && blank(data_get($source, 'config.source_file_path')))->count(),
+        ];
 
-        return view('super-admin.product-data-hub.sources.index', compact('suppliers', 'stats', 'showTemp', 'activeFilter'));
+        return view('super-admin.product-data-hub.sources.index', [
+            'activeFilter' => $activeFilter,
+            'filters' => [
+                'search' => $search,
+                'status' => $statusFilter,
+                'format' => $formatFilter,
+                'readiness' => $readinessFilter,
+                'sort' => $sort,
+                'per_page' => $perPage,
+            ],
+            'selectedSource' => $selectedSource,
+            'selectedSourceOnboarding' => $selectedSourceOnboarding,
+            'showTemp' => $showTemp,
+            'sources' => $sources,
+            'stats' => $stats,
+            'suppliers' => $suppliers,
+            'tabCounts' => $tabCounts,
+        ]);
     }
 
     public function showSupplier(Request $request, Supplier $supplier): View
@@ -376,29 +485,29 @@ class SuperAdminSupplierSourceController extends Controller
         $latestSyncStatus = $latestSync?->normalizedStatus();
 
         $previewStep = match (true) {
-            !$latestPreview => $this->flowStep('preview', 'Önizleme', 'İlk kayıtları canlı kaynaktan okuyarak yapı ve örnek değerleri kontrol eder.', 'missing', 'Eksik', 'Henüz preview alınmadı.'),
-            $previewMode === 'success' => $this->flowStep('preview', 'Önizleme', 'İlk kayıtları canlı kaynaktan okuyarak yapı ve örnek değerleri kontrol eder.', 'ready', 'Hazır', 'Son preview canlı kaynaktan başarılı alındı.'),
-            $previewMode === 'fallback' => $this->flowStep('preview', 'Önizleme', 'İlk kayıtları canlı kaynaktan okuyarak yapı ve örnek değerleri kontrol eder.', 'warning', 'Uyarı', 'Demo fallback gösteriliyor; canlı kaynak gibi değerlendirilmemeli.'),
-            default => $this->flowStep('preview', 'Önizleme', 'İlk kayıtları canlı kaynaktan okuyarak yapı ve örnek değerleri kontrol eder.', 'error', 'Hata', 'Son preview denemesi sorunlu görünüyor.'),
+            !$latestPreview => $this->flowStep('preview', 'Örnek Ürün Ön Kontrolü', 'İlk kayıtları canlı kaynaktan okuyarak yapı ve örnek değerleri kontrol eder.', 'missing', 'Eksik', 'Henüz ön kontrol alınmadı.'),
+            $previewMode === 'success' => $this->flowStep('preview', 'Örnek Ürün Ön Kontrolü', 'İlk kayıtları canlı kaynaktan okuyarak yapı ve örnek değerleri kontrol eder.', 'ready', 'Hazır', 'Son ön kontrol canlı kaynaktan başarılı alındı.'),
+            $previewMode === 'fallback' => $this->flowStep('preview', 'Örnek Ürün Ön Kontrolü', 'İlk kayıtları canlı kaynaktan okuyarak yapı ve örnek değerleri kontrol eder.', 'warning', 'Uyarı', 'Demo fallback gösteriliyor; canlı kaynak gibi değerlendirilmemeli.'),
+            default => $this->flowStep('preview', 'Örnek Ürün Ön Kontrolü', 'İlk kayıtları canlı kaynaktan okuyarak yapı ve örnek değerleri kontrol eder.', 'error', 'Hata', 'Son ön kontrol denemesi sorunlu görünüyor.'),
         };
 
         $fieldMappingStep = match (true) {
-            $missingRequiredCount === 0 && (int) ($source->field_mappings_count ?? 0) > 0 => $this->flowStep('field_mapping', 'Alan Eşleme', 'Tedarikçi alanlarını Prodelya standart alanlarına bağlar.', 'ready', 'Hazır', 'Zorunlu alanlar tamam.'),
-            (int) ($source->field_mappings_count ?? 0) > 0 => $this->flowStep('field_mapping', 'Alan Eşleme', 'Tedarikçi alanlarını Prodelya standart alanlarına bağlar.', 'warning', 'Uyarı', $missingRequiredCount . ' zorunlu alan eksik.'),
-            default => $this->flowStep('field_mapping', 'Alan Eşleme', 'Tedarikçi alanlarını Prodelya standart alanlarına bağlar.', 'missing', 'Eksik', 'Alan eşleme henüz kaydedilmedi.'),
+            $missingRequiredCount === 0 && (int) ($source->field_mappings_count ?? 0) > 0 => $this->flowStep('field_mapping', 'Alan Eşleme', 'Tedarikçi alanlarını katalog alanlarına bağlar.', 'ready', 'Hazır', 'Zorunlu alanlar tamam.'),
+            (int) ($source->field_mappings_count ?? 0) > 0 => $this->flowStep('field_mapping', 'Alan Eşleme', 'Tedarikçi alanlarını katalog alanlarına bağlar.', 'warning', 'Uyarı', $missingRequiredCount . ' zorunlu alan eksik.'),
+            default => $this->flowStep('field_mapping', 'Alan Eşleme', 'Tedarikçi alanlarını katalog alanlarına bağlar.', 'missing', 'Eksik', 'Alan eşleme henüz kaydedilmedi.'),
         };
 
         $categoryStep = match (true) {
-            (int) ($source->category_mappings_count ?? 0) === 0 => $this->flowStep('category', 'Kategori', 'Tedarikçi kategorilerini Prodelya standart kategori ağacına eşler.', 'missing', 'Eksik', 'Kategori eşleme henüz başlamadı.'),
-            $categoryPendingCount > 0 => $this->flowStep('category', 'Kategori', 'Tedarikçi kategorilerini Prodelya standart kategori ağacına eşler.', 'warning', 'Uyarı', $categoryPendingCount . ' kategori eşleşmemiş kaydı var.'),
-            default => $this->flowStep('category', 'Kategori', 'Tedarikçi kategorilerini Prodelya standart kategori ağacına eşler.', 'ready', 'Hazır', 'Kategori eşleme kuyruğu temiz görünüyor.'),
+            (int) ($source->category_mappings_count ?? 0) === 0 => $this->flowStep('category', 'Kategori', 'Tedarikçi kategorilerini kalıcı kategori ağacına eşler.', 'missing', 'Eksik', 'Kategori eşleme henüz başlamadı.'),
+            $categoryPendingCount > 0 => $this->flowStep('category', 'Kategori', 'Tedarikçi kategorilerini kalıcı kategori ağacına eşler.', 'warning', 'Uyarı', $categoryPendingCount . ' kategori eşleşmemiş kaydı var.'),
+            default => $this->flowStep('category', 'Kategori', 'Tedarikçi kategorilerini kalıcı kategori ağacına eşler.', 'ready', 'Hazır', 'Kategori eşleme kuyruğu temiz görünüyor.'),
         };
 
-        $qualityStep = match (true) {
-            !$hasLocation || $missingRequiredCount > 0 => $this->flowStep('quality', 'Kalite Kontrol', 'Görsel, fiyat, stok, varyant ve uyarıları kontrol eder.', 'error', 'Hata', 'Kaynak veya zorunlu alanlar eksik olduğu için kalite kapısı bloklu.'),
-            $warningProductCount > 0 || $categoryPendingCount > 0 || $syncErrors > 0 => $this->flowStep('quality', 'Kalite Kontrol', 'Görsel, fiyat, stok, varyant ve uyarıları kontrol eder.', 'warning', 'Uyarı', trim($warningProductCount . ' uyarılı ürün, ' . $categoryPendingCount . ' kategori eşleşmemiş kaydı, ' . $syncErrors . ' son işlem hatası.')),
-            $rawProductCount > 0 || $standardProductCount > 0 => $this->flowStep('quality', 'Kalite Kontrol', 'Görsel, fiyat, stok, varyant ve uyarıları kontrol eder.', 'ready', 'Hazır', 'Kritik kalite uyarısı görünmüyor.'),
-            default => $this->flowStep('quality', 'Kalite Kontrol', 'Görsel, fiyat, stok, varyant ve uyarıları kontrol eder.', 'missing', 'Eksik', 'Kalite kontrolü için henüz ürün akışı yok.'),
+        $connectionStep = match (true) {
+            !$hasLocation => $this->flowStep('connection', 'Bağlantı / Dosya Kontrolü', 'Bağlantı veya yerel dosya bilgisi kayıt oluşturmadan doğrulanır.', 'missing', 'Eksik', 'Bağlantı veya dosya bilgisi eksik.'),
+            $latestPreview && $previewMode === 'error' => $this->flowStep('connection', 'Bağlantı / Dosya Kontrolü', 'Bağlantı veya yerel dosya bilgisi kayıt oluşturmadan doğrulanır.', 'error', 'Hata', 'Son kontrol sorunlu görünüyor.'),
+            $latestPreview || $latestSync => $this->flowStep('connection', 'Bağlantı / Dosya Kontrolü', 'Bağlantı veya yerel dosya bilgisi kayıt oluşturmadan doğrulanır.', 'ready', 'Hazır', 'Son bağlantı veya dosya kontrolü alınmış görünüyor.'),
+            default => $this->flowStep('connection', 'Bağlantı / Dosya Kontrolü', 'Bağlantı veya yerel dosya bilgisi kayıt oluşturmadan doğrulanır.', 'warning', 'Uyarı', 'Bağlantı veya dosya kontrolü bekleniyor.'),
         };
 
         $standardPoolStep = match (true) {
@@ -409,25 +518,25 @@ class SuperAdminSupplierSourceController extends Controller
 
         $catalogStep = match (true) {
             $tenantAccessCount > 0 && $tenantCatalogProductCount > 0 => $this->flowStep('catalog_projection', 'Abone Katalog Yayını', 'Ürünlerin Abone Firma kataloglarına yansıtılma durumudur.', ($source->projection_pending ?? false) ? 'warning' : 'ready', ($source->projection_pending ?? false) ? 'Uyarı' : 'Hazır', $tenantCatalogProductCount . ' katalog ürünü yansımış.'),
-            $standardProductCount > 0 && $tenantAccessCount > 0 => $this->flowStep('catalog_projection', 'Abone Katalog Yayını', 'Ürünlerin Abone Firma kataloglarına yansıtılma durumudur.', 'warning', 'Uyarı', 'Erişim var ama projection bekliyor.'),
+            $standardProductCount > 0 && $tenantAccessCount > 0 => $this->flowStep('catalog_projection', 'Abone Katalog Yayını', 'Ürünlerin Abone Firma kataloglarına yansıtılma durumudur.', 'warning', 'Uyarı', 'Uygun ürünler, Abone Firmanın aktif tedarikçi erişimine göre kataloğa otomatik yansır.'),
             $standardProductCount > 0 => $this->flowStep('catalog_projection', 'Abone Katalog Yayını', 'Ürünlerin Abone Firma kataloglarına yansıtılma durumudur.', 'missing', 'Eksik', 'Önce Abone Firma tedarikçi erişimi tanımlanmalı.'),
-            default => $this->flowStep('catalog_projection', 'Abone Katalog Yayını', 'Ürünlerin Abone Firma kataloglarına yansıtılma durumudur.', 'missing', 'Eksik', 'Projection için standart havuz hazır değil.'),
+            default => $this->flowStep('catalog_projection', 'Abone Katalog Yayını', 'Ürünlerin Abone Firma kataloglarına yansıtılma durumudur.', 'missing', 'Eksik', 'Katalog yansıması için ürün havuzu hazır değil.'),
         };
 
         $reportStep = match (true) {
-            $latestSyncStatus === ProductDataHubSyncRun::STATUS_RUNNING => $this->flowStep('report', 'Rapor', 'Son preview, sync, hata ve uyarı raporlarıdır.', 'error', 'Hata', 'Son sync çalışıyor; stuck kontrolü gerekebilir.'),
-            $latestSyncStatus === ProductDataHubSyncRun::STATUS_STUCK => $this->flowStep('report', 'Rapor', 'Son preview, sync, hata ve uyarı raporlarıdır.', 'error', 'Hata', 'Son sync stuck olarak işaretlendi; recovery incelemesi önerilir.'),
-            $latestSyncStatus === ProductDataHubSyncRun::STATUS_FAILED => $this->flowStep('report', 'Rapor', 'Son preview, sync, hata ve uyarı raporlarıdır.', 'error', 'Hata', 'Son sync hatalı tamamlandı.'),
-            $latestPreview || $latestSync => $this->flowStep('report', 'Rapor', 'Son preview, sync, hata ve uyarı raporlarıdır.', 'ready', 'Hazır', 'Preview veya sync raporu mevcut.'),
-            default => $this->flowStep('report', 'Rapor', 'Son preview, sync, hata ve uyarı raporlarıdır.', 'missing', 'Eksik', 'Henüz rapor oluşmadı.'),
+            $latestSyncStatus === ProductDataHubSyncRun::STATUS_RUNNING => $this->flowStep('report', 'Bekleyen Kontroller', 'Son ön kontrol, senkron, hata ve uyarı raporlarıdır.', 'error', 'Hata', 'Son sync çalışıyor; stuck kontrolü gerekebilir.'),
+            $latestSyncStatus === ProductDataHubSyncRun::STATUS_STUCK => $this->flowStep('report', 'Bekleyen Kontroller', 'Son ön kontrol, senkron, hata ve uyarı raporlarıdır.', 'error', 'Hata', 'Son sync stuck olarak işaretlendi; recovery incelemesi önerilir.'),
+            $latestSyncStatus === ProductDataHubSyncRun::STATUS_FAILED => $this->flowStep('report', 'Bekleyen Kontroller', 'Son ön kontrol, senkron, hata ve uyarı raporlarıdır.', 'error', 'Hata', 'Son sync hatalı tamamlandı.'),
+            $latestPreview || $latestSync => $this->flowStep('report', 'Bekleyen Kontroller', 'Son ön kontrol, senkron, hata ve uyarı raporlarıdır.', 'ready', 'Hazır', 'Ön kontrol veya senkron raporu mevcut.'),
+            default => $this->flowStep('report', 'Bekleyen Kontroller', 'Son ön kontrol, senkron, hata ve uyarı raporlarıdır.', 'missing', 'Eksik', 'Henüz rapor oluşmadı.'),
         };
 
         $steps = [
-            $this->flowStep('source', 'Kaynak', 'XML, JSON, API veya CSV bağlantısı.', $hasLocation ? 'ready' : 'missing', $hasLocation ? 'Hazır' : 'Eksik', $hasLocation ? 'URL veya dosya yolu tanımlı.' : 'URL veya dosya yolu eksik.'),
-            $previewStep,
+            $this->flowStep('source', 'Kaynak Bilgileri', 'XML, JSON, API veya CSV bağlantı ya da dosya bilgisi.', $hasLocation ? 'ready' : 'missing', $hasLocation ? 'Hazır' : 'Eksik', $hasLocation ? 'Bağlantı veya dosya bilgisi tanımlı.' : 'Bağlantı veya dosya bilgisi eksik.'),
+            $connectionStep,
             $fieldMappingStep,
             $categoryStep,
-            $qualityStep,
+            $previewStep,
             $standardPoolStep,
             $catalogStep,
             $reportStep,

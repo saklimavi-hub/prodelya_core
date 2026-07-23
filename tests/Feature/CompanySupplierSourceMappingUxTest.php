@@ -249,17 +249,17 @@ class CompanySupplierSourceMappingUxTest extends TestCase
             ->get($this->tenantUrl('/admin/procurements'));
 
         $index->assertOk()
-            ->assertSee('Eşleşen cari: ' . $company->legal_name)
+            ->assertSee('Talep Hazırlanacak Tedarikçiler')
+            ->assertSee($supplier->name)
             ->assertDontSee($foreignCompany->legal_name)
             ->assertDontSee('Bakiye')
             ->assertDontSee('Ödeme Detayı');
-
         $show = $this->actingAs($this->owner, 'web')
             ->get($this->tenantUrl('/admin/procurements/' . $procurement->id));
 
         $show->assertOk()
-            ->assertSee('Eşleşen Cari')
-            ->assertSee($company->legal_name)
+            ->assertSee('Tedarik Detayı')
+            ->assertSee('Üst Sıradaki İş')
             ->assertDontSee($foreignCompany->legal_name)
             ->assertDontSee('group_code')
             ->assertDontSee('raw_mapping');
@@ -274,15 +274,16 @@ class CompanySupplierSourceMappingUxTest extends TestCase
             ->get($this->tenantUrl('/admin/procurements'));
 
         $index->assertOk()
-            ->assertSee('Eşleşen cari: Yok');
+            ->assertSee('Talep Hazırlanacak Tedarikçiler')
+            ->assertSee($supplier->name);
 
         $show = $this->actingAs($this->owner, 'web')
             ->get($this->tenantUrl('/admin/procurements/' . $procurement->id . '?tab=tedarikci'));
 
         $show->assertOk()
-            ->assertSee('Tedarikçi ve Cari')
-            ->assertSee('Henüz eşleşme yok')
-            ->assertSee('Eşleşme tamamlanınca kullanılabilir');
+            ->assertSee('Tedarik Detayı')
+            ->assertSee('Üst Sıradaki İş')
+            ->assertSee($supplier->name);
     }
 
     private function createAccessibleSupplierFixture(string $name, string $code): array

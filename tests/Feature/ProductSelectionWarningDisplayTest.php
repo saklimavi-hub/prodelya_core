@@ -9,6 +9,7 @@ use App\Models\Supplier;
 use App\Models\SupplierSource;
 use App\Models\TenantCatalogProduct;
 use App\Models\TenantCatalogProductVariant;
+use App\Models\TenantLocalStock;
 use App\Models\TenantAccount;
 use App\Models\TenantSupplierAccess;
 use App\Models\User;
@@ -382,7 +383,7 @@ class ProductSelectionWarningDisplayTest extends TestCase
         $response->assertSee('Birim Fiyat');
         $response->assertSee('Toplam');
         $response->assertSee('Baskı');
-        $response->assertSee('Ürün kodu ürün seçilince otomatik gelir');
+        $response->assertSee('Toplamlar teklif kalemleri değiştikçe anında güncellenir.');
         $response->assertSee('Ürün Toplamı');
         $response->assertSee('Baskı Toplamı');
         $response->assertSee('Ara Toplam');
@@ -605,6 +606,23 @@ class ProductSelectionWarningDisplayTest extends TestCase
             'local_stock_priority' => true,
             'visible_in_quote' => true,
         ])->save();
+
+        $catalogVariant = TenantCatalogProductVariant::query()
+            ->where('tenant_catalog_product_id', $catalogProduct->id)
+            ->firstOrFail();
+
+        TenantLocalStock::query()->create([
+            'tenant_account_id' => $catalogProduct->tenant_account_id,
+            'tenant_catalog_product_id' => $catalogProduct->id,
+            'tenant_catalog_product_variant_id' => $catalogVariant->id,
+            'stock_scope' => 'variant',
+            'warehouse_code' => 'TEST-LOCAL',
+            'quantity_on_hand' => 12,
+            'quantity_reserved' => 0,
+            'quantity_available' => 12,
+            'reorder_level' => 0,
+            'legacy_assignment_status' => null,
+        ]);
 
         $searchResponse = $this->actingAs($this->tenantUser)
             ->getJson($this->tenantUrl('/admin/catalog/search?q=PB-4007'))
@@ -1331,6 +1349,7 @@ class ProductSelectionWarningDisplayTest extends TestCase
             'source_summary' => [],
         ])->save();
 
+
         $response = $this->actingAs($this->tenantUser)
             ->getJson($this->tenantUrl('/admin/catalog/search?q=PB-4007'));
 
@@ -1591,6 +1610,7 @@ class ProductSelectionWarningDisplayTest extends TestCase
             'config' => $config,
             'status' => 'active',
         ])->save();
+
     }
 
     private function etkinFixtureXml(): string

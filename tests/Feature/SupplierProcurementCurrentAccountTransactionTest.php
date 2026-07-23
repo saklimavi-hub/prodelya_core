@@ -111,6 +111,8 @@ class SupplierProcurementCurrentAccountTransactionTest extends TestCase
             'requested_quantity' => 100,
             'purchase_list_price' => 8.50,
             'discount_rate' => 10,
+            'purchase_unit_price' => 7.65,
+            'use_calculated_price' => 0,
             'note' => 'Guncel tutar',
         ]], $this->adminUser);
 

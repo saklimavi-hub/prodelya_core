@@ -609,7 +609,10 @@ class AdminSmokeTest extends TestCase
         $customer = Company::where('legal_name', 'ABC İnşaat A.Ş.')->firstOrFail();
 
         $response = $this->actingAs($this->tenantUser)
-            ->postOnCentralHost('/admin/promotion-quotes', [
+            ->withServerVariables([
+                'HTTP_HOST' => $this->tenantHost(),
+            ])
+            ->post('/admin/promotion-quotes', [
                 'customer_company_id' => $customer->id,
                 'quote_date' => now()->format('Y-m-d'),
                 'valid_until' => now()->addWeek()->format('Y-m-d'),
@@ -647,7 +650,7 @@ class AdminSmokeTest extends TestCase
             'id' => $order->id,
             'document_type' => 'quote',
             'order_family' => 'promotion',
-            'currency' => 'TL',
+            'currency' => 'TRY',
         ]);
     }
 
@@ -896,10 +899,19 @@ class AdminSmokeTest extends TestCase
     public function test_promotion_quote_can_store_catalog_item_snapshots(): void
     {
         $catalogProduct = $this->projectCatalogFromSource('Etkin Promosyon XML');
+        $catalogVariant = $catalogProduct->variants()->where('is_active', true)->where('visible_in_catalog', true)->orderBy('id')->first();
+        $selectedCode = $catalogVariant?->variant_code ?: $catalogProduct->display_code;
+        $selectedName = $catalogVariant?->display_name ?: $catalogProduct->display_name;
+        $selectedVariantId = $catalogVariant?->id;
+        $selectedStandardVariantId = $catalogVariant?->standard_product_variant_id;
+        $selectedSourceSummary = $catalogVariant?->source_summary ?: $catalogProduct->source_summary;
         $customer = Company::where('legal_name', 'ABC İnşaat A.Ş.')->firstOrFail();
 
-        $response = $this->actingAs($this->adminUser)
-            ->postOnCentralHost('/admin/promotion-quotes', [
+        $response = $this->actingAs($this->tenantUser)
+            ->withServerVariables([
+                'HTTP_HOST' => $this->tenantHost(),
+            ])
+            ->post('/admin/promotion-quotes', [
                 'customer_company_id' => $customer->id,
                 'quote_date' => now()->format('Y-m-d'),
                 'valid_until' => now()->addWeek()->format('Y-m-d'),
@@ -910,27 +922,45 @@ class AdminSmokeTest extends TestCase
                 'notes' => 'Katalog snapshot testi',
                 'items' => [
                     [
-                        'product_name' => $catalogProduct->display_name,
-                        'product_code' => $catalogProduct->display_code,
+                        'product_name' => $selectedName,
+                        'product_code' => $selectedCode,
                         'quantity' => '5',
                         'unit' => 'Adet',
                         'list_price' => (string) ($catalogProduct->display_price ?? 0),
                         'discount_rate' => '0',
                         'unit_price' => (string) ($catalogProduct->display_price ?? 0),
+                        'line_total' => (string) (($catalogProduct->display_price ?? 0) * 5),
+                        'manual_unit_price' => '0',
                         'has_print' => '0',
                         'tenant_catalog_product_id' => $catalogProduct->id,
-                        'standard_product_id' => $catalogProduct->standard_product_id,
+                        'tenant_catalog_product_variant_id' => $selectedVariantId,
+                        'standard_product_variant_id' => $selectedStandardVariantId,
+                        'supplier_source_id' => data_get($selectedSourceSummary, 'supplier_source_id') ?: data_get($selectedSourceSummary, '0.supplier_source_id'),
                         'supplier_source_id' => data_get($catalogProduct->source_summary, '0.supplier_source_id'),
                         'catalog_source' => 'tenant_catalog',
+                        'selected_catalog_identity' => json_encode([
+                            'catalog_source' => 'tenant_catalog',
+                            'tenant_catalog_product_id' => $catalogProduct->id,
+                            'tenant_catalog_product_variant_id' => $selectedVariantId,
+                            'standard_product_variant_id' => $selectedStandardVariantId,
+                            'product_code' => $selectedCode,
+                            'product_name' => $selectedName,
+                            'is_warning_sellable' => false,
+                        ], JSON_UNESCAPED_UNICODE),
                         'product_snapshot' => json_encode([
                             'tenant_catalog_product_id' => $catalogProduct->id,
-                            'standard_product_id' => $catalogProduct->standard_product_id,
-                            'product_code' => $catalogProduct->display_code,
-                            'product_name' => $catalogProduct->display_name,
+                            'tenant_catalog_product_variant_id' => $selectedVariantId,
+                            'standard_product_variant_id' => $selectedStandardVariantId,
+                            'product_code' => $selectedCode,
+                            'product_name' => $selectedName,
                         ], JSON_UNESCAPED_UNICODE),
                         'price_snapshot' => json_encode([
+                            'list_price' => (float) ($catalogProduct->display_price ?? 0),
                             'display_price' => (float) ($catalogProduct->display_price ?? 0),
                             'currency' => $catalogProduct->currency ?? 'TL',
+                            'quote_price_value' => (float) ($catalogProduct->display_price ?? 0),
+                            'quote_currency' => $catalogProduct->currency ?? 'TL',
+                            'quote_price_status' => 'not_required',
                         ], JSON_UNESCAPED_UNICODE),
                         'stock_snapshot' => json_encode([
                             'visible_stock_quantity' => (float) ($catalogProduct->total_stock_quantity ?? 0),

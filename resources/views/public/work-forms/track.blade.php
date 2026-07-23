@@ -188,7 +188,7 @@
             <div class="flex items-start justify-between gap-3" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;">
                 <div>
                     <div class="pt-muted">{{ $tenantName }}</div>
-                    <h1 class="pt-title">Sipariş Takibi</h1>
+                    <h1 class="pt-title">İş Takibini Gör</h1>
                     <div class="pt-muted">Müşteri Takip Ekranı üzerinden siparişinizin güncel aşamasını görüntüleyebilirsiniz.</div>
                 </div>
                 <span class="pt-badge pt-badge-blue">{{ $workForm['status'] }}</span>
@@ -314,7 +314,7 @@
 
     <div class="pt-card">
         <div class="pt-card-body">
-            <h2 class="pt-section-title">Müşteri Dosyaları</h2>
+            <h2 class="pt-section-title">Dosyayı Görüntüle</h2>
             <div class="pt-attachment-grid">
                 @forelse($attachments as $attachment)
                     <div class="pt-attachment-card">

@@ -46,13 +46,21 @@ class GraphicPerPrintUiTest extends TestCase
             ->get(route('admin.graphics.index'));
 
         $indexResponse->assertOk();
+        $indexResponse->assertSee('Grafik İşleri');
         $indexResponse->assertSee($workForm->work_form_number);
-        $indexResponse->assertSee('1a / Lazer / İsim lazer / 10 adet');
-        $indexResponse->assertSee('1b / UV Baskı / Tek taraf / 10 adet');
-        $indexResponse->assertSee('1c / Serigrafi / Gövde / 10 adet');
-        $indexResponse->assertSee('1d / Lazer / Kutu / 10 adet');
-        $indexResponse->assertSee('Düzenle');
-        $indexResponse->assertDontSee('>Görsel Ekle<', false);
+        $indexResponse->assertSee('1a');
+        $indexResponse->assertSee('1b');
+        $indexResponse->assertSee('1c');
+        $indexResponse->assertSee('1d');
+        $indexResponse->assertSee('Lazer');
+        $indexResponse->assertSee('UV Baskı');
+        $indexResponse->assertSee('Serigrafi');
+        $indexResponse->assertSee('İsim lazer');
+        $indexResponse->assertSee('Tek taraf');
+        $indexResponse->assertSee('Gövde');
+        $indexResponse->assertSee('Kutu');
+        $indexResponse->assertSee('Görsel Yükle');
+        $indexResponse->assertDontSee('Düzenle');
         $indexResponse->assertDontSee('>Üretime Hazır İşaretle<', false);
 
         $showResponse = $this->actingAs($this->adminUser)

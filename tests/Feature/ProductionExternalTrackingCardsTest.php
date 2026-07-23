@@ -19,24 +19,27 @@ class ProductionExternalTrackingCardsTest extends TestCase
         $this->setUpProductionShowFixtures();
     }
 
-    public function test_external_tab_renders_tracking_cards_and_sade_finance_labels(): void
+    public function test_canonical_subcontract_tracking_renders_quantity_without_finance_leaks(): void
     {
         $production = $this->createExternalProductionForShow();
 
+        $this->actingAs($this->financeUser)
+            ->withServerVariables(['HTTP_HOST' => self::PRODUCTION_SHOW_HOST])
+            ->get(route('admin.productions.show', $production) . '?tab=dis-uretim')
+            ->assertRedirect(route('admin.productions.subcontract-tracking', $production));
+
         $response = $this->actingAs($this->financeUser)
             ->withServerVariables(['HTTP_HOST' => self::PRODUCTION_SHOW_HOST])
-            ->get(route('admin.productions.show', $production) . '?tab=dis-uretim');
+            ->get(route('admin.productions.subcontract-tracking', $production));
 
         $response->assertOk();
-        $response->assertSee('Fason Üretim Bilgileri');
-        $response->assertSee('Adet Takibi');
-        $response->assertSee('Planlanan / Gönderilecek Adet');
-        $response->assertSee('Gelen / Tamamlanan Adet');
-        $response->assertSee('Kalan Adet');
-        $response->assertSee('Eşleşen Cari');
-        $response->assertSee('Cari Hareketi');
+        $response->assertSee('Fason Takibi');
+        $response->assertSee('Gönderilen');
+        $response->assertSee('Gelen');
+        $response->assertSee('Kalan');
+        $response->assertDontSee('Eşleşen Cari');
+        $response->assertDontSee('Cari Hareketi');
         $response->assertDontSee('current_account_id', false);
         $response->assertDontSee('source_type', false);
     }
 }
-

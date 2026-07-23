@@ -154,16 +154,16 @@ class ProductHubOperationFlowService
                 ],
                 [
                     'key' => 'projection_issues',
-                    'title' => 'Projection Sorunları',
+                    'title' => 'Otomatik Yansıma Sorunları',
                     'count' => $counts['projection_issues'],
                     'tone' => 'red',
-                    'copy' => 'Projection veya katalog yansıması geride kalan ürünler teklif ve katalog fiyatının eskimesine neden olabilir.',
+                    'copy' => 'Katalog otomatik yansıması geride kalan ürünler teklif ve katalog fiyatının eskimesine neden olabilir.',
                     'href' => route('admin.super.product-data-hub.product-panel', ['flow_mode' => 'projection_issues']),
-                    'action' => 'Projection sorunlarını aç',
+                    'action' => 'Otomatik yansıma sorunlarını aç',
                 ],
                 [
                     'key' => 'tenant_output_blocks',
-                    'title' => 'Tenant Çıkışı Blokajları',
+                    'title' => 'Abone Firma Katalog Blokajları',
                     'count' => $counts['tenant_output_blocks'],
                     'tone' => 'purple',
                     'copy' => 'Tedarikçi erişimi, görünürlük veya quote kullanımı kapalıysa ürün doğru olsa bile satışa açılamaz.',
@@ -172,7 +172,7 @@ class ProductHubOperationFlowService
                 ],
             ],
             'headline' => 'Bugün aksiyon gereken ürün var mı?',
-            'supporting_note' => 'Hedef akış: güvenli fiyat ve stok değişimleri sessizce ilerler; yalnız yeni ürün, kategori eksikliği, kimlik sorunu ve projection blokajı operatör işi üretir.',
+            'supporting_note' => 'Hedef akış: güvenli fiyat ve stok değişimleri sessizce ilerler; yalnız yeni ürün, kategori eksikliği, kimlik sorunu ve otomatik yansıma blokajı operatör işi üretir.',
         ];
     }
 }

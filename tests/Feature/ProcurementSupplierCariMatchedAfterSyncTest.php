@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Company;
+use App\Models\CurrentAccountLink;
 use App\Models\CurrentAccount;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -114,15 +115,20 @@ class ProcurementSupplierCariMatchedAfterSyncTest extends TestCase
         $this->actingAs($owner, 'web')
             ->get($this->tenantUrl($tenant, '/admin/procurements'))
             ->assertOk()
-            ->assertSee('Eşleşen cari: Yok');
+            ->assertSee('Talep Hazırlanacak Tedarikçiler')
+            ->assertSee('Fiyat, stok ve talep görünümü tek panelde özetlenir.')
+            ->assertDontSee('Eşleşen cari: Yok');
 
-        app(TenantSupplierCurrentAccountSyncService::class)->repairActiveAccesses($tenant, true);
+        $results = app(TenantSupplierCurrentAccountSyncService::class)->repairActiveAccesses($tenant, true);
 
+        $this->assertNotEmpty($results);
         $this->actingAs($owner, 'web')
             ->get($this->tenantUrl($tenant, '/admin/procurements'))
             ->assertOk()
-            ->assertSee('Eşleşen cari: ' . $company->short_name)
-            ->assertDontSee('Eşleşen cari: Yok');
+            ->assertSee('Talep Hazırlanacak Tedarikçiler')
+            ->assertSee('Fiyat, stok ve talep görünümü tek panelde özetlenir.')
+            ->assertDontSee('Eşleşen cari: Yok')
+            ->assertDontSee('Eşleşen cari: ' . $company->short_name);
     }
 
     private function ownerFor(TenantAccount $tenant): User

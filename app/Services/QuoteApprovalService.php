@@ -41,6 +41,7 @@ class QuoteApprovalService
                 'customer_approval_status' => Order::CUSTOMER_APPROVAL_WAITING,
                 'customer_approval_source' => Order::CUSTOMER_APPROVAL_SOURCE_CUSTOMER_PUBLIC_LINK,
                 'last_sent_at' => now(),
+                'currency_snapshot_locked_at' => $quote->currency_snapshot_locked_at ?? now(),
                 'approved_at' => null,
                 'rejected_at' => null,
                 'revision_requested_at' => null,

@@ -76,7 +76,7 @@ class PublicGraphicApprovalRouteTest extends TestCase
         $response = $this->get(route('public.graphics.approval.show', ['token' => $approvalRequest->token]));
 
         $response->assertOk();
-        $response->assertSee('Grafik Onayı');
+        $response->assertSee('Grafik Çalışmasını İncele');
         $response->assertSee($graphic->orderItem->product_name);
         $response->assertSee('Grafiği Onayla');
         $response->assertDontSee($approvalRequest->token);

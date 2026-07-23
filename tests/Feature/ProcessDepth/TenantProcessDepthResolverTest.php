@@ -8,6 +8,7 @@ use App\Models\TenantSetting;
 use App\Services\ProcessDepth\TenantProcessDepthResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class TenantProcessDepthResolverTest extends TestCase
@@ -121,8 +122,10 @@ class TenantProcessDepthResolverTest extends TestCase
         $this->assertSame('standard', $package->process_depth);
     }
 
-    protected function createTenantWithPackage(string $processDepth, string $packageKey = 'suite'): TenantAccount
+    protected function createTenantWithPackage(string $processDepth, ?string $packageKey = null): TenantAccount
     {
+        $packageKey ??= 'suite-' . Str::lower((string) Str::uuid());
+
         $package = Package::query()->create([
             'key' => $packageKey,
             'name' => strtoupper($packageKey),

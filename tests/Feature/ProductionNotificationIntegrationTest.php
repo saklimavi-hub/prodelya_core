@@ -61,12 +61,22 @@ class ProductionNotificationIntegrationTest extends TestCase
 
         $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
+            ->patch(route('admin.productions.update-assignment', $production), [
+                'production_type' => OrderItemPrintProduction::TYPE_INTERNAL,
+                'production_unit_name' => 'UV Hattı 1',
+                'assigned_to' => $this->adminUser->id,
+                'production_note' => 'Başlatma notu C:\\secret\\path.ai ve group_code olmamali',
+            ])
+            ->assertRedirect(route('admin.productions.operator', $production));
+
+        $this->actingAs($this->adminUser)
+            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->patch(route('admin.productions.update-status', $production), [
                 'action' => 'assign_internal',
                 'production_unit_name' => 'UV Hattı 1',
                 'note' => 'Başlatma notu C:\\secret\\path.ai ve group_code olmamali',
             ])
-            ->assertRedirect(route('admin.productions.show', $production));
+            ->assertRedirect(route('admin.productions.operator', $production));
 
         $startedLogs = NotificationLog::query()
             ->where('notification_key', 'production_started')
@@ -92,7 +102,7 @@ class ProductionNotificationIntegrationTest extends TestCase
                 'partial_quantity' => '25',
                 'note' => 'Kısmi tamamlandı / fiziksel yol görünmemeli',
             ])
-            ->assertRedirect(route('admin.productions.show', $production));
+            ->assertRedirect(route('admin.productions.operator', $production));
 
         $partialLogs = NotificationLog::query()
             ->where('notification_key', 'production_partially_completed')
@@ -114,7 +124,7 @@ class ProductionNotificationIntegrationTest extends TestCase
                 'action' => 'issue',
                 'note' => 'Baskı yüzeyinde sorun var. file_path veya maliyet yazma.',
             ])
-            ->assertRedirect(route('admin.productions.show', $production));
+            ->assertRedirect(route('admin.productions.operator', $production));
 
         $problemLogs = NotificationLog::query()
             ->where('notification_key', 'production_problem_reported')
@@ -165,6 +175,12 @@ class ProductionNotificationIntegrationTest extends TestCase
         $this->app->instance(NotificationEventService::class, $failingNotificationService);
 
         ['production' => $failureProduction] = $this->createReadyProduction('SP-PROD-NOTIF-003');
+
+        app(ProductionWorkflowService::class)->updateAssignment($failureProduction->fresh(), [
+            'production_type' => OrderItemPrintProduction::TYPE_INTERNAL,
+            'production_unit_name' => 'UV Hattı 2',
+            'assigned_to' => $this->adminUser->id,
+        ], $this->adminUser, 'Failure safe assignment');
 
         $failedStarted = app(ProductionWorkflowService::class)->assignInternal(
             $failureProduction->fresh(),

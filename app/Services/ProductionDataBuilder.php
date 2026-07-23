@@ -8,11 +8,13 @@ use App\Models\OrderItemPrintSetupRequirement;
 use App\Models\OrderItemWorkForm;
 use App\Models\OrderItemProcurement;
 use Illuminate\Support\Str;
+use App\Services\PromotionIntermediateElementPolicy;
 
 class ProductionDataBuilder
 {
     public function __construct(
-        protected ProductionReadinessResolver $readinessResolver
+        protected ProductionReadinessResolver $readinessResolver,
+        protected PromotionIntermediateElementPolicy $promotionIntermediateElementPolicy
     ) {}
 
     public function build(
@@ -51,9 +53,11 @@ class ProductionDataBuilder
         $productionType = $production?->production_type
             ?: OrderItemPrintProduction::normalizeProductionType($print->production_type);
         $productionStatus = $production?->production_status ?? OrderItemPrintProduction::STATUS_PENDING;
-        $clicheStatus = $production?->cliche_status
-            ?: $this->normalizeLegacyClicheStatus($print->cliche_status)
-            ?: OrderItemPrintProduction::CLICHE_NOT_REQUIRED;
+        $clicheStatus = $this->promotionIntermediateElementPolicy->shouldRender()
+            ? ($production?->cliche_status
+                ?: $this->normalizeLegacyClicheStatus($print->cliche_status)
+                ?: OrderItemPrintProduction::CLICHE_NOT_REQUIRED)
+            : null;
         $qcStatus = $production?->qc_status ?? ($print->orderItem?->has_print
             ? OrderItemPrintProduction::QC_WAITING
             : OrderItemPrintProduction::QC_WAITING);
@@ -72,12 +76,12 @@ class ProductionDataBuilder
             $workForm?->procurement?->received_quantity
             ?? data_get($procurementSnapshot, 'received_quantity', 0)
         );
-        $setupSummary = $print->setupStatusSummary();
-        $setupRequired = (bool) data_get($setupSummary, 'required', false);
+        $setupSummary = $this->promotionIntermediateElementPolicy->shouldRender() ? $print->setupStatusSummary() : ['required' => false, 'items' => [], 'labels' => [], 'total' => 0, 'ready_count' => 0, 'pending_count' => 0];
+        $setupRequired = $this->promotionIntermediateElementPolicy->shouldRender() && (bool) data_get($setupSummary, 'required', false);
         $setupPending = (int) data_get($setupSummary, 'pending_count', 0);
         $setupReady = (int) data_get($setupSummary, 'ready_count', 0);
-        $preparationRequired = $setupRequired ? false : $legacyPreparationRequired;
-        $preparationReady = $setupRequired ? true : $legacyPreparationReady;
+        $preparationRequired = $this->promotionIntermediateElementPolicy->shouldRender() ? ($setupRequired ? false : $legacyPreparationRequired) : false;
+        $preparationReady = $this->promotionIntermediateElementPolicy->shouldRender() ? ($setupRequired ? true : $legacyPreparationReady) : true;
         $uiCanStart = (bool) ($readiness['can_start'] ?? false) && $preparationReady;
 
         return [
@@ -107,16 +111,16 @@ class ProductionDataBuilder
             'planned_quantity' => $plannedQuantity,
             'completed_quantity' => $completedQuantity,
             'remaining_quantity' => $remainingQuantity,
-            'cliche_required' => (bool) ($production?->cliche_required ?? ($clicheStatus !== OrderItemPrintProduction::CLICHE_NOT_REQUIRED)),
+            'cliche_required' => $this->promotionIntermediateElementPolicy->shouldRender() && (bool) ($production?->cliche_required ?? ($clicheStatus !== OrderItemPrintProduction::CLICHE_NOT_REQUIRED)),
             'cliche_status' => $clicheStatus,
-            'cliche_status_label' => $this->clicheStatusLabel($clicheStatus),
+            'cliche_status_label' => $this->promotionIntermediateElementPolicy->shouldRender() ? $this->clicheStatusLabel($clicheStatus) : null,
             'preparation_required' => $preparationRequired,
             'preparation_ready' => $preparationReady,
             'preparation_label' => $this->preparationLabel($preparationRequired, $clicheStatus),
             'setup_required' => $setupRequired,
             'setup_summary' => $setupSummary,
             'setup_ready' => $setupRequired ? $setupPending === 0 : true,
-            'setup_summary_label' => $this->setupSummaryLabel($setupRequired, $setupReady, $setupPending),
+            'setup_summary_label' => $this->promotionIntermediateElementPolicy->shouldRender() ? $this->setupSummaryLabel($setupRequired, $setupReady, $setupPending) : null,
             'qc_status' => $qcStatus,
             'qc_status_label' => $this->qcStatusLabel($qcStatus),
             'graphic_status_label' => $this->displayGraphicStatusLabel($readiness, $workForm),
@@ -176,18 +180,19 @@ class ProductionDataBuilder
             'planned_quantity' => (float) $production->planned_quantity,
             'completed_quantity' => (float) $production->completed_quantity,
             'remaining_quantity' => (float) $production->remaining_quantity,
-            'cliche_required' => (bool) $production->cliche_required,
-            'cliche_status' => $production->cliche_status,
-            'cliche_status_label' => $production->safeClicheStatusLabel(),
+            'cliche_required' => $this->promotionIntermediateElementPolicy->shouldRender() && (bool) $production->cliche_required,
+            'cliche_status' => $this->promotionIntermediateElementPolicy->shouldRender() ? $production->cliche_status : null,
+            'cliche_status_label' => $this->promotionIntermediateElementPolicy->shouldRender() ? $production->safeClicheStatusLabel() : null,
             'qc_status' => $production->qc_status,
             'qc_status_label' => $production->safeQcStatusLabel(),
             'graphic_status_label' => data_get($snapshot, 'graphic_status_label', '-'),
             'procurement_status_label' => data_get($snapshot, 'procurement_status_label', '-'),
             'readiness_warnings' => array_values((array) data_get($snapshot, 'readiness_warnings', [])),
+            'subcontract_tracking' => data_get($snapshot, 'subcontract_tracking', []),
             'public_status_label' => $this->publicStatusLabel($production->production_status),
-            'setup_required' => (bool) data_get($snapshot, 'setup_required', false),
-            'setup_summary' => data_get($snapshot, 'setup_summary', ['required' => false, 'items' => []]),
-            'setup_summary_label' => data_get($snapshot, 'setup_summary_label'),
+            'setup_required' => $this->promotionIntermediateElementPolicy->shouldRender() && (bool) data_get($snapshot, 'setup_required', false),
+            'setup_summary' => $this->promotionIntermediateElementPolicy->shouldRender() ? data_get($snapshot, 'setup_summary', ['required' => false, 'items' => []]) : ['required' => false, 'items' => [], 'labels' => [], 'total' => 0, 'ready_count' => 0, 'pending_count' => 0],
+            'setup_summary_label' => $this->promotionIntermediateElementPolicy->shouldRender() ? data_get($snapshot, 'setup_summary_label') : null,
             'note' => $note,
             'issue_note' => $issueNote,
             'qc_note' => $qcNote,

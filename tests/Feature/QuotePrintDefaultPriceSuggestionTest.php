@@ -148,13 +148,14 @@ class QuotePrintDefaultPriceSuggestionTest extends TestCase
 
         $order->load('items.prints');
         $orderPrint = $order->items->firstOrFail()->prints->firstOrFail();
-        $setupRequirement = OrderItemPrintSetupRequirement::query()
-            ->where('order_id', $order->id)
-            ->firstOrFail();
 
         $this->assertSame('3.2500', (string) $orderPrint->print_unit_price);
         $this->assertSame('130.0000', (string) $orderPrint->print_total);
-        $this->assertNull($setupRequirement->cost);
+        $this->assertSame(0, OrderItemPrintSetupRequirement::query()
+            ->where('tenant_account_id', $this->tenant->id)
+            ->where('order_id', $order->id)
+            ->where('order_item_print_id', $orderPrint->id)
+            ->count());
     }
 
     private function baseQuotePayload(array $overrides = []): array

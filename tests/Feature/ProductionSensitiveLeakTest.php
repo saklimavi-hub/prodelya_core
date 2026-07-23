@@ -23,9 +23,14 @@ class ProductionSensitiveLeakTest extends TestCase
     {
         $production = $this->createExternalProductionForShow();
 
-        $response = $this->actingAs($this->financeUser)
+        $legacy = $this->actingAs($this->financeUser)
             ->withServerVariables(['HTTP_HOST' => self::PRODUCTION_SHOW_HOST])
             ->get(route('admin.productions.show', $production) . '?tab=dis-uretim');
+        $legacy->assertRedirect(route('admin.productions.subcontract-tracking', $production));
+
+        $response = $this->actingAs($this->financeUser)
+            ->withServerVariables(['HTTP_HOST' => self::PRODUCTION_SHOW_HOST])
+            ->get(route('admin.productions.subcontract-tracking', $production));
 
         $response->assertOk();
 

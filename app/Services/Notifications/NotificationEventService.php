@@ -212,10 +212,10 @@ class NotificationEventService
             $channels = $this->eventCatalogService->allowedChannels($eventKey);
         }
 
-        return array_values(array_unique(array_map(
-            fn ($channel) => trim((string) $channel),
+        return array_values(array_unique(array_filter(array_map(
+            fn ($channel) => $this->normalizeChannel((string) $channel),
             $channels
-        )));
+        ))));
     }
 
     private function resolveRecipients(TenantAccount $tenant, string $eventKey, string $audienceType, mixed $source, array $options): array
@@ -260,11 +260,23 @@ class NotificationEventService
 
     private function isRecipientMissingForChannel(string $channel, array $recipient): bool
     {
+        $channel = $this->normalizeChannel($channel);
+
         return match ($channel) {
             NotificationTemplate::CHANNEL_EMAIL => !filled($recipient['email'] ?? null),
             NotificationTemplate::CHANNEL_WHATSAPP_LINK => !filled($recipient['phone'] ?? null),
             NotificationTemplate::CHANNEL_INTERNAL => !filled($recipient['user_id'] ?? null) && !filled($recipient['email'] ?? null),
             default => false,
+        };
+    }
+
+    private function normalizeChannel(string $channel): string
+    {
+        return match (mb_strtolower(trim($channel))) {
+            'mail', 'e-posta', 'eposta' => NotificationTemplate::CHANNEL_EMAIL,
+            'whatsapp', 'whatsapp-link', 'whatsapp_link' => NotificationTemplate::CHANNEL_WHATSAPP_LINK,
+            'internal', 'icerik', 'iç', 'ic', 'bildirim' => NotificationTemplate::CHANNEL_INTERNAL,
+            default => trim($channel),
         };
     }
 

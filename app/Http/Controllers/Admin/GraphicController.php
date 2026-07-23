@@ -42,6 +42,17 @@ class GraphicController extends Controller
             'status' => ['nullable', 'string', 'max:50'],
             'approval_status' => ['nullable', 'string', 'max:50'],
             'customer_visible_visual' => ['nullable', Rule::in(['yes', 'no'])],
+            'per_page' => ['nullable', Rule::in(['10', '20', '50', 10, 20, 50])],
+            'queue' => ['nullable', Rule::in([
+                'action_waiting',
+                'waiting_visual',
+                'control_waiting',
+                'customer_approval_waiting',
+                'revision_requested',
+                'production_ready',
+                'completed',
+                'all',
+            ])],
         ]);
 
         $workForms = OrderItemWorkForm::query()
@@ -51,14 +62,13 @@ class GraphicController extends Controller
                 'attachments',
                 'systemWorkFolder',
                 'printGraphics.latestAttachment',
+                'printGraphics.latestApprovalRequest',
                 'printGraphics.orderItemPrint',
             ])
             ->latest('id')
             ->get();
 
-        $filtered = $this->applyFilters($workForms, $validated);
-
-        return view('admin.graphics.index', $this->dataBuilder->buildIndex($filtered, $validated));
+        return view('admin.graphics.index', $this->dataBuilder->buildIndex($workForms, $validated));
     }
 
     public function show(Request $request, OrderItemWorkForm $workForm): View

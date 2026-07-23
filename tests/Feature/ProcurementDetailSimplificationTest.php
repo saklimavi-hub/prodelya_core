@@ -7,10 +7,9 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\OrderItemProcurement;
 use App\Models\Supplier;
-use App\Models\SupplierProcurementRequest;
 use App\Models\SupplierSource;
 use App\Models\TenantAccount;
-use App\Models\TenantSupplierAccess;
+use App\Models\TenantSetting;
 use App\Models\User;
 use App\Services\SupplierProcurementRequestService;
 use App\Services\WorkFormCreationService;
@@ -41,7 +40,7 @@ class ProcurementDetailSimplificationTest extends TestCase
             ->firstOrFail();
     }
 
-    public function test_procurement_detail_is_simplified_and_hides_old_section_labels_and_prices(): void
+    public function test_procurement_detail_uses_new_reference_family_and_hides_old_sections_and_prices(): void
     {
         [$supplier, $source] = $this->createSupplierWithAccess('SPR-DETAIL-A');
         $procurement = $this->createProcurement($supplier, $source, 'SP-SPR-DETAIL-001');
@@ -51,15 +50,13 @@ class ProcurementDetailSimplificationTest extends TestCase
             ->get(route('admin.procurements.show', $procurement));
 
         $response->assertOk();
-        $response->assertSee('Tedarik Sekmeleri');
-        $response->assertSee('Genel Özet');
-        $response->assertSee('Ürün ve Sipariş');
-        $response->assertSee('Tedarikçi ve Cari');
-        $response->assertSee('Talep / Form');
-        $response->assertSee('İşlemler');
-        $response->assertSee('Gelen / Miktar');
-        $response->assertSee('Geçmiş');
-        $response->assertDontSee('Tedarik Özeti');
+        $response->assertSee('Yeni tedarik referans ailesi', false);
+        $response->assertSee('Üst Sıradaki İş');
+        $response->assertSee('Ürün ve İhtiyaç');
+        $response->assertSee('Üç Aşamalı Süreç');
+        $response->assertSee('Sağ Kısa Özet');
+        $response->assertDontSee('Tedarik Sekmeleri');
+        $response->assertDontSee('Genel Özet');
         $response->assertDontSee('KDV', false);
         $response->assertDontSee('grand_total', false);
         $response->assertDontSee('Alış Liste Fiyatı');
@@ -67,7 +64,7 @@ class ProcurementDetailSimplificationTest extends TestCase
         $response->assertDontSee('raw_mapping', false);
     }
 
-    public function test_procurement_detail_shows_link_to_existing_supplier_request_and_actions_work(): void
+    public function test_procurement_detail_shows_link_to_existing_supplier_request_and_process_depth_variation(): void
     {
         [$supplier, $source] = $this->createSupplierWithAccess('SPR-DETAIL-B');
         $procurement = $this->createProcurement($supplier, $source, 'SP-SPR-DETAIL-002');
@@ -78,14 +75,17 @@ class ProcurementDetailSimplificationTest extends TestCase
             $this->adminUser
         );
 
+        TenantSetting::setValue($this->tenant->id, 'process_depth', 'controlled', 'string');
+
         $show = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.procurements.show', ['procurement' => $procurement, 'tab' => 'talep']));
+            ->get(route('admin.procurements.show', $procurement));
 
         $show->assertOk();
         $show->assertSee($requestRecord->request_number);
         $show->assertSee(route('admin.procurements.supplier-requests.edit', $requestRecord), false);
-        $show->assertSee('Talebi Düzenle');
+        $show->assertSee('Kontrol Özeti');
+        $show->assertSee('data-procurement-depth="controlled"', false);
 
         $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
@@ -118,7 +118,7 @@ class ProcurementDetailSimplificationTest extends TestCase
             'status' => 'active',
         ]);
 
-        TenantSupplierAccess::query()->updateOrCreate(
+        \App\Models\TenantSupplierAccess::query()->updateOrCreate(
             [
                 'tenant_account_id' => $this->tenant->id,
                 'supplier_id' => $supplier->id,

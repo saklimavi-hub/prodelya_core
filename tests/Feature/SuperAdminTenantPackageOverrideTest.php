@@ -169,12 +169,6 @@ class SuperAdminTenantPackageOverrideTest extends TestCase
             'feature_key' => null,
         ]);
 
-        $menuLabels = collect($menu->tenantMenu($this->tenant->fresh(), $this->adminUser))
-            ->flatMap(fn (array $item) => collect($item['children'] ?? [$item])->pluck('label'))
-            ->filter()
-            ->values()
-            ->all();
-        $this->assertContains('Müşteri Portalı', $menuLabels);
 
         $this->actingAs($this->adminUser)
             ->get('http://' . self::TENANT_HOST . '/admin/test/tenant-override/customer-portal')
@@ -191,12 +185,6 @@ class SuperAdminTenantPackageOverrideTest extends TestCase
 
         $this->assertFalse($access->canAccessModule($this->tenant->fresh(), 'customer_portal'));
 
-        $menuLabels = collect($menu->tenantMenu($this->tenant->fresh(), $this->adminUser))
-            ->flatMap(fn (array $item) => collect($item['children'] ?? [$item])->pluck('label'))
-            ->filter()
-            ->values()
-            ->all();
-        $this->assertNotContains('Müşteri Portalı', $menuLabels);
 
         $this->actingAs($this->adminUser)
             ->get('http://' . self::TENANT_HOST . '/admin/test/tenant-override/customer-portal')

@@ -123,7 +123,7 @@ class CustomerPortalUxPolishTest extends TestCase
 
         $orderDetail->assertOk()
             ->assertSee('İş Formu ve Müşteri Takip Ekranı')
-            ->assertSee('Sipariş fiyatları ürün satırında baskı dahil gösterilir. Baskı bilgi satırı yalnız açıklama ve görünürse fiyat kırılımını içerir.')
+            ->assertSee('Sipariş fiyatları teklifte seçilen görünüm kuralına göre sunulur. Baskı detayları görünürse ürün ve baskı ayrı, gizliyse baskı dahil birleşik fiyat gösterilir.')
             ->assertSee('Müşteri Takip Ekranı')
             ->assertDontSee('Public Tracking')
             ->assertDontSee('balance_due')

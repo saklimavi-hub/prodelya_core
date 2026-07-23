@@ -30,16 +30,16 @@ class ProcurementShowTabbedLayoutTest extends TestCase
             ->get(route('admin.procurements.show', ['procurement' => $procurement, 'tab' => 'bilinmeyen']));
 
         $response->assertOk();
-        $response->assertSee('Tedarik Sekmeleri');
-        $response->assertSee('Genel Özet');
-        $response->assertSee('Ürün ve Sipariş');
-        $response->assertSee('Tedarikçi ve Cari');
-        $response->assertSee('Talep / Form');
-        $response->assertSee('İşlemler');
-        $response->assertSee('Gelen / Miktar');
-        $response->assertSee('Geçmiş');
-        $response->assertSee('?tab=genel', false);
-        $response->assertDontSee('A) Sipariş ve Ürün Özeti');
+        $response->assertSee('Üst Sıradaki İş');
+        $response->assertSee('Üç Aşamalı Süreç');
+        $response->assertSee('Ürün ve İhtiyaç');
+        $response->assertSee('Kısa Faaliyet Geçmişi');
+        $response->assertSee('Sağ Kısa Özet');
+        $response->assertSee('Siparişe Git');
+        $response->assertSee('İş Formu Aç');
+        $response->assertSee('data-testid="procurement-top-next-action-surface"', false);
+        $response->assertDontSee('Tedarik Sekmeleri');
+        $response->assertDontSee('Genel Özet');
         $response->assertDontSee('Tedarik Özeti');
     }
 
@@ -52,7 +52,7 @@ class ProcurementShowTabbedLayoutTest extends TestCase
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->get(route('admin.procurements.show', ['procurement' => $procurement, 'tab' => 'islemler']));
 
-        $pending->assertSee('Talep Aç');
+        $pending->assertSee('Talebi Aç');
         $pending->assertDontSee('Sipariş Verildi</button>', false);
 
         $procurement->update(['procurement_status' => OrderItemProcurement::STATUS_REQUEST_CREATED]);
@@ -70,7 +70,8 @@ class ProcurementShowTabbedLayoutTest extends TestCase
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->get(route('admin.procurements.show', ['procurement' => $procurement->fresh(), 'tab' => 'islemler']));
 
-        $ordered->assertSee('Kısmi Geldi');
-        $ordered->assertSee('Tamamı Geldi');
+        $ordered->assertSee('Gelen Ürün Kaydı');
+        $ordered->assertDontSee('Kısmi Geldi');
+        $ordered->assertDontSee('Tamamı Geldi');
     }
 }

@@ -42,8 +42,8 @@ class ProcurementTurkishTerminologyTest extends TestCase
             ->get(route('admin.procurements.supplier-requests.edit', $requestRecord));
 
         $edit->assertOk();
-        $edit->assertSee('Fiyatsız Talep Formunu Aç');
-        $edit->assertSee('Tedarik Listesine Dön');
+        $edit->assertSee('Fiyatsız Talep Formu');
+        $edit->assertSee('Listeye Dön');
         $edit->assertDontSee('Supplier request', false);
         $edit->assertDontSee('group_code', false);
     }

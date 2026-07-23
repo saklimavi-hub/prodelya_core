@@ -24,7 +24,20 @@ class SupplierProcurementRequestItem extends Model
         'unit',
         'received_quantity',
         'remaining_quantity',
+        'purchase_source_amount',
+        'purchase_source_currency',
+        'purchase_fx_rate',
+        'purchase_fx_rate_date',
+        'purchase_fx_rate_source',
         'purchase_list_price',
+        'purchase_list_price_try',
+        'purchase_calculated_unit_price',
+        'purchase_manual_unit_price',
+        'purchase_manual_override',
+        'purchase_manual_override_reason',
+        'purchase_settlement_currency',
+        'purchase_price_snapshot',
+        'purchase_price_snapshot_version',
         'discount_rate',
         'purchase_unit_price',
         'purchase_total',
@@ -37,7 +50,20 @@ class SupplierProcurementRequestItem extends Model
         'requested_quantity' => 'decimal:2',
         'received_quantity' => 'decimal:2',
         'remaining_quantity' => 'decimal:2',
+        'purchase_source_amount' => 'decimal:6',
+        'purchase_source_currency' => 'string',
+        'purchase_fx_rate' => 'decimal:8',
+        'purchase_fx_rate_date' => 'immutable_datetime',
+        'purchase_fx_rate_source' => 'string',
         'purchase_list_price' => 'decimal:2',
+        'purchase_list_price_try' => 'decimal:6',
+        'purchase_calculated_unit_price' => 'decimal:6',
+        'purchase_manual_unit_price' => 'decimal:6',
+        'purchase_manual_override' => 'boolean',
+        'purchase_manual_override_reason' => 'string',
+        'purchase_settlement_currency' => 'string',
+        'purchase_price_snapshot' => 'array',
+        'purchase_price_snapshot_version' => 'integer',
         'discount_rate' => 'decimal:2',
         'purchase_unit_price' => 'decimal:2',
         'purchase_total' => 'decimal:2',
@@ -88,23 +114,23 @@ class SupplierProcurementRequestItem extends Model
         return $this->belongsTo(User::class, 'updated_by');
     }
 
-    public function recalculatePurchaseTotals(?float $manualUnitPrice = null): static
+    public function recalculatePurchaseTotals(?float $manualUnitPrice = null, ?float $quantityOverride = null): static
     {
         $listPrice = $this->purchase_list_price !== null ? (float) $this->purchase_list_price : null;
         $discountRate = $this->discount_rate !== null ? (float) $this->discount_rate : 0.0;
-        $requestedQuantity = (float) $this->requested_quantity;
+        $calculationQuantity = $quantityOverride ?? (float) $this->requested_quantity;
 
         if ($manualUnitPrice !== null) {
             $unitPrice = round($manualUnitPrice, 2);
             $this->purchase_unit_price = $unitPrice;
-            $this->purchase_total = round($unitPrice * $requestedQuantity, 2);
+            $this->purchase_total = round($unitPrice * $calculationQuantity, 2);
 
             return $this;
         }
 
         if ($listPrice === null) {
             if ($this->purchase_unit_price !== null) {
-                $this->purchase_total = round((float) $this->purchase_unit_price * $requestedQuantity, 2);
+                $this->purchase_total = round((float) $this->purchase_unit_price * $calculationQuantity, 2);
             } else {
                 $this->purchase_unit_price = null;
                 $this->purchase_total = null;
@@ -115,7 +141,7 @@ class SupplierProcurementRequestItem extends Model
 
         $unitPrice = round($listPrice * (1 - ($discountRate / 100)), 2);
         $this->purchase_unit_price = $unitPrice;
-        $this->purchase_total = round($unitPrice * $requestedQuantity, 2);
+        $this->purchase_total = round($unitPrice * $calculationQuantity, 2);
 
         return $this;
     }
@@ -133,6 +159,27 @@ class SupplierProcurementRequestItem extends Model
         return $this->purchase_list_price !== null
             || $this->purchase_unit_price !== null
             || $this->purchase_total !== null;
+    }
+
+    public function hasCanonicalPurchaseSnapshot(): bool
+    {
+        return is_array($this->purchase_price_snapshot)
+            && !empty($this->purchase_price_snapshot)
+            && (int) ($this->purchase_price_snapshot_version ?? 0) >= 1;
+    }
+
+    public function isPurchasePriceManualOverride(): bool
+    {
+        return (bool) ($this->purchase_manual_override ?? false);
+    }
+
+    public function finalPurchaseUnitPrice(): ?string
+    {
+        return $this->purchase_manual_override && $this->purchase_manual_unit_price !== null
+            ? (string) $this->purchase_manual_unit_price
+            : ($this->purchase_calculated_unit_price !== null
+                ? (string) $this->purchase_calculated_unit_price
+                : ($this->purchase_unit_price !== null ? (string) $this->purchase_unit_price : null));
     }
 
     public function safeUnitLabel(): string

@@ -185,6 +185,11 @@ class ProductionCoreTest extends TestCase
         $this->prepareProductionForStart($production, 'core-prod-004-ready.jpg');
 
         $workflow = app(ProductionWorkflowService::class);
+        $workflow->updateAssignment($production->fresh(), [
+            'production_type' => OrderItemPrintProduction::TYPE_INTERNAL,
+            'production_unit_name' => 'UV Hattı 1',
+            'assigned_to' => $this->adminUser->id,
+        ], $this->adminUser, 'İç hatta atandı');
         $workflow->assignInternal($production->fresh(), $this->adminUser, 'UV Hattı 1', 'İç hatta alındı');
         $production = $production->fresh();
 

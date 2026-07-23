@@ -30,11 +30,11 @@ class SupplierRequestEditButtonOrderTest extends TestCase
             ->get(route('admin.procurements.supplier-requests.edit', $requestRecord));
 
         $response->assertOk();
-        $response->assertSee('Talep Aksiyonları');
-        $response->assertSee('Kaydet');
-        $response->assertSee('Fiyatsız Talep Formunu Aç');
-        $response->assertSee('Tedarik Listesine Dön');
-        $response->assertDontSee('Talebi Kaydet');
+        $response->assertSee('Tedarikçi Talebi ve Gelen Ürün Kaydı');
+        $response->assertSee('Taslak Kaydet');
+        $response->assertSee('Fiyatsız Talep Formu');
+        $response->assertSee('Listeye Dön');
+        $response->assertSee('Talebi Kaydet');
         $response->assertDontSee('Supplier request', false);
     }
 
@@ -49,8 +49,8 @@ class SupplierRequestEditButtonOrderTest extends TestCase
             ->get(route('admin.procurements.supplier-requests.edit', $requestRecord));
 
         $edit->assertOk();
-        $edit->assertSeeInOrder(['Kaydet', 'Fiyatsız Talep Formunu Aç', 'Tedarik Listesine Dön']);
-        $edit->assertSeeText('Tedarikçi Talebi Düzenle');
+        $edit->assertSeeInOrder(['Taslak Kaydet', 'Talebi Kaydet', 'Fiyatsız Talep Formu']);
+        $edit->assertSeeText('Tedarikçi Talebi');
 
         $print = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])

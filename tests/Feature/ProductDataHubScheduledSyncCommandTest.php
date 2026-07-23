@@ -205,7 +205,7 @@ class ProductDataHubScheduledSyncCommandTest extends TestCase
 
         $response->assertOk();
         $response->assertSeeText('Tedarikçi Akışları');
-        $response->assertSeeText('Detaya Git');
+        $response->assertSeeText('Kaynak Kartları');
         $response->assertSeeText('Son Sync');
         $response->assertSeeText('Abone Firma Ürün Listesi');
         $response->assertSeeText('Ürünleri Senkronize Et');
@@ -258,7 +258,7 @@ class ProductDataHubScheduledSyncCommandTest extends TestCase
             ->get('/admin/super-admin/product-data-hub/sources?filter=all');
 
         $response->assertOk();
-        $response->assertSeeText('Detaya Git');
+        $response->assertSeeText('Kaynak Kartları');
 
         $detailResponse = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
@@ -324,7 +324,7 @@ class ProductDataHubScheduledSyncCommandTest extends TestCase
             ->get('/admin/super-admin/product-data-hub/sources?filter=all');
 
         $response->assertOk();
-        $response->assertSeeText('Detaya Git');
+        $response->assertSeeText('Kaynak Kartları');
 
         $detailResponse = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])

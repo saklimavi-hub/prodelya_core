@@ -67,7 +67,7 @@
                             <div class="prd-line-item"><span>Baskı alanı</span><strong>{{ $snapshot['print_location'] ?? 'Belirtilmedi' }}</strong></div>
                             <div class="prd-line-item"><span>Baskı seçeneği</span><strong>{{ $snapshot['print_option'] ?? 'Belirtilmedi' }}</strong></div>
                             <div class="prd-line-item"><span>Onaylı grafik</span><strong>{{ $previewImage ? 'Hazır' : 'Bekleniyor' }}</strong></div>
-                            <div class="prd-line-item"><span>Hazırlık</span><strong>{{ data_get($snapshot, 'setup_summary_label') ?: 'Hazırlık gerekmiyor' }}</strong></div>
+                            @if(app(\App\Services\PromotionIntermediateElementPolicy::class)->shouldRender())<div class="prd-line-item"><span>Hazırlık</span><strong>{{ data_get($snapshot, 'setup_summary_label') ?: 'Hazırlık gerekmiyor' }}</strong></div>@endif
                         </div>
                     </div>
                 </div>
@@ -156,7 +156,7 @@
             </section>
         </div>
 
-        @if($setupItems->isNotEmpty())
+        @if(app(\App\Services\PromotionIntermediateElementPolicy::class)->shouldRender() && $setupItems->isNotEmpty())
             <section class="prd-card">
                 <h2 class="prd-section-title">Ara Eleman Üretimi</h2>
                 <div class="prd-grid-3">

@@ -81,7 +81,12 @@ class AdminMenuService
             }
 
             $item['children'] = $children;
-            $item['active'] = $this->childrenContainActive($children);
+
+            if ($this->passesRouteVisibility($item) && $this->passesAccessVisibility($item, $tenant, $user)) {
+                $item['href'] = $this->resolveHref($item);
+            }
+
+            $item['active'] = $this->isRouteActive($item) || $this->childrenContainActive($children);
 
             return $item;
         }

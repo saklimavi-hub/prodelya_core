@@ -30,12 +30,12 @@ class OrderShowFinanceCardRegressionTest extends TestCase
             ->get($this->tenantUrl('/admin/orders/' . $order->id));
 
         $response->assertOk()
-            ->assertSee('Finans Özeti')
-            ->assertSee('Müşteri Borcu')
-            ->assertSee('Tahsil Edilen')
+            ->assertSee('Finans')
             ->assertSee('Kalan Bakiye')
-            ->assertSee('Karşı Borçlar')
+            ->assertSee('Kısmi tahsil edildi')
+            ->assertSee('Finans Özeti')
             ->assertSee(route('admin.finance.show', $order), false);
+
     }
 
     public function test_order_show_hides_finance_card_for_user_without_finance_permission(): void

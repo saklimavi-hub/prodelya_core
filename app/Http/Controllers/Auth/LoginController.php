@@ -20,7 +20,7 @@ class LoginController extends Controller
         if (Auth::check()) {
             return redirect($this->redirectPath(request()));
         }
-        
+
         return view('auth.login');
     }
 
@@ -42,7 +42,9 @@ class LoginController extends Controller
             if ($user) {
                 $this->persistLastLoginMetadata($user, $request);
             }
-            
+
+            $this->forgetUnsafeIntendedUrlForTenantUser($request, $user);
+
             return redirect($this->redirectPath($request));
         }
 
@@ -61,10 +63,10 @@ class LoginController extends Controller
         } else {
             Auth::logout();
         }
-        
+
         $request->session()->invalidate();
         $request->session()->regenerateToken();
-        
+
         return redirect('/');
     }
 
@@ -92,6 +94,25 @@ class LoginController extends Controller
         $tenantUrl = $this->tenantDashboardUrl($request, $tenant);
 
         return $tenantUrl ?: '/admin/dashboard';
+    }
+
+    protected function forgetUnsafeIntendedUrlForTenantUser(Request $request, mixed $user): void
+    {
+        if (! $user || $user->isPlatformAdmin()) {
+            return;
+        }
+
+        $intended = (string) $request->session()->get('url.intended', '');
+
+        if ($intended === '') {
+            return;
+        }
+
+        $path = '/' . ltrim((string) parse_url($intended, PHP_URL_PATH), '/');
+
+        if (str_starts_with($path, '/admin/super-admin')) {
+            $request->session()->forget('url.intended');
+        }
     }
 
     protected function tenantDashboardUrl(Request $request, TenantAccount $tenant): ?string

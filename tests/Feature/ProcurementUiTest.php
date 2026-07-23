@@ -51,14 +51,14 @@ class ProcurementUiTest extends TestCase
             ->get(route('admin.procurements.index'));
 
         $response->assertOk();
-        $response->assertSee('Tedarik Yönetimi');
+        $response->assertSee('Tedarik Talepleri');
+        $response->assertSee('Yeni Tedarik Talep Ailesi');
+        $response->assertSee('Talep Hazırlanacak');
+        $response->assertSee('Talebi Aç');
         $response->assertSee($procurement->order->document_number);
         $response->assertSee($procurement->workForm->work_form_number);
-        $response->assertSee($this->customer->legal_name);
         $response->assertSee('UI Tedarikçi Kalem');
         $response->assertSee('UI-SUP-001');
-        $response->assertSee('Tedarikçi');
-        $response->assertSee('Tedarik Bekliyor');
         $response->assertDontSee('unit_price', false);
         $response->assertDontSee('KDV', false);
         $response->assertDontSee('grand_total', false);
@@ -66,7 +66,7 @@ class ProcurementUiTest extends TestCase
         $response->assertDontSee('raw_mapping', false);
     }
 
-    public function test_procurement_show_renders_snapshot_amounts_and_work_form_link(): void
+    public function test_procurement_show_renders_reference_family_next_action_and_work_form_link(): void
     {
         $procurement = $this->createProcurementRecord([
             'product_name' => 'Detay Ürünü',
@@ -80,14 +80,15 @@ class ProcurementUiTest extends TestCase
 
         $response->assertOk();
         $response->assertSee('Tedarik Detayı');
+        $response->assertSee('Üst Sıradaki İş');
+        $response->assertSee('Üç Aşamalı Süreç');
+        $response->assertSee('Sağ Kısa Özet');
         $response->assertSee('Detay Ürünü');
         $response->assertSee('UI-DET-001');
         $response->assertSee($procurement->order->document_number);
         $response->assertSee($procurement->workForm->work_form_number);
         $response->assertSee(route('admin.work-forms.show', $procurement->workForm), false);
-        $response->assertSee('Tedarik Sekmeleri');
-        $response->assertSee('Genel Özet');
-        $response->assertSee('İşlemler');
+        $response->assertSee('data-procurement-depth-marker="true"', false);
         $response->assertDontSee('price_snapshot', false);
         $response->assertDontSee('group_code', false);
         $response->assertDontSee('raw_mapping', false);
@@ -196,7 +197,7 @@ class ProcurementUiTest extends TestCase
         $this->assertSame(100.0, (float) $procurement->received_quantity);
         $this->assertSame(0.0, (float) $procurement->remaining_quantity);
         $this->assertSame($initialVersion + 4, $procurement->workForm->version);
-        $this->assertSame('Tamamı Geldi', data_get($procurement->workForm->procurement_snapshot, 'procurement_status_label'));
+        $this->assertSame('Tedarik Tamamlandı', data_get($procurement->workForm->procurement_snapshot, 'procurement_status_label'));
         $this->assertTrue($procurement->workForm->activityLogs->contains(fn ($log) => $log->action_type === 'procurement_request_created'));
         $this->assertTrue($procurement->workForm->activityLogs->contains(fn ($log) => $log->action_type === 'supplier_ordered'));
         $this->assertTrue($procurement->workForm->activityLogs->contains(fn ($log) => $log->action_type === 'procurement_partially_received'));

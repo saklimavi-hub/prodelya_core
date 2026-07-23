@@ -176,7 +176,7 @@
                 <div class="pd-hub-hero-icon">PDH</div>
                 <div class="pd-hub-hero-copy">
                     <div class="pd-hub-hero-title">Kaynak Önizleme</div>
-                    <div class="pd-hub-hero-subtitle">Bu ekran kaynağın ilk kayıtlarını okur ve alanların doğru gelip gelmediğini kontrol eder. Bu adım birleşik kurulum akışındaki ön kontroldür; veri yazmadan önce örnek değerleri inceleyin.</div>
+                    <div class="pd-hub-hero-subtitle">Bu ekran kaynağın ilk kayıtlarını okur ve alanların doğru gelip gelmediğini kontrol eder. Bu adım birleşik kurulum akışındaki ön kontroldür; ürün havuzuna kayıt yapmadan önce örnek değerleri inceleyin. Önizleme denemesi sistem günlüğüne kaydedilebilir.</div>
                     <div class="pd-hub-pill-row mt-3">
                         <span class="pd-badge pd-badge-blue">{{ $sourceSummary['supplier_name'] }}</span>
                         <span class="pd-badge pd-badge-gray">Kaynak #{{ $sourceSummary['source_id'] }}</span>
@@ -438,7 +438,7 @@
         <div class="pd-hub-table-head">
             <div>
                 <div class="pd-hub-section-title">Ana Ürün Önizleme</div>
-                <div class="pd-hub-section-copy">Liste fiyatı, görsel ve kalite uyarılarını ana ürün seviyesinde kontrol edin.</div>
+                <div class="pd-hub-section-copy">Brüt liste fiyatı, net referans, para birimi, görsel ve kalite uyarılarını ana ürün seviyesinde kontrol edin.</div>
             </div>
         </div>
         <div class="pd-card-body">
@@ -452,7 +452,7 @@
                                 <th>Görsel</th>
                                 <th>Ürün</th>
                                 <th>Varyant / Kategori</th>
-                                <th>Liste fiyatı</th>
+                                <th>Brüt Liste Fiyatı / Net Referans</th>
                                 <th>Uyarılar</th>
                                 <th>Teknik detay</th>
                             </tr>
@@ -527,7 +527,8 @@
                                     <td>
                                         <div class="pd-hub-price-stack">
                                             <div class="pd-hub-price-main">{{ $formatMoney($item['list_price'] ?? null) }}</div>
-                                            <div class="pd-hub-meta-item">Para birimi: {{ $item['currency'] ?: '-' }}</div>
+                                            <div class="pd-hub-meta-item">Net Referans: {{ isset($item['price']) && $item['price'] !== null && $item['price'] !== '' ? $formatMoney($item['purchase_price'] ?? null) : '-' }}</div>
+                                            <div class="pd-hub-meta-item">Para Birimi: {{ $item['currency'] ?: '-' }}</div>
                                             <div class="pd-hub-meta-item">KDV: {{ $formatPercent($item['vat_rate'] ?? null) }}</div>
                                         </div>
                                         @if($infoMessage)
@@ -604,7 +605,7 @@
         <div class="pd-hub-table-head">
             <div>
                 <div class="pd-hub-section-title">Varyasyon Önizleme</div>
-                <div class="pd-hub-section-copy">Varyant seviyesinde görsel fallback, stok ve liste fiyatı davranışını izleyin.</div>
+                <div class="pd-hub-section-copy">Varyant seviyesinde görsel fallback, brüt liste fiyatı, net referans ve para birimi davranışını izleyin.</div>
             </div>
         </div>
         <div class="pd-card-body">
@@ -618,7 +619,7 @@
                                 <th>Görsel</th>
                                 <th>Varyant</th>
                                 <th>Renk / Stok</th>
-                                <th>Liste fiyatı</th>
+                                <th>Brüt Liste Fiyatı / Net Referans</th>
                                 <th>Uyarılar</th>
                                 <th>Teknik detay</th>
                             </tr>
@@ -664,7 +665,8 @@
                                     <td>
                                         <div class="pd-hub-price-stack">
                                             <div class="pd-hub-price-main">{{ $formatMoney($item['list_price'] ?? null) }}</div>
-                                            <div class="pd-hub-meta-item">Para birimi: {{ $item['currency'] ?: '-' }}</div>
+                                            <div class="pd-hub-meta-item">Net Referans: {{ isset($item['price']) && $item['price'] !== null && $item['price'] !== '' ? $formatMoney($item['purchase_price'] ?? null) : '-' }}</div>
+                                            <div class="pd-hub-meta-item">Para Birimi: {{ $item['currency'] ?: '-' }}</div>
                                             <div class="pd-hub-meta-item">KDV: {{ $formatPercent($item['vat_rate'] ?? null) }}</div>
                                         </div>
                                         @if($infoMessage)
@@ -737,7 +739,7 @@
             <div class="pd-hub-section-head">
                 <div>
                     <div class="pd-hub-section-title">Gelişmiş Teknik İşlemler</div>
-                    <div class="pd-hub-section-copy">Normal kullanımda gerekmez. Önce ön kontrol, alan eşleme, kategori eşleme ve Bekleyen Kontroller akışını tamamlayın.</div>
+                    <div class="pd-hub-section-copy">Normal kullanımda gerekmez. Gelişmiş İşlemler alanı olarak yalnız yetkili teknik bakım aksiyonları burada tutulur. Önce ön kontrol, alan eşleme, kategori eşleme ve Bekleyen Kontroller akışını tamamlayın.</div>
                 </div>
             </div>
             <form id="pdSourceRetestForm" action="{{ route('admin.super.product-data-hub.sources.test', $source) }}" method="POST">
@@ -757,7 +759,7 @@
                 @endif
 
                 <div class="pd-form-actions pd-preview-advanced-actions">
-                    <button type="submit" form="pdSourceRetestForm" class="pd-btn pd-btn-light" onclick="return confirm('Kaynak bağlantısı yeniden test edilecek ve canlı önizleme verisi çekilebilir. Veri güncellenmez. Devam edilsin mi?')">Ön Kontrolü Yenile</button>
+                    <button type="submit" form="pdSourceRetestForm" class="pd-btn pd-btn-light" onclick="return confirm('Kaynak bağlantısı yeniden test edilecek ve canlı önizleme verisi çekilebilir. Bu işlem ürün verisi kaydetmez; sistem günlüğüne kaydedilebilir. Devam edilsin mi?')">Ön Kontrolü Yenile</button>
                     <a href="{{ route('admin.super.product-data-hub.sources.preview', array_merge(['source' => $source->id], $currentQuery, ['limit' => 'all'])) }}" class="pd-btn pd-btn-light" onclick="return confirm('Tüm kayıtları göstermek ekranı yavaşlatabilir. Devam edilsin mi?')">Tümünü Göster</a>
                     <button type="submit" class="pd-btn pd-btn-primary" onclick="return confirm('Preview kayıtları staging havuzuna aktarılacak. Bu işlem veri yazar; checkbox onayı da gerektirir. Devam edilsin mi?')" {{ !$canStagePreview ? 'disabled' : '' }}>Staging’e Aktar</button>
                     <button type="submit" form="pdSourceBuildStandardForm" class="pd-btn pd-btn-warning" onclick="return confirm('Bu işlem kaynak ürünlerini standart ürün havuzuna dönüştürür veya günceller. Önce önizleme ve hazırlık sonucu kontrol edilmelidir. Devam edilsin mi?')" {{ $sourceMode !== 'live_source' ? 'disabled' : '' }}>Standart Ürün Havuzuna Al</button>
@@ -776,7 +778,7 @@
 @php($bottomQuery = request()->query())
 <div>
     <strong>Preview aksiyonları:</strong>
-    <span class="pd-muted">Liste fiyatı bazlı görünümü, uyarıları ve görselleri bu ekrandan kontrol edebilirsiniz.</span>
+    <span class="pd-muted">Brüt liste fiyatı, net referans, para birimi, uyarılar ve görselleri bu ekrandan kontrol edebilirsiniz.</span>
 </div>
 <div class="pd-bottom-action-buttons">
     <a href="{{ route('admin.super.product-data-hub.sources.preview', array_merge(['source' => $source->id], $bottomQuery, ['filter' => 'warning'])) }}" class="pd-btn pd-btn-light">Uyarılı ürünleri göster</a>

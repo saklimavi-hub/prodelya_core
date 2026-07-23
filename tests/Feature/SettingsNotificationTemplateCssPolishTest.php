@@ -68,7 +68,7 @@ class SettingsNotificationTemplateCssPolishTest extends TestCase
             'Dosya ve Depolama',
             'Talep Merkezi',
         ]);
-        $this->assertSame(1, substr_count($settings->getContent(), 'class="pd-sidebar-item active'));
+        $this->assertSingleActiveSidebarItem($settings->getContent());
 
         $notifications = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
@@ -76,7 +76,7 @@ class SettingsNotificationTemplateCssPolishTest extends TestCase
 
         $notifications->assertOk();
         $notifications->assertSee('Acil Dikkat');
-        $this->assertSame(1, substr_count($notifications->getContent(), 'class="pd-sidebar-item active'));
+        $this->assertSingleActiveSidebarItem($notifications->getContent());
 
         $logs = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
@@ -107,7 +107,7 @@ class SettingsNotificationTemplateCssPolishTest extends TestCase
         $smtp->assertOk();
         $smtp->assertSee('Mail Gönderimi');
         $smtp->assertSee('mevcut şifre korunur');
-        $this->assertSame(1, substr_count($smtp->getContent(), 'class="pd-sidebar-item active'));
+        $this->assertSingleActiveSidebarItem($smtp->getContent());
 
         $whatsapp = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
@@ -116,9 +116,16 @@ class SettingsNotificationTemplateCssPolishTest extends TestCase
         $whatsapp->assertOk();
         $whatsapp->assertSee('WhatsApp Hazır Mesaj');
         $whatsapp->assertSee('otomatik API gönderimi yapmaz');
-        $this->assertSame(1, substr_count($whatsapp->getContent(), 'class="pd-sidebar-item active'));
+        $this->assertSingleActiveSidebarItem($whatsapp->getContent());
     }
 
+    private function assertSingleActiveSidebarItem(string $html): void
+    {
+        $activeCount = substr_count($html, 'class="pd-sidebar-item active')
+            + substr_count($html, 'class="pd-sidebar-submenu-item active');
+
+        $this->assertSame(1, $activeCount);
+    }
     private function enableNotificationCenterAccess(array $features): void
     {
         TenantModule::query()->updateOrCreate(

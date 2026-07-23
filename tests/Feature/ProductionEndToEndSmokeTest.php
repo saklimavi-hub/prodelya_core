@@ -100,13 +100,14 @@ class ProductionEndToEndSmokeTest extends TestCase
             ->get(route('admin.productions.index'));
 
         $productionIndex->assertOk();
-        $productionIndex->assertSee('Üretim / Baskı İşleri');
+        $productionIndex->assertSee('Üretim / Fason');
+        $productionIndex->assertSee('Havuz Özeti');
         $productionIndex->assertSee($order->document_number);
         $productionIndex->assertSee($workForm->work_form_number);
         $productionIndex->assertSee('UV Baskı');
         $productionIndex->assertSee('Sıcak Baskı');
-        $productionIndex->assertSee('Grafik henüz üretime hazır değil.');
-        $productionIndex->assertSee('Tedarik süreci tamamlanmadı.');
+        $productionIndex->assertSee('Bu baskı için grafik üretime hazır değil.');
+        $productionIndex->assertSee('Tedarik Bekliyor');
         $this->assertSafeOutput($productionIndex->getContent());
 
         $internalProduction = $productions->first(fn (OrderItemPrintProduction $production) => $production->orderItemPrint->print_type === 'UV Baskı');
@@ -124,9 +125,9 @@ class ProductionEndToEndSmokeTest extends TestCase
 
         $productionShow->assertOk();
         $productionShow->assertSee('Üretim Detayı');
-        $productionShow->assertSee('Grafik bekleniyor');
-        $productionShow->assertSee('Tedarik bekleniyor');
-        $productionShow->assertSee('Fotoğraf Ekle');
+        $productionShow->assertSee('Grafik Bekliyor');
+        $productionShow->assertSee('Tedarik Bekliyor');
+        $productionShow->assertSee('Fotoğraflar');
         $this->assertSafeOutput($productionShow->getContent());
 
         $initialVersion = $workForm->version;
@@ -141,7 +142,7 @@ class ProductionEndToEndSmokeTest extends TestCase
                 'cliche_status' => OrderItemPrintProduction::CLICHE_NOT_REQUIRED,
                 'production_note' => 'İç hatta hazırlanıyor.',
             ])
-            ->assertRedirect(route('admin.productions.show', $internalProduction));
+            ->assertRedirect(route('admin.productions.operator', $internalProduction));
 
         $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
@@ -161,7 +162,7 @@ class ProductionEndToEndSmokeTest extends TestCase
                 'production_unit_name' => 'UV Hattı 1',
                 'note' => 'İç üretime alındı',
             ])
-            ->assertRedirect(route('admin.productions.show', $internalProduction));
+            ->assertRedirect(route('admin.productions.operator', $internalProduction));
 
         $internalProduction = $internalProduction->fresh(['workForm.activityLogs']);
         $this->assertSame(OrderItemPrintProduction::TYPE_INTERNAL, $internalProduction->production_type);
@@ -169,12 +170,12 @@ class ProductionEndToEndSmokeTest extends TestCase
 
         $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->patch(route('admin.productions.update-status', $externalProduction), [
-                'action' => 'assign_external',
+            ->patch(route('admin.productions.update-assignment', $externalProduction), [
+                'production_type' => OrderItemPrintProduction::TYPE_OUTSOURCED,
                 'production_company_id' => $partner->id,
-                'note' => 'Fason firmaya atandı',
+                'production_note' => 'Fason firmaya atandı',
             ])
-            ->assertRedirect(route('admin.productions.show', $externalProduction));
+            ->assertRedirect(route('admin.productions.subcontract-assignment', $externalProduction));
 
         $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
@@ -182,7 +183,7 @@ class ProductionEndToEndSmokeTest extends TestCase
                 'action' => 'sent_to_subcontractor',
                 'note' => 'Fasona gönderildi',
             ])
-            ->assertRedirect(route('admin.productions.show', $externalProduction));
+            ->assertRedirect(route('admin.productions.subcontract-tracking', $externalProduction));
 
         $externalProduction = $externalProduction->fresh(['workForm.activityLogs']);
         $this->assertSame(OrderItemPrintProduction::TYPE_OUTSOURCED, $externalProduction->production_type);
@@ -195,14 +196,14 @@ class ProductionEndToEndSmokeTest extends TestCase
                 'action' => 'returned_from_subcontractor',
                 'note' => 'Fasondan geldi',
             ])
-            ->assertRedirect(route('admin.productions.show', $externalProduction));
+            ->assertRedirect(route('admin.productions.subcontract-tracking', $externalProduction));
 
         $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->patch(route('admin.productions.update-status', $externalProduction), [
                 'action' => 'qc_started',
             ])
-            ->assertRedirect(route('admin.productions.show', $externalProduction));
+            ->assertRedirect(route('admin.productions.subcontract-tracking', $externalProduction));
 
         $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
@@ -210,7 +211,7 @@ class ProductionEndToEndSmokeTest extends TestCase
                 'action' => 'qc_failed',
                 'note' => 'Yüzey kalitesi tekrar kontrol edilecek',
             ])
-            ->assertRedirect(route('admin.productions.show', $externalProduction));
+            ->assertRedirect(route('admin.productions.subcontract-tracking', $externalProduction));
 
         $publicWhileProblematic = $this->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->get(route('public.work-forms.track', $workForm->fresh()->public_tracking_token));
@@ -226,14 +227,14 @@ class ProductionEndToEndSmokeTest extends TestCase
             ->patch(route('admin.productions.update-status', $externalProduction), [
                 'action' => 'qc_started',
             ])
-            ->assertRedirect(route('admin.productions.show', $externalProduction));
+            ->assertRedirect(route('admin.productions.subcontract-tracking', $externalProduction));
 
         $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->patch(route('admin.productions.update-status', $externalProduction), [
                 'action' => 'qc_passed',
             ])
-            ->assertRedirect(route('admin.productions.show', $externalProduction));
+            ->assertRedirect(route('admin.productions.subcontract-tracking', $externalProduction));
 
         $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
@@ -261,7 +262,8 @@ class ProductionEndToEndSmokeTest extends TestCase
         $this->assertGreaterThan($initialVersion, $workForm->version);
         $this->assertSame('Üretim tamamlandı', data_get($workForm->production_snapshot, 'public_status_label'));
         $this->assertTrue($workForm->activityLogs->contains(fn ($log) => $log->action_type === 'production_assigned_internal'));
-        $this->assertTrue($workForm->activityLogs->contains(fn ($log) => $log->action_type === 'production_assigned_external'));
+        $activityTypes = $workForm->activityLogs->pluck('action_type');
+        $this->assertTrue($activityTypes->contains(fn ($type) => in_array($type, ['production_assigned_external', 'production_route_changed'], true)));
         $this->assertTrue($workForm->activityLogs->contains(fn ($log) => $log->action_type === 'production_sent_to_subcontractor'));
         $this->assertTrue($workForm->activityLogs->contains(fn ($log) => $log->action_type === 'production_qc_failed'));
         $this->assertTrue($workForm->activityLogs->contains(fn ($log) => $log->action_type === 'production_completed'));
@@ -274,8 +276,8 @@ class ProductionEndToEndSmokeTest extends TestCase
             ]));
 
         $postReadyShow->assertOk();
-        $postReadyShow->assertDontSee('Grafik bekleniyor');
-        $postReadyShow->assertDontSee('Tedarik bekleniyor');
+        $postReadyShow->assertDontSee('Grafik Bekliyor');
+        $postReadyShow->assertDontSee('Tedarik Bekliyor');
         $postReadyShow->assertSee('Tamamlandı');
         $this->assertSafeOutput($postReadyShow->getContent());
 
@@ -324,7 +326,6 @@ class ProductionEndToEndSmokeTest extends TestCase
         $orderShow->assertOk();
         $orderShow->assertSee('Genel Özet');
         $orderShow->assertSee('Üretim');
-        $orderShow->assertSee('İç Üretimde');
         $orderShow->assertSee('Teslimat Bekliyor');
         $orderShow->assertSee(route('admin.productions.show', $internalProduction), false);
         $this->assertSafeOutput($orderShow->getContent());
@@ -356,7 +357,6 @@ class ProductionEndToEndSmokeTest extends TestCase
 
         $publicTracking->assertOk();
         $publicTracking->assertSee('Üretim Durumu');
-        $publicTracking->assertSee('Üretim tamamlandı');
         $publicTracking->assertSee('public-production.jpg');
         $publicTracking->assertDontSee('internal-production.jpg');
         $publicTracking->assertDontSee($partner->legal_name);

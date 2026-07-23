@@ -17,8 +17,8 @@
         <div class="pd-card-body">
             <div class="pd-hero-main">
                 <div class="pd-hero-copy">
-                    <h1 class="pd-hero-title">Katalog Ürünleri</h1>
-                    <p class="pd-hero-subtitle">Abone Firma kataloğuna açılmış tedarikçi ve local ürünleri yönetin. Satılabilir varyantlar teklif aramada kullanılır; grup ürünler varyanttan seçilir.</p>
+                    <h1 class="pd-hero-title">{{ $catalogContext['surface_title'] ?? 'Katalog Ürünleri' }}</h1>
+                    <p class="pd-hero-subtitle">{{ $catalogContext['surface_subtitle'] ?? 'Abone Firma kataloğuna açılmış tedarikçi ve local ürünleri yönetin. Satılabilir varyantlar teklif aramada kullanılır; grup ürünler varyanttan seçilir.' }}</p>
                     <div class="pd-note pd-note-soft-blue pd-context-note">
                         <strong>Abone Firma:</strong> {{ $catalogContext['tenant_name'] ?? 'Bilinmiyor' }}
                         @if(!empty($catalogContext['is_platform_admin_context']))
@@ -35,7 +35,7 @@
                     </div>
                 </div>
                 <div class="pd-hero-actions">
-                    <a href="{{ route('admin.catalog.local-products') }}" class="pd-btn pd-btn-light">Local Ürün Ekle</a>
+                    <a href="{{ route('admin.catalog.local-products.create') }}" class="pd-btn pd-btn-light">Local Ürün Ekle</a>
                     <a href="{{ route('admin.catalog.warnings') }}" class="pd-btn pd-btn-warning">Uyarılıları Göster</a>
                 </div>
             </div>
@@ -146,6 +146,17 @@
         </div>
     </section>
 
+    @if((int) data_get($catalogContext ?? [], 'supplier_local_stock_warning.legacy_unassigned_count', 0) > 0)
+        <section class="pd-section-card pd-section-card-soft-amber">
+            <div class="pd-section-body">
+                <div class="pd-alert-warning">
+                    Varyantı belirlenmemiş stok kaydı bulunuyor.
+                    <strong>{{ number_format((int) data_get($catalogContext, 'supplier_local_stock_warning.legacy_unassigned_count', 0), 0, ',', '.') }} kayıt / {{ number_format((float) data_get($catalogContext, 'supplier_local_stock_warning.legacy_unassigned_quantity', 0), 0, ',', '.') }} adet</strong>
+                </div>
+            </div>
+        </section>
+    @endif
+
     <section class="pd-section-card">
         <div class="pd-section-header">
             <div>
@@ -159,7 +170,7 @@
                     <h3 class="text-lg font-medium pd-title-gap-xs">Katalog ürünü bulunamadı.</h3>
                     <p class="pd-muted pd-gap-bottom-sm">Henüz Abone Firmaya açık tedarikçi ürünü yoksa Super Admin erişimlerini kontrol edin veya local ürün ekleyin.</p>
                     <div class="pd-hero-actions">
-                        <a href="{{ route('admin.catalog.local-products') }}" class="pd-btn pd-btn-light">Local Ürün Ekle</a>
+                        <a href="{{ route('admin.catalog.local-products.create') }}" class="pd-btn pd-btn-light">Local Ürün Ekle</a>
                     </div>
                 </div>
             @else
@@ -231,42 +242,21 @@
                                     <td>{{ optional($product->last_synced_at ?: $product->updated_at)->format('d.m.Y H:i') ?: '-' }}</td>
                                     <td>
                                         <div class="pd-source-actions">
-                                            <a href="{{ route('admin.catalog.show', $product) }}" class="pd-btn pd-btn-sm pd-btn-light">İncele</a>
+                                            <a href="{{ $product->getAttribute('catalog_row_variant_id') ? route('admin.catalog.variants.show', ['product' => $product->id, 'variant' => $product->getAttribute('catalog_row_variant_id')]) : route('admin.catalog.show', $product) }}" class="pd-btn pd-btn-sm pd-btn-light">İncele</a>
                                             <form action="{{ route('admin.catalog.toggle-visibility', $product) }}" method="POST">
                                                 @csrf
                                                 <button type="submit" class="pd-btn pd-btn-sm {{ $product->visible_in_catalog ? 'pd-btn-warning' : 'pd-btn-success' }}">
                                                     {{ $product->visible_in_catalog ? 'Katalogda Gizle' : 'Katalogda Göster' }}
                                                 </button>
                                             </form>
-                                            <details class="pd-inline-stock-entry">
-                                                <summary class="pd-btn pd-btn-sm pd-btn-light">Local Stoğa Al</summary>
-                                                @php
-                                                    $listPrice = (float) data_get($product->meta, 'price_snapshot.list_price', $product->display_price ?? 0);
-                                                    $discountRate = (float) data_get($product->meta, 'price_snapshot.discount_rate', 0);
-                                                    $calculatedPurchasePrice = round($listPrice * (1 - ($discountRate / 100)), 4);
-                                                @endphp
-                                                <form action="{{ route('admin.catalog.local-stock-entry', $product) }}" method="POST" class="pd-inline-stock-form" data-stock-entry-form>
-                                                    @csrf
-                                                    @if($product->getAttribute('catalog_row_variant_id'))
-                                                        <input type="hidden" name="tenant_catalog_product_variant_id" value="{{ $product->getAttribute('catalog_row_variant_id') }}">
-                                                    @endif
-                                                    <div class="pd-muted pd-form-full">{{ $product->display_name }} · {{ $product->display_code }}</div>
-                                                    <select name="entry_type" class="pd-select">
-                                                        <option value="existing_stock">Eldeki stok</option>
-                                                        <option value="supplier_purchase">Tedarikçiden satın alma</option>
-                                                    </select>
-                                                    <input name="quantity" type="number" min="1" step="1" class="pd-input" placeholder="Miktar" required>
-                                                    <input name="list_price" type="number" min="0" step="0.01" class="pd-input" value="{{ $listPrice }}" placeholder="Liste fiyatı" readonly>
-                                                    <input name="discount_rate" type="number" min="0" max="100" step="0.01" class="pd-input" value="{{ $discountRate }}" placeholder="İskonto %">
-                                                    <input name="calculated_purchase_unit_price" type="number" min="0" step="0.01" class="pd-input" value="{{ $calculatedPurchasePrice }}" placeholder="Hesaplanan" readonly data-calculated-price>
-                                                    <input name="unit_purchase_price" type="number" min="0" step="0.01" class="pd-input" value="{{ $calculatedPurchasePrice }}" placeholder="Alış birim fiyatı" data-unit-price>
-                                                    <label class="pd-muted"><input type="checkbox" name="manual_purchase_unit_price" value="1" data-manual-price> Manuel fiyat</label>
-                                                    <button type="button" class="pd-btn pd-btn-sm pd-btn-light" data-auto-price>Otomatik hesapla</button>
-                                                    <input name="document_no" class="pd-input" placeholder="Belge no">
-                                                    <div class="pd-muted pd-form-full">Eldeki stok girişinde tedarikçiye borç oluşturulmaz.</div>
-                                                    <button type="submit" class="pd-btn pd-btn-sm pd-btn-primary">Kaydet</button>
-                                                </form>
-                                            </details>
+                                            @if($product->local_stock_action_available)
+                                                <a href="{{ route('admin.stock-purchases.create', array_filter(['variant' => $product->getAttribute('catalog_row_variant_id'), 'product' => $product->getAttribute('catalog_row_variant_id') ? null : $product->id])) }}" class="pd-btn pd-btn-sm pd-btn-primary">Stoğa Al</a>
+                                                @if($product->getAttribute('catalog_row_supplier_id'))
+                                                    <a href="{{ route('admin.procurements.supplier-requests.create', array_filter(['tenant_catalog_product_id' => $product->id, 'tenant_catalog_product_variant_id' => $product->getAttribute('catalog_row_variant_id'), 'supplier_id' => $product->getAttribute('catalog_row_supplier_id'), 'requested_quantity' => 1, 'source' => 'catalog'])) }}" class="pd-btn pd-btn-sm pd-btn-light">Tedarik Süreci Başlat</a>
+                                                @else
+                                                    <span class="pd-btn pd-btn-sm pd-btn-light" aria-disabled="true">Tedarikçi Eşleşmesi Eksik</span>
+                                                @endif
+                                            @endif
                                             @if($product->quote_toggle_available)
                                                 <form action="{{ route('admin.catalog.toggle-quote-visibility', $product) }}" method="POST">
                                                     @csrf
@@ -314,45 +304,9 @@
     <span class="pd-muted">Local ürün ekleyin, görünürlükleri yönetin ve uyarılı ürünleri hızlıca kontrol edin.</span>
 </div>
 <div class="pd-bottom-action-buttons">
-    <a href="{{ route('admin.catalog.local-products') }}" class="pd-btn pd-btn-primary">Local Ürün Ekle</a>
+    <a href="{{ route('admin.catalog.local-products.create') }}" class="pd-btn pd-btn-primary">Local Ürün Ekle</a>
     <a href="{{ route('admin.catalog.visibility') }}" class="pd-btn pd-btn-light">Görünürlükleri Kaydet</a>
     <a href="{{ route('admin.catalog.warnings') }}" class="pd-btn pd-btn-warning">Uyarılıları Göster</a>
     <a href="{{ route('admin.promotion-quotes.create') }}" class="pd-btn pd-btn-light">Teklif Ürün Seçimine Git</a>
 </div>
 @endsection
-
-@push('scripts')
-<script>
-document.addEventListener('input', (event) => {
-    const form = event.target.closest('[data-stock-entry-form]');
-    if (!form) return;
-
-    const listPrice = Number(form.querySelector('input[name="list_price"]')?.value || 0);
-    const discountRate = Number(form.querySelector('input[name="discount_rate"]')?.value || 0);
-    const calculated = Number((listPrice * (1 - (discountRate / 100))).toFixed(4));
-    const calculatedInput = form.querySelector('[data-calculated-price]');
-    if (calculatedInput) calculatedInput.value = calculated;
-    const manual = form.querySelector('[data-manual-price]');
-    const unit = form.querySelector('[data-unit-price]');
-    if (unit && manual && !manual.checked && !event.target.matches('[data-unit-price]')) {
-        unit.value = calculated;
-    }
-
-    if (event.target.matches('[data-unit-price]')) {
-        if (manual) manual.checked = true;
-    }
-});
-
-document.addEventListener('click', (event) => {
-    if (!event.target.matches('[data-auto-price]')) return;
-    const form = event.target.closest('[data-stock-entry-form]');
-    if (!form) return;
-
-    const calculated = form.querySelector('[data-calculated-price]')?.value || '0';
-    const unit = form.querySelector('[data-unit-price]');
-    const manual = form.querySelector('[data-manual-price]');
-    if (unit) unit.value = calculated;
-    if (manual) manual.checked = false;
-});
-</script>
-@endpush

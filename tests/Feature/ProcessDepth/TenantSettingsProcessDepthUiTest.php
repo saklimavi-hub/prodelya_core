@@ -15,6 +15,9 @@ use Tests\TestCase;
 class TenantSettingsProcessDepthUiTest extends TestCase
 {
     use RefreshDatabase;
+    protected bool $seed = true;
+
+
 
     private const CENTRAL_HOST = 'prodelya_core.test';
 
@@ -29,7 +32,6 @@ class TenantSettingsProcessDepthUiTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->seed();
 
         config(['app.url' => 'http://' . self::CENTRAL_HOST]);
 

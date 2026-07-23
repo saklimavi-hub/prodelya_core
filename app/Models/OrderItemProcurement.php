@@ -135,6 +135,21 @@ class OrderItemProcurement extends Model
         return $this->fulfillment_source === self::FULFILLMENT_CUSTOMER_SUPPLIED;
     }
 
+    public function isLocalStockBased(): bool
+    {
+        return $this->fulfillment_source === self::FULFILLMENT_LOCAL_STOCK;
+    }
+
+    public function isSupplierBased(): bool
+    {
+        return $this->fulfillment_source === self::FULFILLMENT_SUPPLIER;
+    }
+
+    public function isMixedSource(): bool
+    {
+        return $this->fulfillment_source === self::FULFILLMENT_MIXED;
+    }
+
     public function isNotRequired(): bool
     {
         return $this->fulfillment_source === self::FULFILLMENT_NOT_REQUIRED
@@ -147,10 +162,72 @@ class OrderItemProcurement extends Model
         return (float) $this->remaining_quantity;
     }
 
-    public function safeStatusLabel(): string
+    public function openSupplierRequest(): ?SupplierProcurementRequest
     {
-        return self::statusLabels()[$this->procurement_status]
-            ?? ucfirst(str_replace('_', ' ', (string) $this->procurement_status));
+        return $this->supplierRequestItems
+            ->pluck('request')
+            ->filter(fn (?SupplierProcurementRequest $request): bool => $request !== null && !$request->isCompleted() && !$request->isCancelled())
+            ->sortByDesc('id')
+            ->first();
+    }
+
+    public function userFacingState(): string
+    {
+        if ($this->procurement_status === self::STATUS_CANCELLED) {
+            return 'cancelled';
+        }
+
+        if ($this->isNotRequired()) {
+            return 'no_need';
+        }
+
+        if ($this->isFullyReceived()) {
+            return 'received';
+        }
+
+        if ($this->isPartiallyReceived()) {
+            return 'partial_received';
+        }
+
+        $request = $this->openSupplierRequest();
+
+        if ($request?->isDraft()) {
+            return 'request_draft';
+        }
+
+        if ($request !== null) {
+            return 'request_sent';
+        }
+
+        return 'need_unrequested';
+    }
+
+    public function userFacingStatusLabel(): string
+    {
+        return match ($this->userFacingState()) {
+            'no_need' => 'Tedarik Gerekli Değil',
+            'need_unrequested' => 'Talep Hazırlanacak',
+            'request_draft' => 'Talep Taslağı',
+            'request_sent' => 'Tedarik Bekliyor',
+            'partial_received' => 'Tedarik Kısmi Tamamlandı',
+            'received' => 'Tedarik Tamamlandı',
+            'cancelled' => 'İptal Edildi',
+            default => self::statusLabels()[$this->procurement_status]
+                ?? ucfirst(str_replace('_', ' ', (string) $this->procurement_status)),
+        };
+    }
+
+    public function userFacingNextActionLabel(): ?string
+    {
+        return match ($this->userFacingState()) {
+            'no_need', 'received' => null,
+            'need_unrequested' => 'Tedarik talebini hazırla',
+            'request_draft' => 'Talebi aç veya düzenle',
+            'request_sent' => 'Tedarikçiden dönüş bekle',
+            'partial_received' => 'Kalan ürünleri takip et',
+            'cancelled' => 'Kontrol et',
+            default => 'Tedarik kaydını incele',
+        };
     }
 
     public function safeFulfillmentSourceLabel(): string
@@ -159,20 +236,9 @@ class OrderItemProcurement extends Model
             ?? ucfirst(str_replace('_', ' ', (string) $this->fulfillment_source));
     }
 
-    public function isSupplierBased(): bool
+    public function safeStatusLabel(): string
     {
-        return in_array($this->fulfillment_source, [
-            self::FULFILLMENT_SUPPLIER,
-            self::FULFILLMENT_MIXED,
-        ], true);
-    }
-
-    public function isLocalStockBased(): bool
-    {
-        return in_array($this->fulfillment_source, [
-            self::FULFILLMENT_LOCAL_STOCK,
-            self::FULFILLMENT_MIXED,
-        ], true);
+        return $this->userFacingStatusLabel();
     }
 
     public static function statusLabels(): array
@@ -184,7 +250,7 @@ class OrderItemProcurement extends Model
             self::STATUS_PARTIALLY_RECEIVED => 'Kısmi Geldi',
             self::STATUS_FULLY_RECEIVED => 'Tamamı Geldi',
             self::STATUS_CANCELLED => 'İptal',
-            self::STATUS_NOT_REQUIRED => 'Tedarik Gerekmiyor',
+            self::STATUS_NOT_REQUIRED => 'Tedarik Gerekli Değil',
             self::STATUS_CUSTOMER_WAITING => 'Müşteri Ürünü Bekleniyor',
             self::STATUS_CUSTOMER_RECEIVED => 'Müşteri Ürünü Geldi',
         ];

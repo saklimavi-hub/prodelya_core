@@ -104,7 +104,7 @@ class ProductHubReviewQueueService
                 ],
                 [
                     'key' => 'category_waiting',
-                    'title' => 'Kategori Bekleyenler',
+                    'title' => 'Eşleşmeleri Gözden Geçir',
                     'count' => $summary['category_waiting'],
                     'tone' => 'amber',
                     'copy' => 'Kategori kararı bekleyen satırlar teklif ve katalog akışını temiz tamamlayamaz.',
@@ -128,15 +128,15 @@ class ProductHubReviewQueueService
                 ],
                 [
                     'key' => 'projection_issues',
-                    'title' => 'Projection Sorunları',
+                    'title' => 'Otomatik Yansıma Sorunları',
                     'count' => $summary['projection_issues'],
                     'tone' => 'red',
                     'copy' => 'Katalog yansıması geri kalan satırlar satışta eski fiyat ve stok doğurabilir.',
-                    'action' => 'Projection sorunlarını aç',
+                    'action' => 'Otomatik yansıma sorunlarını aç',
                 ],
                 [
                     'key' => 'tenant_output_blocks',
-                    'title' => 'Tenant Çıkışı Blokajları',
+                    'title' => 'Abone Firma Katalog Blokajları',
                     'count' => $summary['tenant_output_blocks'],
                     'tone' => 'purple',
                     'copy' => 'Tedarikçi erişimi veya görünürlük kapalıysa ürün doğru olsa bile satışa açılamaz.',

@@ -5,10 +5,15 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Supplier;
 use App\Models\TenantSupplierAccess;
+use App\Models\TenantAccount;
 use App\Models\TenantCatalogProduct;
 use App\Services\ProductDataHub\ProductHubSellableTruthService;
 use App\Services\ProductDataHub\ProductHubCurrencyService;
+use App\Services\ProductDataHub\ProductHubFreshnessDiagnosticService;
 use App\Services\ProductDataHub\SupplierWarningLabelService;
+use App\Services\PromotionQuote\QuoteCurrencyAccessService;
+use App\Services\PromotionQuote\QuoteCurrencyPricingService;
+use App\Services\Stock\TenantLocalStockPresentationService;
 use App\Services\TenantResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -20,6 +25,10 @@ class CatalogSearchController extends Controller
         private readonly SupplierWarningLabelService $supplierWarningLabelService,
         private readonly ProductHubSellableTruthService $sellableTruthService,
         private readonly ProductHubCurrencyService $productHubCurrencyService,
+        private readonly ProductHubFreshnessDiagnosticService $productHubFreshnessDiagnosticService,
+        private readonly QuoteCurrencyAccessService $quoteCurrencyAccessService,
+        private readonly QuoteCurrencyPricingService $quoteCurrencyPricingService,
+        private readonly TenantLocalStockPresentationService $tenantLocalStockPresentationService,
     ) {
     }
 
@@ -35,6 +44,8 @@ class CatalogSearchController extends Controller
         $categoryId = $request->integer('category_id') ?: null;
         $onlyVisible = $request->boolean('only_visible', true);
         $onlyQuoteVisible = $request->boolean('only_quote_visible', true);
+        $requestedCurrency = $request->input('currency');
+        $requestedDate = trim((string) $request->input('quote_date', now()->format('Y-m-d')));
 
         $query = TenantCatalogProduct::query()
             ->with(['category', 'standardProduct', 'variants.standardVariant'])
@@ -62,40 +73,8 @@ class CatalogSearchController extends Controller
             ->orderBy('product_name')
             ->limit(80);
 
-        $allowedSupplierIds = TenantSupplierAccess::query()
-            ->where('tenant_account_id', $tenant->id)
-            ->where('is_active', true)
-            ->where('can_view_products', true)
-            ->where('visible_in_catalog', true)
-            ->pluck('supplier_id')
-            ->all();
-        $tenantHasAnyAccessRule = TenantSupplierAccess::query()
-            ->where('tenant_account_id', $tenant->id)
-            ->exists();
-
         $results = $query->get()
-            ->filter(function (TenantCatalogProduct $product) use ($allowedSupplierIds, $tenantHasAnyAccessRule) {
-                if ($this->isLocalProduct($product)) {
-                    return true;
-                }
-
-                $supplierIds = collect($product->source_summary ?? [])->pluck('supplier_id')->filter()->unique()->values()->all();
-
-                if ($supplierIds === []) {
-                    return true;
-                }
-
-                if (!$tenantHasAnyAccessRule) {
-                    return true;
-                }
-
-                if ($allowedSupplierIds === []) {
-                    return false;
-                }
-
-                return collect($supplierIds)->intersect($allowedSupplierIds)->isNotEmpty();
-            })
-            ->flatMap(fn (TenantCatalogProduct $product) => $this->expandSellableSearchResults($tenant, $request->user(), $product, $queryText, $onlyQuoteVisible))
+            ->flatMap(fn (TenantCatalogProduct $product) => $this->expandSellableSearchResults($tenant, $request->user(), $product, $queryText, $onlyQuoteVisible, $requestedCurrency, $requestedDate))
             ->sortBy(fn (array $entry) => $this->resolveSearchRank($entry, $queryText))
             ->take(20)
             ->map(fn (array $entry) => $this->stripTenantHiddenGroupFields($entry))
@@ -104,47 +83,134 @@ class CatalogSearchController extends Controller
         return response()->json($results);
     }
 
-    private function expandSellableSearchResults($tenant, $user, TenantCatalogProduct $product, string $queryText, bool $onlyQuoteVisible): array
+    private function resolveRequestedQuoteCurrency(TenantAccount $tenant, $user, ?string $requestedCurrency): string
+    {
+        $access = $this->quoteCurrencyAccessService->build($tenant, $user);
+        $requested = strtoupper(trim((string) ($requestedCurrency ?? '')));
+        $requested = $requested === 'TL' ? 'TRY' : $requested;
+
+        if ($requested !== '' && ! in_array($requested, ['TRY', 'USD', 'EUR'], true)) {
+            $requested = null;
+        }
+
+        if (($access['multi_currency_enabled'] ?? false) === false) {
+            return 'TRY';
+        }
+
+        if (in_array($requested, ['USD', 'EUR'], true) && ! ($access['can_use_foreign_document_currency'] ?? false)) {
+            return 'TRY';
+        }
+
+        return $this->quoteCurrencyPricingService->normalizeDocumentCurrency($tenant, $access, $requested ?: null);
+    }
+
+    private function safeQuotePriceSnapshot(array $pricingSnapshot): array
+    {
+        return $this->quoteCurrencyPricingService
+            ->buildQuoteDisplayPayloadFromSnapshot((string) ($pricingSnapshot['document_currency'] ?? 'TRY'), $pricingSnapshot)['quote_price_snapshot'];
+    }
+
+    private function buildQuoteDocumentPricePayload(TenantAccount $tenant, $user, array $catalogPriceSnapshot, ?string $requestedCurrency, ?string $requestedDate): array
+    {
+        $documentCurrency = $this->resolveRequestedQuoteCurrency($tenant, $user, $requestedCurrency);
+
+        return $this->quoteCurrencyPricingService->buildQuoteDisplayPayload(
+            $tenant,
+            $documentCurrency,
+            $catalogPriceSnapshot,
+            ['manual_unit_price' => false],
+            $requestedDate ?: now()->format('Y-m-d')
+        );
+    }
+
+    private function prepareCatalogPriceSnapshot(
+        TenantAccount $tenant,
+        array $priceSnapshot,
+        ?string $fallbackCurrency,
+        ?float $fallbackDisplayPrice,
+        ?string $requestedDate = null,
+    ): array {
+        $sourceCurrency = $priceSnapshot['source_currency'] ?? $priceSnapshot['currency'] ?? $fallbackCurrency;
+        $normalized = array_merge($priceSnapshot, [
+            'source_price' => $priceSnapshot['source_price'] ?? $priceSnapshot['list_price'] ?? $fallbackDisplayPrice,
+            'source_currency' => $sourceCurrency,
+            'currency' => $priceSnapshot['currency'] ?? $fallbackCurrency,
+            'currency_status' => $priceSnapshot['currency_status'] ?? ($sourceCurrency ? 'resolved' : 'missing'),
+        ]);
+        $existingProjection = (array) ($priceSnapshot['currency_snapshot'] ?? []);
+        $projection = ($existingProjection['base_price'] ?? null) !== null
+            ? array_merge($normalized, $existingProjection, [
+                'source_price' => $existingProjection['source_price'] ?? $normalized['source_price'],
+                'source_currency' => $existingProjection['source_currency'] ?? $normalized['source_currency'],
+                'currency_origin' => $existingProjection['currency_origin'] ?? ($normalized['currency_origin'] ?? null),
+                'currency_status' => $existingProjection['currency_status'] ?? $normalized['currency_status'],
+            ])
+            : $this->productHubCurrencyService->buildProjectionCurrencySnapshot(
+                $tenant,
+                $normalized,
+                $requestedDate ?: now()->format('Y-m-d')
+            );
+
+        return array_merge($normalized, $projection, [
+            'currency_snapshot' => $projection,
+        ]);
+    }
+    private function expandSellableSearchResults($tenant, $user, TenantCatalogProduct $product, string $queryText, bool $onlyQuoteVisible, ?string $requestedCurrency = null, ?string $requestedDate = null): array
     {
         $variants = $product->variants
             ->filter(fn ($variant) => (bool) $variant->is_active && (bool) $variant->visible_in_catalog)
             ->values();
 
         if ($variants->isEmpty()) {
-            if ($product->is_parent_group || !$product->is_sellable) {
+            $truth = $this->sellableTruthService->resolve($product, null, $tenant);
+
+            if ($product->is_parent_group || !($truth['selection_allowed'] ?? false)) {
                 return [];
             }
 
-            if ($onlyQuoteVisible && !$product->visible_in_quote) {
+            if ($onlyQuoteVisible && !($truth['quote_visible'] ?? false)) {
                 return [];
             }
 
-            return [$this->serializeSellableProduct($tenant, $user, $product)];
+            return [$this->serializeSellableProduct($tenant, $user, $product, $requestedCurrency, $requestedDate, $truth)];
         }
 
         $matchesParent = $queryText === '' || $this->matchesParentSearch($product, $queryText);
 
         return $variants
-            ->filter(function ($variant) use ($matchesParent, $product, $queryText, $onlyQuoteVisible) {
+            ->map(function ($variant) use ($tenant, $product) {
+                return [
+                    'variant' => $variant,
+                    'truth' => $this->sellableTruthService->resolve($product, $variant, $tenant),
+                ];
+            })
+            ->filter(function (array $entry) use ($matchesParent, $product, $queryText, $onlyQuoteVisible) {
+                $variant = $entry['variant'];
+                $truth = $entry['truth'];
+
                 if (!($matchesParent || $this->matchesVariantSearch($product, $variant, $queryText))) {
                     return false;
                 }
 
-                if ($onlyQuoteVisible && !$this->variantIsQuoteVisible($product, $variant)) {
+                if (!($truth['selection_allowed'] ?? false)) {
+                    return false;
+                }
+
+                if ($onlyQuoteVisible && !($truth['quote_visible'] ?? false)) {
                     return false;
                 }
 
                 return true;
             })
-            ->map(fn ($variant) => $this->serializeSellableVariant($tenant, $user, $product, $variant))
+            ->map(fn (array $entry) => $this->serializeSellableVariant($tenant, $user, $product, $entry['variant'], $requestedCurrency, $requestedDate, $entry['truth']))
             ->sortBy(fn (array $entry) => $this->resolveSearchRank($entry, $queryText))
             ->values()
             ->all();
     }
 
-    private function serializeSellableProduct($tenant, $user, TenantCatalogProduct $product): array
+    private function serializeSellableProduct($tenant, $user, TenantCatalogProduct $product, ?string $requestedCurrency = null, ?string $requestedDate = null, ?array $truth = null): array
     {
-        $truth = $this->sellableTruthService->resolve($product);
+        $truth ??= $this->sellableTruthService->resolve($product, null, $tenant);
         $warningFlag = (bool) ($product->standardProduct?->warning_flag ?? data_get($product->meta, 'warning_flag', false));
         $productSourceSummary = collect($product->source_summary ?? []);
         $productPriceSnapshot = (array) data_get($product->meta, 'price_snapshot', []);
@@ -170,11 +236,38 @@ class CatalogSearchController extends Controller
         ]);
         $warningSummary = implode(' • ', array_slice($productWarnings['badges'], 0, 3));
         $warningTone = in_array('Kırmızı Ürün', $productWarnings['badges'], true) ? 'red' : 'amber';
-        $browserPriceSnapshot = $this->productHubCurrencyService->sanitizePriceSnapshotForBrowser($productPriceSnapshot, $tenant, $user);
+        $catalogPriceSnapshot = $this->prepareCatalogPriceSnapshot(
+            $tenant,
+            $productPriceSnapshot,
+            $product->currency,
+            $product->display_price !== null ? (float) $product->display_price : null,
+            $requestedDate
+        );
+        $browserPriceSnapshot = $this->productHubCurrencyService->sanitizePriceSnapshotForBrowser($catalogPriceSnapshot, $tenant, $user);
+
         $currencyPayload = $this->productHubCurrencyService->buildBrowserCurrencyPayload(
             $tenant,
             $user,
-            (array) data_get($productPriceSnapshot, 'currency_snapshot', $productPriceSnapshot)
+            (array) data_get($catalogPriceSnapshot, 'currency_snapshot', $catalogPriceSnapshot)
+        );
+        $quotePayload = $this->buildQuoteDocumentPricePayload(
+            $tenant,
+            $user,
+            (array) data_get($catalogPriceSnapshot, 'currency_snapshot', $catalogPriceSnapshot),
+            $requestedCurrency,
+            $requestedDate
+        );
+        $freshness = $this->productHubFreshnessDiagnosticService->buildQuoteFreshnessPayload($product);
+        $selectionAllowed = (bool) ($truth['selection_allowed'] ?? false);
+        $localStockPresentation = $this->tenantLocalStockPresentationService->forCatalogSelection($tenant, $product, null);
+        $effectiveProductLocalStock = (bool) ($localStockPresentation['local_stock_operational'] ?? false)
+            ? (float) ($localStockPresentation['local_stock_value'] ?? 0)
+            : (float) ($product->local_stock_quantity ?? 0);
+        $effectiveProductStock = $this->sellableTruthService->resolveEffectiveStock(
+            $effectiveProductLocalStock,
+            (float) ($product->supplier_stock_quantity ?? 0),
+            (float) ($product->total_stock_quantity ?? 0),
+            (bool) ($product->local_stock_priority ?? true)
         );
 
         return [
@@ -187,18 +280,27 @@ class CatalogSearchController extends Controller
             'product_name' => $product->display_name,
             'image_url' => $product->image_url,
             'supplier_name' => $productSupplierName,
-            'display_price' => (float) ($truth['effective_price'] ?? 0),
-            'list_price' => (float) (data_get($productPriceSnapshot, 'list_price') ?? $product->display_price ?? 0),
-            'currency' => $truth['effective_currency'] ?? $product->currency ?? 'TL',
+            'display_price' => $quotePayload['quote_price_value'],
+            'list_price' => $quotePayload['quote_price_value'],
+            'currency' => $quotePayload['quote_currency'],
             'vat_rate' => (float) (data_get($productSourceSummary->first(), 'vat_rate') ?? 0),
             'total_stock_quantity' => (float) ($product->total_stock_quantity ?? 0),
-            'local_stock_quantity' => (float) ($product->local_stock_quantity ?? 0),
+            'local_stock_quantity' => (float) ($localStockPresentation['local_stock_value'] ?? 0),
+            'local_stock_source' => $localStockPresentation['local_stock_source'],
+            'local_stock_scope' => $localStockPresentation['local_stock_scope'],
+            'local_stock_reason_code' => $localStockPresentation['local_stock_reason_code'],
+            'local_stock_label' => $localStockPresentation['local_stock_label'],
+            'local_stock_note' => $localStockPresentation['local_stock_note'],
+            'local_stock_projection_quantity' => (float) ($localStockPresentation['local_stock_projection_value'] ?? 0),
+            'local_stock_operational' => (bool) ($localStockPresentation['local_stock_operational'] ?? false),
             'supplier_stock_quantity' => (float) ($product->supplier_stock_quantity ?? 0),
             'safe_stock_quantity' => (int) ($product->safe_stock_quantity ?? 0),
             'visible_stock_quantity' => $effectiveProductStock,
-            'local_stock_priority' => (bool) ($product->local_stock_priority ?? true) && (float) ($product->local_stock_quantity ?? 0) > 0,
+            'local_stock_priority' => (bool) ($product->local_stock_priority ?? true) && $effectiveProductLocalStock > 0,
             'catalog_source' => $this->isLocalProduct($product) ? 'local_product' : 'supplier_projection',
-            'visible_in_quote' => ($truth['quote_visibility_status'] ?? 'visible') === 'visible',
+            'visible_in_quote' => (bool) ($truth['quote_visible'] ?? false),
+            'sellable' => $selectionAllowed,
+            'selection_reason_code' => $truth['reason_code'] ?? null,
             'warning_flag' => $warningFlag,
             'net_price_warning' => (bool) data_get($product->meta, 'net_price_warning', false),
             'price_policy_warning' => (bool) data_get($product->meta, 'price_policy_warning', false),
@@ -229,6 +331,11 @@ class CatalogSearchController extends Controller
             'can_view_currency_details' => $currencyPayload['can_view_currency_details'],
             'can_use_foreign_document_currency' => $currencyPayload['can_use_foreign_document_currency'],
             'can_use_manual_rate' => $currencyPayload['can_use_manual_rate'],
+            'quote_price_value' => $quotePayload['quote_price_value'],
+            'quote_currency' => $quotePayload['quote_currency'],
+            'quote_price_status' => $quotePayload['quote_price_status'],
+            'quote_price_snapshot' => array_merge($quotePayload['quote_price_snapshot'], ['freshness' => $freshness]),
+            'freshness' => $freshness,
             'source_summary' => $product->source_summary,
             'product_snapshot' => [
                 'tenant_catalog_product_id' => $product->id,
@@ -242,14 +349,21 @@ class CatalogSearchController extends Controller
                 'supplier_name' => $productSupplierName,
                 'is_parent' => false,
                 'is_variant' => false,
-                'is_sellable' => true,
-                'quote_search_visible' => true,
+                'is_sellable' => $selectionAllowed,
+                'quote_search_visible' => $selectionAllowed,
                 'is_warning_sellable' => !empty($productWarnings['badges']),
                 'warning_summary' => $warningSummary,
                 'warning_tone' => $warningSummary !== '' ? $warningTone : null,
             ],
             'price_snapshot' => array_merge($browserPriceSnapshot, [
-                'list_price' => (float) (data_get($browserPriceSnapshot, 'list_price') ?? $product->display_price ?? 0),
+                'list_price' => $quotePayload['quote_price_value'],
+                'display_price' => $quotePayload['quote_price_value'],
+                'currency' => $quotePayload['quote_currency'],
+                'quote_price_value' => $quotePayload['quote_price_value'],
+                'quote_currency' => $quotePayload['quote_currency'],
+                'quote_price_status' => $quotePayload['quote_price_status'],
+                'quote_price_snapshot' => array_merge($quotePayload['quote_price_snapshot'], ['freshness' => $freshness]),
+                'freshness_summary' => $freshness,
                 'warning_badges' => $productWarnings['badges'],
                 'warning_messages' => $productWarnings['messages'],
                 'net_price_warning' => (bool) data_get($product->meta, 'net_price_warning', false),
@@ -260,26 +374,42 @@ class CatalogSearchController extends Controller
             ]),
             'stock_snapshot' => [
                 'total_stock_quantity' => (float) ($product->total_stock_quantity ?? 0),
-                'local_stock_quantity' => (float) ($product->local_stock_quantity ?? 0),
+                'local_stock_quantity' => (float) ($localStockPresentation['local_stock_value'] ?? 0),
+            'local_stock_source' => $localStockPresentation['local_stock_source'],
+            'local_stock_scope' => $localStockPresentation['local_stock_scope'],
+            'local_stock_reason_code' => $localStockPresentation['local_stock_reason_code'],
+            'local_stock_label' => $localStockPresentation['local_stock_label'],
+            'local_stock_note' => $localStockPresentation['local_stock_note'],
+            'local_stock_projection_quantity' => (float) ($localStockPresentation['local_stock_projection_value'] ?? 0),
+            'local_stock_operational' => (bool) ($localStockPresentation['local_stock_operational'] ?? false),
                 'supplier_stock_quantity' => (float) ($product->supplier_stock_quantity ?? 0),
                 'visible_stock_quantity' => $effectiveProductStock,
                 'safe_stock_quantity' => (int) ($product->safe_stock_quantity ?? 0),
-                'local_stock_priority' => (bool) ($product->local_stock_priority ?? true) && (float) ($product->local_stock_quantity ?? 0) > 0,
+                'local_stock_priority' => (bool) ($product->local_stock_priority ?? true) && $effectiveProductLocalStock > 0,
                 'warning_flag' => $warningFlag,
             ],
         ];
     }
 
-    private function serializeSellableVariant($tenant, $user, TenantCatalogProduct $product, $variant): array
+    private function serializeSellableVariant($tenant, $user, TenantCatalogProduct $product, $variant, ?string $requestedCurrency = null, ?string $requestedDate = null, ?array $truth = null): array
     {
-        $truth = $this->sellableTruthService->resolve($product, $variant);
+        $truth ??= $this->sellableTruthService->resolve($product, $variant, $tenant);
         $supplierName = $this->isLocalProduct($product)
             ? 'Local Ürün'
             : $this->resolveSupplierName(data_get($product->source_summary, '0.supplier_id'));
-        $localStock = (float) (($variant->local_stock_quantity ?? 0) > 0 ? $variant->local_stock_quantity : ($product->local_stock_quantity ?? 0));
-        $supplierStock = (float) (($variant->supplier_stock_quantity ?? 0) > 0 ? $variant->supplier_stock_quantity : ($product->supplier_stock_quantity ?? 0));
-        $fallbackStock = (float) (($variant->stock_quantity ?? 0) > 0 ? $variant->stock_quantity : ($product->total_stock_quantity ?? 0));
-        $visibleStock = (float) ($truth['effective_stock'] ?? 0);
+        $localStock = (float) ($variant->local_stock_quantity ?? 0);
+        $supplierStock = (float) ($variant->supplier_stock_quantity ?? 0);
+        $fallbackStock = (float) ($variant->stock_quantity ?? 0);
+        $localStockPresentation = $this->tenantLocalStockPresentationService->forCatalogSelection($tenant, $product, $variant);
+        $effectiveLocalStock = (bool) ($localStockPresentation['local_stock_operational'] ?? false)
+            ? (float) ($localStockPresentation['local_stock_value'] ?? 0)
+            : $localStock;
+        $visibleStock = $this->sellableTruthService->resolveEffectiveStock(
+            $effectiveLocalStock,
+            $supplierStock,
+            $fallbackStock,
+            (bool) ($product->local_stock_priority ?? true)
+        );
         $warnings = $this->buildWarningPayload($supplierName, [
             'net_price_warning' => (bool) data_get($variant->meta, 'net_price_warning', false),
             'price_policy_warning' => (bool) data_get($variant->meta, 'price_policy_warning', false),
@@ -295,16 +425,26 @@ class CatalogSearchController extends Controller
             'warnings' => data_get($variant->meta, 'warnings', []),
         ]);
         $priceSnapshot = (array) data_get($variant->meta, 'price_snapshot', []);
-        $visibleInQuote = ($truth['quote_visibility_status'] ?? 'visible') === 'visible';
+        $visibleInQuote = (bool) ($truth['quote_visible'] ?? false);
         $warningSummary = implode(' • ', array_slice($warnings['badges'], 0, 3));
         $warningTone = in_array('Kırmızı Ürün', $warnings['badges'], true) ? 'red' : 'amber';
-        $browserPriceSnapshot = $this->productHubCurrencyService->sanitizePriceSnapshotForBrowser($priceSnapshot, $tenant, $user);
+        $catalogPriceSnapshot = $this->prepareCatalogPriceSnapshot(
+            $tenant,
+            $priceSnapshot,
+            $variant->currency ?: $product->currency,
+            $variant->display_price !== null ? (float) $variant->display_price : ($product->display_price !== null ? (float) $product->display_price : null),
+            $requestedDate
+        );
+        $browserPriceSnapshot = $this->productHubCurrencyService->sanitizePriceSnapshotForBrowser($catalogPriceSnapshot, $tenant, $user);
+
         $currencyPayload = $this->productHubCurrencyService->buildBrowserCurrencyPayload(
             $tenant,
             $user,
-            (array) data_get($priceSnapshot, 'currency_snapshot', $priceSnapshot)
+            (array) data_get($catalogPriceSnapshot, 'currency_snapshot', $catalogPriceSnapshot)
         );
-
+        $quotePayload = $this->buildQuoteDocumentPricePayload($tenant, $user, (array) data_get($catalogPriceSnapshot, 'currency_snapshot', $catalogPriceSnapshot), $requestedCurrency, $requestedDate);
+        $freshness = $this->productHubFreshnessDiagnosticService->buildQuoteFreshnessPayload($product, $variant);
+        $selectionAllowed = (bool) ($truth['selection_allowed'] ?? false);
         return [
             'id' => $product->id,
             'tenant_catalog_product_id' => $product->id,
@@ -315,18 +455,27 @@ class CatalogSearchController extends Controller
             'product_name' => $variant->display_name,
             'image_url' => $variant->image_url ?: $product->image_url,
             'supplier_name' => $supplierName,
-            'display_price' => (float) ($truth['effective_price'] ?? 0),
-            'list_price' => (float) (data_get($priceSnapshot, 'list_price') ?? $variant->display_price ?? $product->display_price ?? 0),
-            'currency' => $truth['effective_currency'] ?? $variant->currency ?? $product->currency ?? 'TL',
+            'display_price' => $quotePayload['quote_price_value'],
+            'list_price' => $quotePayload['quote_price_value'],
+            'currency' => $quotePayload['quote_currency'],
             'vat_rate' => (float) (data_get($variant->source_summary, 'vat_rate') ?? data_get($product->source_summary, '0.vat_rate') ?? 0),
             'total_stock_quantity' => $fallbackStock,
-            'local_stock_quantity' => $localStock,
+            'local_stock_quantity' => (float) ($localStockPresentation['local_stock_value'] ?? 0),
+            'local_stock_source' => $localStockPresentation['local_stock_source'],
+            'local_stock_scope' => $localStockPresentation['local_stock_scope'],
+            'local_stock_reason_code' => $localStockPresentation['local_stock_reason_code'],
+            'local_stock_label' => $localStockPresentation['local_stock_label'],
+            'local_stock_note' => $localStockPresentation['local_stock_note'],
+            'local_stock_projection_quantity' => (float) ($localStockPresentation['local_stock_projection_value'] ?? 0),
+            'local_stock_operational' => (bool) ($localStockPresentation['local_stock_operational'] ?? false),
             'supplier_stock_quantity' => $supplierStock,
             'safe_stock_quantity' => (int) ($variant->safe_stock_quantity ?? 0),
             'visible_stock_quantity' => $visibleStock,
-            'local_stock_priority' => (bool) ($product->local_stock_priority ?? true) && $localStock > 0,
+            'local_stock_priority' => (bool) ($product->local_stock_priority ?? true) && $effectiveLocalStock > 0,
             'catalog_source' => $this->isLocalProduct($product) ? 'local_product' : 'supplier_projection',
             'visible_in_quote' => $visibleInQuote,
+            'sellable' => $selectionAllowed,
+            'selection_reason_code' => $truth['reason_code'] ?? null,
             'warning_flag' => !empty($warnings['badges']),
             'net_price_warning' => (bool) data_get($variant->meta, 'net_price_warning', false),
             'price_policy_warning' => (bool) data_get($variant->meta, 'price_policy_warning', false),
@@ -357,6 +506,11 @@ class CatalogSearchController extends Controller
             'can_view_currency_details' => $currencyPayload['can_view_currency_details'],
             'can_use_foreign_document_currency' => $currencyPayload['can_use_foreign_document_currency'],
             'can_use_manual_rate' => $currencyPayload['can_use_manual_rate'],
+            'quote_price_value' => $quotePayload['quote_price_value'],
+            'quote_currency' => $quotePayload['quote_currency'],
+            'quote_price_status' => $quotePayload['quote_price_status'],
+            'quote_price_snapshot' => array_merge($quotePayload['quote_price_snapshot'], ['freshness' => $freshness]),
+            'freshness' => $freshness,
             'source_summary' => $variant->source_summary ?: $product->source_summary,
             'product_snapshot' => [
                 'tenant_catalog_product_id' => $product->id,
@@ -370,14 +524,21 @@ class CatalogSearchController extends Controller
                 'supplier_name' => $supplierName,
                 'is_parent' => false,
                 'is_variant' => true,
-                'is_sellable' => true,
-                'quote_search_visible' => $visibleInQuote,
+                'is_sellable' => $selectionAllowed,
+                'quote_search_visible' => $selectionAllowed,
                 'is_warning_sellable' => !empty($warnings['badges']),
                 'warning_summary' => $warningSummary,
                 'warning_tone' => $warningSummary !== '' ? $warningTone : null,
             ],
             'price_snapshot' => array_merge($browserPriceSnapshot, [
-                'list_price' => (float) (data_get($browserPriceSnapshot, 'list_price') ?? $variant->display_price ?? $product->display_price ?? 0),
+                'list_price' => $quotePayload['quote_price_value'],
+                'display_price' => $quotePayload['quote_price_value'],
+                'currency' => $quotePayload['quote_currency'],
+                'quote_price_value' => $quotePayload['quote_price_value'],
+                'quote_currency' => $quotePayload['quote_currency'],
+                'quote_price_status' => $quotePayload['quote_price_status'],
+                'quote_price_snapshot' => array_merge($quotePayload['quote_price_snapshot'], ['freshness' => $freshness]),
+                'freshness_summary' => $freshness,
                 'warning_badges' => $warnings['badges'],
                 'warning_messages' => $warnings['messages'],
                 'net_price_warning' => (bool) data_get($variant->meta, 'net_price_warning', false),
@@ -388,11 +549,18 @@ class CatalogSearchController extends Controller
             ]),
             'stock_snapshot' => [
                 'total_stock_quantity' => $fallbackStock,
-                'local_stock_quantity' => $localStock,
+                'local_stock_quantity' => (float) ($localStockPresentation['local_stock_value'] ?? 0),
+            'local_stock_source' => $localStockPresentation['local_stock_source'],
+            'local_stock_scope' => $localStockPresentation['local_stock_scope'],
+            'local_stock_reason_code' => $localStockPresentation['local_stock_reason_code'],
+            'local_stock_label' => $localStockPresentation['local_stock_label'],
+            'local_stock_note' => $localStockPresentation['local_stock_note'],
+            'local_stock_projection_quantity' => (float) ($localStockPresentation['local_stock_projection_value'] ?? 0),
+            'local_stock_operational' => (bool) ($localStockPresentation['local_stock_operational'] ?? false),
                 'supplier_stock_quantity' => $supplierStock,
                 'visible_stock_quantity' => $visibleStock,
                 'safe_stock_quantity' => (int) ($variant->safe_stock_quantity ?? 0),
-                'local_stock_priority' => (bool) ($product->local_stock_priority ?? true) && $localStock > 0,
+                'local_stock_priority' => (bool) ($product->local_stock_priority ?? true) && $effectiveLocalStock > 0,
                 'warning_flag' => !empty($warnings['badges']),
             ],
         ];

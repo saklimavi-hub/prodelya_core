@@ -4,15 +4,20 @@ namespace App\Services\ProductDataHub;
 
 use App\Models\StandardProduct;
 use App\Models\StandardProductVariant;
+use App\Models\TenantAccount;
 use App\Models\TenantCatalogProduct;
 use App\Models\TenantCatalogProductVariant;
+use App\Models\TenantSupplierAccess;
 
 class ProductHubSellableTruthService
 {
     private const EPSILON = 0.0001;
 
-    public function resolve(TenantCatalogProduct $product, ?TenantCatalogProductVariant $variant = null): array
-    {
+    public function resolve(
+        TenantCatalogProduct $product,
+        ?TenantCatalogProductVariant $variant = null,
+        TenantAccount|int|null $tenant = null
+    ): array {
         $effectivePrice = $this->toFloat($variant?->display_price ?? $product->display_price);
         $effectiveCurrency = $variant?->currency ?: $product->currency ?: 'TL';
         $localStock = $variant
@@ -31,6 +36,24 @@ class ProductHubSellableTruthService
             (bool) ($product->local_stock_priority ?? true)
         );
         [$isStale, $staleReason] = $this->resolveStaleState($product, $variant, $effectivePrice, $effectiveStock);
+        $tenantCatalogStatus = $this->resolveTenantCatalogStatus($product, $variant);
+        $quoteVisibilityStatus = $this->resolveQuoteVisibilityStatus($product, $variant);
+        $supplierAccess = $this->resolveSupplierAccess($product, $variant, $tenant);
+        $selectionReady = $variant ? true : (bool) ($product->is_sellable ?? true);
+        $tenantCatalogActive = $this->tenantCatalogStatusAllowsQuoteSelection($tenantCatalogStatus);
+        $quoteVisible = $quoteVisibilityStatus === 'visible';
+        $selectionAllowed = $selectionReady
+            && $tenantCatalogActive
+            && $quoteVisible
+            && (bool) ($supplierAccess['allowed'] ?? true);
+        $reasonCode = $this->resolveReasonCode(
+            $product,
+            $variant,
+            $selectionReady,
+            $tenantCatalogStatus,
+            $quoteVisibilityStatus,
+            $supplierAccess
+        );
 
         return [
             'effective_price' => $effectivePrice,
@@ -40,9 +63,17 @@ class ProductHubSellableTruthService
             'is_stale' => $isStale,
             'stale_reason' => $staleReason,
             'category_status' => $this->resolveCategoryStatus($product),
-            'quote_visibility_status' => $this->resolveQuoteVisibilityStatus($product, $variant),
-            'tenant_catalog_status' => $this->resolveTenantCatalogStatus($product, $variant),
+            'quote_visibility_status' => $quoteVisibilityStatus,
+            'tenant_catalog_status' => $tenantCatalogStatus,
             'tenant_price_override' => $this->hasTenantPriceOverride($product, $variant, $effectivePrice),
+            'tenant_catalog_active' => $tenantCatalogActive,
+            'quote_visible' => $quoteVisible,
+            'selection_ready' => $selectionReady,
+            'selection_allowed' => $selectionAllowed,
+            'save_allowed' => $selectionAllowed,
+            'sellable' => $selectionAllowed,
+            'reason_code' => $reasonCode,
+            'supplier_access' => $supplierAccess,
         ];
     }
 
@@ -105,6 +136,71 @@ class ProductHubSellableTruthService
         return (string) ($product->catalog_status ?: 'ready');
     }
 
+    private function resolveSupplierAccess(
+        TenantCatalogProduct $product,
+        ?TenantCatalogProductVariant $variant,
+        TenantAccount|int|null $tenant
+    ): array {
+        $supplierIds = collect([
+            ...collect((array) ($variant?->source_summary ?? []))->pluck('supplier_id')->all(),
+            data_get($variant?->source_summary, 'supplier_id'),
+            ...collect((array) ($product->source_summary ?? []))->pluck('supplier_id')->all(),
+            data_get($product->source_summary, 'supplier_id'),
+        ])
+            ->filter(fn ($value) => filled($value))
+            ->map(fn ($value) => (int) $value)
+            ->unique()
+            ->values();
+
+        if ($this->isLocalProduct($product) || $supplierIds->isEmpty()) {
+            return [
+                'mode' => 'not_required',
+                'allowed' => true,
+                'tenant_has_rules' => false,
+                'supplier_ids' => $supplierIds->all(),
+            ];
+        }
+
+        $tenantId = $tenant instanceof TenantAccount ? $tenant->id : $tenant;
+        if (!$tenantId) {
+            return [
+                'mode' => 'not_evaluated',
+                'allowed' => true,
+                'tenant_has_rules' => false,
+                'supplier_ids' => $supplierIds->all(),
+            ];
+        }
+
+        $tenantHasRules = TenantSupplierAccess::query()
+            ->where('tenant_account_id', $tenantId)
+            ->exists();
+
+        if (!$tenantHasRules) {
+            return [
+                'mode' => 'legacy_allow',
+                'allowed' => true,
+                'tenant_has_rules' => false,
+                'supplier_ids' => $supplierIds->all(),
+            ];
+        }
+
+        $allowed = TenantSupplierAccess::query()
+            ->where('tenant_account_id', $tenantId)
+            ->whereIn('supplier_id', $supplierIds->all())
+            ->where('is_active', true)
+            ->where('can_view_products', true)
+            ->where('visible_in_catalog', true)
+            ->where('can_use_in_quotes', true)
+            ->exists();
+
+        return [
+            'mode' => $allowed ? 'explicit_allow' : 'explicit_deny',
+            'allowed' => $allowed,
+            'tenant_has_rules' => true,
+            'supplier_ids' => $supplierIds->all(),
+        ];
+    }
+
     private function resolveStaleState(
         TenantCatalogProduct $product,
         ?TenantCatalogProductVariant $variant,
@@ -157,5 +253,54 @@ class ProductHubSellableTruthService
         }
 
         return (float) $value;
+    }
+
+    private function tenantCatalogStatusAllowsQuoteSelection(string $status): bool
+    {
+        return !in_array($status, ['inactive', 'hidden'], true);
+    }
+
+    private function resolveReasonCode(
+        TenantCatalogProduct $product,
+        ?TenantCatalogProductVariant $variant,
+        bool $selectionReady,
+        string $tenantCatalogStatus,
+        string $quoteVisibilityStatus,
+        array $supplierAccess
+    ): ?string {
+        if (!($supplierAccess['allowed'] ?? true)) {
+            return 'supplier_access_denied';
+        }
+
+        if (!(bool) ($product->is_active ?? true)) {
+            return 'product_inactive';
+        }
+
+        if ($variant && !(bool) ($variant->is_active ?? true)) {
+            return 'variant_inactive';
+        }
+
+        if (!(bool) ($product->visible_in_catalog ?? true) || $tenantCatalogStatus === 'hidden') {
+            return 'product_not_quote_visible';
+        }
+
+        if ($variant && !(bool) ($variant->visible_in_catalog ?? true)) {
+            return 'variant_not_quote_visible';
+        }
+
+        if ($quoteVisibilityStatus !== 'visible') {
+            return $variant ? 'variant_not_quote_visible' : 'product_not_quote_visible';
+        }
+
+        if (!$selectionReady) {
+            return 'catalog_identity_unresolved';
+        }
+
+        return null;
+    }
+
+    private function isLocalProduct(TenantCatalogProduct $product): bool
+    {
+        return (string) ($product->catalog_source ?? '') === 'local_product';
     }
 }

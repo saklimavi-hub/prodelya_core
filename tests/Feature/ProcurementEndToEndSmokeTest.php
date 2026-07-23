@@ -87,14 +87,14 @@ class ProcurementEndToEndSmokeTest extends TestCase
             ->get(route('admin.procurements.index'));
 
         $procurementIndex->assertOk();
-        $procurementIndex->assertSee('Tedarik Yönetimi');
+        $procurementIndex->assertSee('Tedarik Talepleri');
         $procurementIndex->assertSee($order->document_number);
         $procurementIndex->assertSee($supplierProcurement->workForm->work_form_number);
         $procurementIndex->assertSee($localProcurement->workForm->work_form_number);
         $procurementIndex->assertSee('PROC-SUP-001');
         $procurementIndex->assertSee('PROC-LOC-001');
-        $procurementIndex->assertSee('Tedarikçi');
-        $procurementIndex->assertSee('Local Stok');
+        $procurementIndex->assertSee('Tedarik Görev Listesi');
+        $procurementIndex->assertSee('Talep Hazırlanacak Tedarikçiler');
         $procurementIndex->assertSee(route('admin.procurements.index'), false);
         $this->assertSafeOutput($procurementIndex->getContent());
 
@@ -108,9 +108,9 @@ class ProcurementEndToEndSmokeTest extends TestCase
         $procurementShow->assertOk();
         $procurementShow->assertSee('Tedarik Detayı');
         $procurementShow->assertSee('PROC-SUP-001');
-        $procurementShow->assertSee('Talep Aç');
-        $procurementShow->assertSee('Kısmi Geldi');
-        $procurementShow->assertSee('Tamamı Geldi');
+        $procurementShow->assertSee('Üst Sıradaki İş');
+        $procurementShow->assertSee('Talebi Aç');
+        $procurementShow->assertSee('Sıradaki İş');
         $this->assertSafeOutput($procurementShow->getContent());
 
         $this->actingAs($this->adminUser)
@@ -198,8 +198,10 @@ class ProcurementEndToEndSmokeTest extends TestCase
         $orderShow->assertSee('Genel Özet');
         $orderShow->assertSee('Tedarik');
         $orderShow->assertSee('Tedarik');
-        $orderShow->assertSee('Tamamı Geldi');
-        $orderShow->assertSee(route('admin.procurements.show', $supplierProcurement), false);
+        $orderShow->assertSee('Tedarik Tamamlandı');
+        $orderShow->assertSee('Tedarik / Malzeme');
+        $orderShow->assertSee('Teslimata Git');
+        $orderShow->assertDontSee(route('admin.procurements.show', $supplierProcurement), false);
         $this->assertSafeOutput($orderShow->getContent());
 
         $workFormShow = $this->actingAs($this->adminUser)
@@ -212,7 +214,7 @@ class ProcurementEndToEndSmokeTest extends TestCase
         $workFormShow->assertSee('İstenen Miktar');
         $workFormShow->assertSee('Gelen Miktar');
         $workFormShow->assertSee('Kalan Miktar');
-        $workFormShow->assertSee('Tamamı Geldi');
+        $workFormShow->assertSee('Tedarik Tamamlandı');
         $this->assertSafeOutput($workFormShow->getContent());
 
         $pdfHtml = app(WorkFormPdfService::class)->renderHtml($supplierProcurement->workForm->fresh([
@@ -224,7 +226,7 @@ class ProcurementEndToEndSmokeTest extends TestCase
 
         $this->assertStringContainsString('Tedarik Durumu', $pdfHtml);
         $this->assertStringContainsString('Kaynak Tipi', $pdfHtml);
-        $this->assertStringContainsString('Tamamı Geldi', $pdfHtml);
+        $this->assertStringContainsString('Tedarik Tamamlandı', $pdfHtml);
         $this->assertStringContainsString('Ürün üretime hazır', $pdfHtml);
         $this->assertStringContainsString('İŞ FORMU', $pdfHtml);
         $this->assertSafeOutput($pdfHtml);

@@ -22,11 +22,11 @@ class QuoteSendSnapshotBuilder
 
         $showPrintPriceDetails = $this->customerFacingPriceDisplayService->shouldShowPrintPriceDetails($quote);
 
-        $items = $quote->items->map(function (OrderItem $item) use ($quote, $showPrintPriceDetails): array {
+        $items = $quote->items->map(function (OrderItem $item) use ($quote): array {
             $priceSnapshot = is_array($item->price_snapshot) ? $item->price_snapshot : [];
             $customerFacing = $this->customerFacingPriceDisplayService->buildItem(
                 $item,
-                $quote->currency ?: 'TL'
+                $quote->currency ?: 'TRY'
             );
 
             return [
@@ -34,21 +34,44 @@ class QuoteSendSnapshotBuilder
                 'product_code' => $item->product_code,
                 'quantity' => (float) $item->quantity,
                 'unit' => $item->unit,
-                'currency' => $quote->currency ?: 'TL',
+                'currency' => $quote->currency ?: 'TRY',
                 'vat_rate' => (float) data_get($priceSnapshot, 'vat_rate', 0),
-                'line_total' => round((float) ($item->line_total ?? 0), 2),
+                'line_total' => round((float) data_get($priceSnapshot, 'product_line_total_document', $item->line_total ?? 0), 2),
+                'product_unit_price' => round((float) $customerFacing['product_unit_price'], 2),
+                'product_line_total' => round((float) $customerFacing['product_line_total'], 2),
+                'combined_unit_price' => round((float) $customerFacing['combined_unit_price'], 2),
+                'combined_line_total' => round((float) $customerFacing['combined_line_total'], 2),
+                'commercial_line_total' => round((float) $customerFacing['commercial_line_total'], 2),
+                'customer_main_unit_price' => round((float) $customerFacing['customer_main_unit_price'], 2),
+                'customer_main_total' => round((float) $customerFacing['customer_main_total'], 2),
                 'customer_unit_price' => round((float) $customerFacing['customer_unit_price'], 2),
                 'customer_line_total' => round((float) $customerFacing['customer_line_total'], 2),
+                'price_mode' => $customerFacing['price_mode'],
+                'has_prints' => (bool) $customerFacing['has_prints'],
+                'main_unit_label' => $customerFacing['main_unit_label'],
+                'main_total_label' => $customerFacing['main_total_label'],
+                'commercial_total_label' => $customerFacing['commercial_total_label'],
+                'show_commercial_total' => (bool) $customerFacing['show_commercial_total'],
+                'currency_snapshot' => [
+                    'document_currency' => data_get($priceSnapshot, 'document_currency', $quote->currency ?: 'TRY'),
+                    'tenant_base_currency' => data_get($priceSnapshot, 'tenant_base_currency'),
+                    'conversion_status' => data_get($priceSnapshot, 'document_conversion_status'),
+                    'rate_date' => data_get($priceSnapshot, 'rate_date'),
+                    'rate_source' => data_get($priceSnapshot, 'rate_source'),
+                    'rate_type' => data_get($priceSnapshot, 'rate_type'),
+                    'fallback_used' => (bool) data_get($priceSnapshot, 'fallback_used', false),
+                    'stale' => (bool) data_get($priceSnapshot, 'stale', false),
+                ],
                 'show_print_price_details' => (bool) $customerFacing['show_print_price_details'],
-                'print_lines' => $item->prints->map(function (OrderItemPrint $print) use ($showPrintPriceDetails): array {
+                'print_lines' => collect($customerFacing['prints'])->map(function (array $print): array {
                     return [
-                        'print_type' => $print->print_type,
-                        'print_option' => $print->print_option,
-                        'print_quantity' => (float) ($print->print_quantity ?? 0),
-                        'print_note' => $print->note,
-                        'print_unit_price' => round((float) ($print->print_unit_price ?? 0), 2),
-                        'print_total' => round((float) ($print->print_total ?? 0), 2),
-                        'show_price_details' => $showPrintPriceDetails,
+                        'print_type' => $print['print_type'],
+                        'print_option' => $print['print_option'],
+                        'print_quantity' => (float) ($print['print_quantity'] ?? 0),
+                        'print_note' => $print['note'] ?? null,
+                        'print_unit_price' => round((float) ($print['print_unit_price'] ?? 0), 2),
+                        'print_total' => round((float) ($print['print_total'] ?? 0), 2),
+                        'show_price_details' => (bool) ($print['show_price_details'] ?? false),
                     ];
                 })->values()->all(),
             ];
@@ -72,7 +95,8 @@ class QuoteSendSnapshotBuilder
             ],
             'document_type' => $quote->document_type,
             'invoice_status' => $quote->invoice_status,
-            'currency' => $quote->currency,
+            'currency' => $quote->currency ?: 'TRY',
+            'currency_snapshot_summary' => is_array($quote->currency_snapshot_summary) ? $quote->currency_snapshot_summary : [],
             'show_print_price_details_to_customer' => $showPrintPriceDetails,
             'quote_date' => optional($quote->quote_date)->toDateString(),
             'valid_until' => optional($quote->valid_until)->toDateString(),

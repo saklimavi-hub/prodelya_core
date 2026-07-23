@@ -79,6 +79,8 @@ class FinanceNotificationIntegrationTest extends TestCase
             'due_date' => '2026-06-20 18:00:00',
         ], $this->adminUser);
 
+        $this->assertSame('TRY', $payment->currency);
+
         $receivedLogs = NotificationLog::query()
             ->where('notification_key', 'payment_received')
             ->where('related_id', $payment->id)
@@ -95,6 +97,7 @@ class FinanceNotificationIntegrationTest extends TestCase
         $receivedPayload = $receivedLogs->map(fn (NotificationLog $log) => (string) $log->message_preview)->implode("\n");
         $this->assertStringContainsString('1000', $receivedPayload);
         $this->assertStringContainsString('TL', $receivedPayload);
+        $this->assertStringNotContainsString('1000 TRY', $receivedPayload);
         $this->assertStringContainsString('Havale', $receivedPayload);
 
         $transaction = CurrentAccountTransaction::query()

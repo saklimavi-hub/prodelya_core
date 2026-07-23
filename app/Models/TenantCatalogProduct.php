@@ -124,6 +124,11 @@ class TenantCatalogProduct extends Model
         return $this->hasMany(TenantLocalStock::class, 'tenant_catalog_product_id');
     }
 
+
+    public function stockMovements(): HasMany
+    {
+        return $this->hasMany(StockMovement::class, 'tenant_catalog_product_id');
+    }
     /**
      * Get the price snapshots for this catalog product
      */
@@ -338,7 +343,7 @@ class TenantCatalogProduct extends Model
     public function getThumbnailImage(): ?string
     {
         $primaryImage = $this->getPrimaryImage();
-        
+
         if (!$primaryImage) {
             return null;
         }

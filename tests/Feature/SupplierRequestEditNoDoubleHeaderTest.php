@@ -30,8 +30,8 @@ class SupplierRequestEditNoDoubleHeaderTest extends TestCase
             ->get(route('admin.procurements.supplier-requests.edit', $requestRecord));
 
         $response->assertOk();
-        $response->assertSeeText('Tedarikçi Talebi Düzenle');
+        $response->assertSeeText('Tedarikçi Talebi');
         $response->assertDontSee('Cari Kart Detayı');
-        $response->assertSee('Talep Aksiyonları');
+        $response->assertSee('Tedarikçi Talebi ve Gelen Ürün Kaydı');
     }
 }

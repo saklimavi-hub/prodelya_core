@@ -141,6 +141,30 @@ class GraphicApprovalRequestCoreTest extends TestCase
         }
     }
 
+    public function test_create_request_falls_back_to_company_email_when_primary_contact_email_is_missing(): void
+    {
+        $service = app(GraphicApprovalRequestService::class);
+        ['graphic' => $graphic, 'attachment' => $attachment] = $this->createGraphicContext('GAR-002B');
+
+        $this->customer->forceFill(['email' => 'firma@example.test'])->save();
+        $this->customer->contacts()->update(['email' => null, 'mobile' => null, 'phone' => null]);
+
+        $request = $service->createRequest($graphic->fresh(['order.customer.contacts', 'workForm']), $attachment->fresh(), [], $this->adminUser);
+
+        $this->assertSame('firma@example.test', $request->contact_email);
+        $this->assertSame('company_record', data_get($request->meta_json, 'recipient_source'));
+
+        $emailLog = NotificationLog::query()
+            ->where('notification_key', 'graphic_customer_approval_requested')
+            ->where('related_id', $request->id)
+            ->where('channel', NotificationLog::CHANNEL_EMAIL)
+            ->latest('id')
+            ->first();
+
+        $this->assertNotNull($emailLog);
+        $this->assertSame('firma@example.test', $emailLog->recipient_email);
+    }
+
     public function test_mark_viewed_is_idempotent_and_approve_updates_request_graphic_and_logs(): void
     {
         $service = app(GraphicApprovalRequestService::class);

@@ -24,30 +24,40 @@ class ProductionTurkishTerminologyTest extends TestCase
         $internalProduction = $this->createInternalProductionForShow();
         $externalProduction = $this->createExternalProductionForShow();
 
-        $internalResponse = $this->actingAs($this->adminUser)
+        $legacyInternal = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::PRODUCTION_SHOW_HOST])
             ->get(route('admin.productions.show', $internalProduction) . '?tab=ic-uretim');
+        $legacyInternal->assertRedirect(route('admin.productions.operator', $internalProduction));
+
+        $internalResponse = $this->actingAs($this->adminUser)
+            ->withServerVariables(['HTTP_HOST' => self::PRODUCTION_SHOW_HOST])
+            ->get(route('admin.productions.operator', $internalProduction));
 
         $internalResponse->assertOk();
 
         foreach ([
             'Üretim',
-            'İç Üretim',
-            'Müşteri',
+            'İç Üretim Operatörü',
             'Sipariş',
-            'İşlem',
-            'Kısmi Üretildi',
-            'Tamamlandı',
+            'Operatör',
+            'Grafiği Aç',
         ] as $expected) {
             $internalResponse->assertSee($expected);
         }
 
-        $externalResponse = $this->actingAs($this->financeUser)
+        $legacyExternal = $this->actingAs($this->financeUser)
             ->withServerVariables(['HTTP_HOST' => self::PRODUCTION_SHOW_HOST])
             ->get(route('admin.productions.show', $externalProduction) . '?tab=dis-uretim');
+        $legacyExternal->assertRedirect(route('admin.productions.subcontract-tracking', $externalProduction));
+
+        $externalResponse = $this->actingAs($this->financeUser)
+            ->withServerVariables(['HTTP_HOST' => self::PRODUCTION_SHOW_HOST])
+            ->get(route('admin.productions.subcontract-tracking', $externalProduction));
 
         $externalResponse->assertOk();
-        $externalResponse->assertSee('Dış Üretim / Fason');
+        $externalResponse->assertSee('Fason Takibi');
+
+        $externalHtml = $externalResponse->getContent();
 
         foreach ([
             'Uretim',
@@ -60,8 +70,7 @@ class ProductionTurkishTerminologyTest extends TestCase
             'tenant_id',
             'meta_json',
         ] as $forbidden) {
-            $externalResponse->assertDontSee($forbidden, false);
+            $this->assertStringNotContainsString($forbidden, $externalHtml);
         }
     }
 }
-

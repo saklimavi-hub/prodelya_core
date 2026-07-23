@@ -215,7 +215,7 @@ class CompanyRoleRemovalSyncTest extends TestCase
         $production = $this->createProduction('SP-FASON-RM-001');
 
         $before = $this->actingAs($this->owner, 'web')
-            ->get($this->tenantUrl('/admin/productions/' . $production->id . '?tab=islemler'));
+            ->get($this->tenantUrl('/admin/productions/' . $production->id . '/subcontract-assignment'));
 
         $before->assertOk()->assertSee($company->legal_name);
 
@@ -229,7 +229,7 @@ class CompanyRoleRemovalSyncTest extends TestCase
             ->assertRedirect($this->tenantUrl('/admin/companies/' . $company->id));
 
         $after = $this->actingAs($this->owner, 'web')
-            ->get($this->tenantUrl('/admin/productions/' . $production->id . '?tab=islemler'));
+            ->get($this->tenantUrl('/admin/productions/' . $production->id . '/subcontract-assignment'));
 
         $after->assertOk()->assertDontSee($company->legal_name);
     }
@@ -389,7 +389,15 @@ class CompanyRoleRemovalSyncTest extends TestCase
         /** @var WorkForm $workForm */
         $workForm = app(WorkFormCreationService::class)->createForOrder($order, $this->owner)->first();
 
-        return $print->fresh(['production'])->production->fresh([
+        $production = $print->fresh(['production'])->production;
+        $production->forceFill([
+            'production_type' => OrderItemPrintProduction::TYPE_OUTSOURCED,
+            'production_status' => OrderItemPrintProduction::STATUS_PENDING,
+            'production_company_id' => null,
+            'sent_to_subcontractor_at' => null,
+        ])->save();
+
+        return $production->fresh([
             'productionCompany',
             'orderItemPrint.subcontractorCompany',
             'order.customer',

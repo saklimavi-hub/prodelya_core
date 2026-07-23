@@ -43,7 +43,7 @@ class PublicQuoteApprovalCustomerPriceDisplayTest extends TestCase
         );
     }
 
-    public function test_public_approval_uses_customer_facing_print_included_price_and_optional_breakdown_visibility(): void
+    public function test_public_approval_switches_between_separate_and_combined_customer_price_presentations(): void
     {
         $visibleQuote = $this->createQuote('TK-PUBLIC-PRICE-01', true);
         $visibleRequest = app(QuoteApprovalService::class)->sendToCustomer($visibleQuote, [
@@ -52,9 +52,13 @@ class PublicQuoteApprovalCustomerPriceDisplayTest extends TestCase
 
         $this->get(route('public.quotes.approval.show', ['token' => $visibleRequest->token]))
             ->assertOk()
-            ->assertSee('15,00 TL')
+            ->assertSee('Ürün Birim Fiyatı')
+            ->assertSee('Ürün Toplamı')
+            ->assertSee('5,00 TL')
+            ->assertSee('500,00 TL')
+            ->assertSee('Ürün + Baskı Toplamı')
             ->assertSee('1.500,00 TL')
-            ->assertSee('Baskı Birim: 10,00 TL')
+            ->assertSee('Baskı Birim Fiyatı: 10,00 TL')
             ->assertSee('Baskı Toplamı')
             ->assertSee('1.000,00 TL')
             ->assertDontSee('supplier_cost')
@@ -67,9 +71,12 @@ class PublicQuoteApprovalCustomerPriceDisplayTest extends TestCase
 
         $this->get(route('public.quotes.approval.show', ['token' => $hiddenRequest->token]))
             ->assertOk()
+            ->assertSee('Baskı Dahil Birim Fiyat')
+            ->assertSee('Baskı Dahil Satır Toplamı')
             ->assertSee('15,00 TL')
             ->assertSee('1.500,00 TL')
-            ->assertDontSee('Baskı Birim:')
+            ->assertDontSee('Ürün + Baskı Toplamı')
+            ->assertDontSee('Baskı Birim Fiyatı:')
             ->assertSee('Baskı Toplamı')
             ->assertSee('Fiyata dahil')
             ->assertDontSee('supplier_cost')

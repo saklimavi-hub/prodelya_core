@@ -11,6 +11,7 @@ use App\Services\ProcessDepth\TenantProcessDepthPolicy;
 use App\Services\ProcessDepth\TenantProcessDepthResolver;
 use App\Support\ProcessDepth\ProcessDepth;
 use App\Support\WorkFormActivityLabelResolver;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
@@ -35,29 +36,42 @@ class GraphicModuleDataBuilder
             'printGraphics.orderItemPrint',
         ]);
 
-        $rows = $workForms
-            ->map(fn (OrderItemWorkForm $workForm) => $this->mapIndexRow($workForm))
+        $normalizedFilters = $this->normalizeIndexFilters($filters);
+
+        $allRows = $workForms
+            ->flatMap(fn (OrderItemWorkForm $workForm) => $this->mapIndexRows($workForm))
             ->values();
 
-        $operations = $rows
-            ->flatMap(fn (array $row) => $row['print_operations'])
+        $baseRows = $this->applyIndexRowFilters($allRows, $normalizedFilters)
             ->values();
+
+        $selectedQueue = $normalizedFilters['queue'] !== '' ? $normalizedFilters['queue'] : 'action_waiting';
+        $groups = $this->buildIndexOrderGroups($baseRows);
+        $queueGroups = $this->applyIndexGroupQueueFilter($groups, $selectedQueue)->values();
+        $tabs = $this->buildIndexTabs($groups, $selectedQueue);
+        $paginator = $this->paginateIndexGroups($queueGroups, $normalizedFilters['per_page']);
+        $listedOperations = collect($paginator->items())->sum('total_operations');
+        $listedGroups = count($paginator->items());
+        $groupRangeStart = $paginator->total() > 0 ? (($paginator->currentPage() - 1) * $paginator->perPage()) + 1 : 0;
+        $groupRangeEnd = $paginator->total() > 0 ? min($paginator->currentPage() * $paginator->perPage(), $paginator->total()) : 0;
 
         return [
-            'workForms' => $workForms,
-            'filters' => [
-                'q' => trim((string) ($filters['q'] ?? '')),
-                'status' => trim((string) ($filters['status'] ?? '')),
-                'approval_status' => trim((string) ($filters['approval_status'] ?? '')),
-                'customer_visible_visual' => trim((string) ($filters['customer_visible_visual'] ?? '')),
-            ],
-            'rows' => $rows,
-            'summary' => [
-                'waiting' => $operations->where('status_key', OrderItemPrintGraphic::STATUS_WAITING_VISUAL)->count(),
-                'needs_visual' => $operations->filter(fn (array $operation) => !$operation['has_latest_attachment'])->count(),
-                'approval_waiting' => $operations->where('status_key', OrderItemPrintGraphic::STATUS_CUSTOMER_APPROVAL_WAITING)->count(),
-                'revision' => $operations->where('status_key', OrderItemPrintGraphic::STATUS_REVISION_REQUESTED)->count(),
-                'ready' => $operations->where('status_key', OrderItemPrintGraphic::STATUS_PRODUCTION_READY)->count(),
+            'filters' => array_merge($normalizedFilters, ['queue' => $selectedQueue]),
+            'groupPaginator' => $paginator,
+            'groups' => $paginator->items(),
+            'tabs' => $tabs,
+            'summary' => $this->buildIndexSummary($baseRows, $groups),
+            'sideSummary' => [
+                'listed_operations' => $listedOperations,
+                'listed_groups' => $listedGroups,
+                'waiting_visual' => $queueGroups->sum(fn (array $group) => $this->countGroupQueueRows($group, 'waiting_visual')),
+                'revision_requested' => $queueGroups->sum(fn (array $group) => $this->countGroupQueueRows($group, 'revision_requested')),
+                'production_ready' => $queueGroups->sum(fn (array $group) => $this->countGroupQueueRows($group, 'production_ready')),
+                'completed_groups' => $groups->where('is_completed_group', true)->count(),
+                'selected_queue_label' => collect($tabs)->firstWhere('active', true)['label'] ?? 'Aksiyon Bekleyenler',
+                'range_start' => $groupRangeStart,
+                'range_end' => $groupRangeEnd,
+                'total_groups' => $paginator->total(),
             ],
         ];
     }
@@ -286,72 +300,474 @@ class GraphicModuleDataBuilder
         };
     }
 
-    private function mapIndexRow(OrderItemWorkForm $workForm): array
+    private function normalizeIndexFilters(array $filters): array
+    {
+        $perPage = (int) ($filters['per_page'] ?? 10);
+
+        if (!in_array($perPage, [10, 20, 50], true)) {
+            $perPage = 10;
+        }
+
+        return [
+            'q' => trim((string) ($filters['q'] ?? '')),
+            'status' => trim((string) ($filters['status'] ?? '')),
+            'approval_status' => trim((string) ($filters['approval_status'] ?? '')),
+            'customer_visible_visual' => trim((string) ($filters['customer_visible_visual'] ?? '')),
+            'queue' => trim((string) ($filters['queue'] ?? '')),
+            'per_page' => $perPage,
+        ];
+    }
+
+    private function mapIndexRows(OrderItemWorkForm $workForm): array
     {
         $orderSnapshot = $workForm->order_snapshot ?? [];
         $customerSnapshot = $workForm->customer_snapshot ?? [];
         $productSnapshot = $workForm->product_snapshot ?? [];
-        $operations = $workForm->printGraphics
+
+        return $workForm->printGraphics
+            ->filter(fn (OrderItemPrintGraphic $graphic) => $graphic->status !== OrderItemPrintGraphic::STATUS_NOT_REQUIRED)
             ->sortBy(fn (OrderItemPrintGraphic $graphic) => $this->sortSequenceCode($graphic->sequence_code))
-            ->values();
+            ->values()
+            ->map(fn (OrderItemPrintGraphic $graphic) => $this->mapIndexRow($workForm, $graphic, $orderSnapshot, $customerSnapshot, $productSnapshot))
+            ->all();
+    }
 
-        $primaryAttachment = $operations
-            ->map(fn (OrderItemPrintGraphic $graphic) => $graphic->latestAttachment)
-            ->filter()
-            ->sortByDesc('id')
-            ->first();
-
-        $dominantStatus = $this->dominantStatusKey($operations);
+    private function mapIndexRow(
+        OrderItemWorkForm $workForm,
+        OrderItemPrintGraphic $graphic,
+        array $orderSnapshot,
+        array $customerSnapshot,
+        array $productSnapshot
+    ): array {
+        $print = $graphic->orderItemPrint;
+        $attachment = $graphic->latestAttachment;
+        $latestRequest = $graphic->latestApprovalRequest;
+        $primaryAction = $this->buildIndexPrimaryAction($workForm, $graphic);
+        $lastEvent = $this->buildIndexLastEvent($graphic, $attachment, $latestRequest);
+        $statusKey = (string) $graphic->status;
 
         return [
+            'graphic_id' => $graphic->id,
+            'order_id' => $graphic->order_id,
+            'order_item_id' => $graphic->order_item_id,
+            'order_item_print_id' => $graphic->order_item_print_id,
             'work_form_id' => $workForm->id,
             'order_number' => data_get($orderSnapshot, 'document_number', '-'),
             'work_form_number' => $workForm->work_form_number,
             'customer_name' => data_get($customerSnapshot, 'company_name', '-'),
             'product_name' => data_get($productSnapshot, 'product_name', '-'),
             'product_code' => data_get($productSnapshot, 'product_code', '-'),
-            'quantity' => $this->formatQuantity(data_get($productSnapshot, 'quantity'), data_get($productSnapshot, 'unit')),
             'image_url' => data_get($productSnapshot, 'image_url'),
-            'image_thumbnail_url' => data_get($productSnapshot, 'image_url'),
-            'image_original_url' => data_get($productSnapshot, 'image_url'),
-            'print_lines' => $operations->map(fn (OrderItemPrintGraphic $graphic) => $this->operationLine($graphic))->all(),
-            'print_operations' => $operations->map(fn (OrderItemPrintGraphic $graphic) => [
-                'id' => $graphic->id,
-                'sequence_code' => $graphic->sequence_code ?: '-',
-                'summary_line' => $this->operationLine($graphic),
-                'status_key' => $graphic->status,
-                'status_label' => $graphic->safeStatusLabel(),
-                'has_latest_attachment' => (bool) $graphic->latestAttachment,
-            ])->all(),
-            'graphic_status_key' => $dominantStatus,
-            'graphic_status_label' => $this->aggregateStatusLabel($operations),
-            'approval_status_key' => $this->dominantApprovalKey($operations),
-            'approval_status_label' => $this->aggregateApprovalLabel($operations),
-            'approval_waiting_count' => $operations->where('customer_approval_status', OrderItemPrintGraphic::CUSTOMER_APPROVAL_WAITING)->count(),
-            'approval_revision_count' => $operations->where('customer_approval_status', OrderItemPrintGraphic::CUSTOMER_APPROVAL_REVISION_REQUESTED)->count(),
-            'approval_approved_count' => $operations->where('customer_approval_status', OrderItemPrintGraphic::CUSTOMER_APPROVAL_APPROVED)->count(),
-            'latest_approval_sent_at' => $operations
-                ->map(fn (OrderItemPrintGraphic $graphic) => optional($graphic->latestApprovalRequest?->created_at)->format('d.m.Y H:i'))
-                ->filter()
-                ->first(),
-            'latest_customer_response_at' => $operations
-                ->map(fn (OrderItemPrintGraphic $graphic) => optional($graphic->latestApprovalRequest?->responded_at)->format('d.m.Y H:i'))
-                ->filter()
-                ->first(),
-            'production_ready_state_label' => $this->productionReadySummary($operations),
-            'last_visual_name' => $primaryAttachment?->file_name,
-            'last_visual_url' => $primaryAttachment ? $this->resolvePreviewUrl($primaryAttachment) : null,
-            'last_visual_thumbnail_url' => $primaryAttachment ? $this->resolvePreviewUrl($primaryAttachment) : null,
-            'last_visual_original_url' => $primaryAttachment ? $this->resolvePreviewUrl($primaryAttachment) : null,
-            'has_graphic_visual' => (bool) $primaryAttachment,
-            'has_customer_visible_visual' => $operations->contains(
-                fn (OrderItemPrintGraphic $graphic) => $graphic->latestAttachment && $graphic->latestAttachment->isCustomerVisible()
+            'delivery_date_label' => $this->formatSnapshotDate(
+                data_get($orderSnapshot, 'delivery_date')
+                    ?: data_get($orderSnapshot, 'delivery_at')
+                    ?: data_get($orderSnapshot, 'delivery_deadline')
             ),
-            'next_action' => $this->nextActionLabel($operations),
-            'detail_url' => route('admin.graphics.show', $workForm),
-            'work_form_url' => route('admin.work-forms.show', $workForm),
-            'public_tracking_url' => $this->qrCodeService->trackingUrl($workForm),
-            'work_folder' => $this->mapWorkFolder($workForm->systemWorkFolder),
+            'sequence_code' => $graphic->sequence_code ?: '-',
+            'print_type' => $print?->print_type ?: '-',
+            'print_option' => $print?->print_option ?: '-',
+            'print_quantity' => $this->formatQuantity($print?->print_quantity, 'adet'),
+            'print_line' => $this->operationLine($graphic),
+            'status_key' => $statusKey,
+            'status_label' => $this->indexStatusLabel($graphic),
+            'status_badge' => $this->indexStatusBadgeClass($statusKey),
+            'status_hint' => $this->indexStatusHint($graphic),
+            'approval_status_key' => (string) $graphic->customer_approval_status,
+            'approval_status_label' => $this->approvalStatusLabel($graphic->customer_approval_status),
+            'queue_key' => $this->indexQueueKey($graphic),
+            'has_customer_visible_visual' => (bool) ($attachment && $attachment->isCustomerVisible()),
+            'visual_summary_label' => $attachment ? '1 görsel' : 'Görsel yok',
+            'visibility_label' => !$attachment
+                ? 'Henüz görsel yüklenmedi'
+                : ($attachment->isCustomerVisible() ? 'Müşteriye Açık' : 'Yalnız İç Kullanım'),
+            'last_visual_name' => $attachment?->file_name,
+            'last_visual_thumbnail_url' => $attachment ? $this->resolveAttachmentPreviewUrl($attachment) : null,
+            'last_visual_original_url' => $attachment ? $this->resolveAttachmentOriginalUrl($attachment) : null,
+            'last_event_label' => $lastEvent['label'],
+            'last_event_at' => $lastEvent['at'],
+            'next_action_label' => $primaryAction['label'],
+            'next_action_note' => $this->indexNextActionNote($graphic),
+            'primary_action' => $primaryAction,
+            'is_terminal_status' => $this->isTerminalGraphicStatus($statusKey),
+            'terminal_at' => $graphic->production_ready_at?->toAtomString(),
+            'terminal_at_label' => optional($graphic->production_ready_at)->format('d.m.Y H:i'),
+            'sort_sequence_code' => $this->sortSequenceCode($graphic->sequence_code),
+        ];
+    }
+
+    private function applyIndexRowFilters(Collection $rows, array $filters): Collection
+    {
+        $query = mb_strtolower((string) ($filters['q'] ?? ''));
+        $status = (string) ($filters['status'] ?? '');
+        $approvalStatus = (string) ($filters['approval_status'] ?? '');
+        $customerVisibleVisual = (string) ($filters['customer_visible_visual'] ?? '');
+
+        $filtered = $rows->filter(function (array $row) use ($query, $status, $approvalStatus, $customerVisibleVisual): bool {
+            if ($query !== '') {
+                $haystack = mb_strtolower(implode(' ', array_filter([
+                    $row['order_number'] ?? null,
+                    $row['work_form_number'] ?? null,
+                    $row['customer_name'] ?? null,
+                    $row['product_name'] ?? null,
+                    $row['product_code'] ?? null,
+                    $row['sequence_code'] ?? null,
+                    $row['print_type'] ?? null,
+                    $row['print_option'] ?? null,
+                ])));
+
+                if (!str_contains($haystack, $query)) {
+                    return false;
+                }
+            }
+
+            if ($status !== '' && ($row['status_key'] ?? '') !== $status) {
+                return false;
+            }
+
+            if ($approvalStatus !== '' && ($row['approval_status_key'] ?? '') !== $approvalStatus) {
+                return false;
+            }
+
+            if ($customerVisibleVisual === 'yes' && !($row['has_customer_visible_visual'] ?? false)) {
+                return false;
+            }
+
+            if ($customerVisibleVisual === 'no' && ($row['has_customer_visible_visual'] ?? false)) {
+                return false;
+            }
+
+            return true;
+        })->values();
+
+        return $filtered;
+    }
+
+    private function applyIndexQueueFilter(Collection $rows, string $queue): Collection
+    {
+        return match ($queue) {
+            '', 'all' => $rows,
+            'action_waiting' => $rows->filter(fn (array $row) => ($row['queue_key'] ?? '') !== 'production_ready')->values(),
+            default => $rows->filter(fn (array $row) => ($row['queue_key'] ?? '') === $queue)->values(),
+        };
+    }
+
+    private function buildIndexTabs(Collection $groups, string $selectedQueue): array
+    {
+        $tabs = [
+            'action_waiting' => 'Aksiyon Bekleyenler',
+            'waiting_visual' => 'Görsel Bekleyenler',
+            'control_waiting' => 'Kontrol Bekleyenler',
+            'customer_approval_waiting' => 'Müşteri Onayı Bekleyenler',
+            'revision_requested' => 'Revize İstenenler',
+            'production_ready' => 'Üretime Hazır İşler',
+            'completed' => 'Tamamlananlar',
+            'all' => 'Tümü',
+        ];
+
+        return collect($tabs)->map(function (string $label, string $key) use ($groups, $selectedQueue): array {
+            $count = $key === 'all'
+                ? $groups->count()
+                : $this->applyIndexGroupQueueFilter($groups, $key)->count();
+
+            return [
+                'key' => $key,
+                'label' => $label,
+                'count' => $count,
+                'active' => $selectedQueue === $key,
+            ];
+        })->values()->all();
+    }
+
+    private function buildIndexSummary(Collection $rows, Collection $groups): array
+    {
+        return [
+            'waiting_visual' => $rows->where('queue_key', 'waiting_visual')->count(),
+            'control_waiting' => $rows->where('queue_key', 'control_waiting')->count(),
+            'revision_requested' => $rows->where('queue_key', 'revision_requested')->count(),
+            'production_ready' => $rows->where('queue_key', 'production_ready')->count(),
+            'order_groups' => $groups->count(),
+            'completed_groups' => $groups->where('is_completed_group', true)->count(),
+        ];
+    }
+
+    private function buildIndexOrderGroups(Collection $rows): Collection
+    {
+        return $rows
+            ->groupBy('order_id')
+            ->map(function (Collection $groupRows, int|string $orderId): array {
+                $orderedRows = $groupRows
+                    ->sortBy([
+                        ['order_item_id', 'asc'],
+                        ['sort_sequence_code', 'asc'],
+                        ['order_item_print_id', 'asc'],
+                        ['graphic_id', 'asc'],
+                    ])
+                    ->values();
+
+                $completedOperations = $orderedRows->where('is_terminal_status', true)->count();
+                $isCompletedGroup = $orderedRows->isNotEmpty() && $completedOperations === $orderedRows->count();
+                $terminalRow = $orderedRows
+                    ->filter(fn (array $row) => !empty($row['terminal_at']))
+                    ->sortByDesc('terminal_at')
+                    ->first();
+                $firstRow = $orderedRows->first();
+
+                return [
+                    'order_id' => (int) $orderId,
+                    'order_number' => $firstRow['order_number'] ?? '-',
+                    'customer_name' => $firstRow['customer_name'] ?? '-',
+                    'delivery_date_label' => $firstRow['delivery_date_label'] ?? null,
+                    'total_operations' => $orderedRows->count(),
+                    'completed_operations' => $completedOperations,
+                    'is_completed_group' => $isCompletedGroup,
+                    'completion_label' => $isCompletedGroup
+                        ? (($terminalRow['terminal_at_label'] ?? null) ? 'Tamamlanma: ' . $terminalRow['terminal_at_label'] : 'Tümü tamamlandı')
+                        : null,
+                    'progress_label' => $isCompletedGroup
+                        ? ($orderedRows->count() . ' grafik işlemi · Tümü tamamlandı')
+                        : ($orderedRows->count() . ' grafik işlemi · ' . $completedOperations . ' tamamlandı'),
+                    'color_class' => $this->indexOrderGroupColorClass((int) $orderId),
+                    'rows' => $orderedRows->all(),
+                    'group_action' => [
+                        'label' => 'Kaydı Aç',
+                        'url' => data_get($firstRow, 'primary_action.url', route('admin.graphics.index')),
+                    ],
+                    'sort_priority' => $orderedRows->map(fn (array $row) => $this->queueSortPriority((string) ($row['queue_key'] ?? '')))->min() ?? 99,
+                    'sort_completion_at' => $terminalRow['terminal_at'] ?? null,
+                ];
+            })
+            ->sort(function (array $left, array $right): int {
+                if (($left['is_completed_group'] ?? false) && ($right['is_completed_group'] ?? false)) {
+                    return strcmp((string) ($right['sort_completion_at'] ?? ''), (string) ($left['sort_completion_at'] ?? ''))
+                        ?: (($right['order_id'] ?? 0) <=> ($left['order_id'] ?? 0));
+                }
+
+                return (($left['sort_priority'] ?? 99) <=> ($right['sort_priority'] ?? 99))
+                    ?: (($right['order_id'] ?? 0) <=> ($left['order_id'] ?? 0));
+            })
+            ->values();
+    }
+
+    private function applyIndexGroupQueueFilter(Collection $groups, string $queue): Collection
+    {
+        return match ($queue) {
+            '', 'action_waiting' => $groups->filter(fn (array $group) => !($group['is_completed_group'] ?? false))->values(),
+            'completed' => $groups->filter(fn (array $group) => (bool) ($group['is_completed_group'] ?? false))->values(),
+            'all' => $groups->values(),
+            default => $groups->filter(function (array $group) use ($queue): bool {
+                if (($group['is_completed_group'] ?? false) === true) {
+                    return false;
+                }
+
+                return collect($group['rows'] ?? [])->contains(fn (array $row) => ($row['queue_key'] ?? '') === $queue);
+            })->values(),
+        };
+    }
+
+    private function paginateIndexGroups(Collection $groups, int $perPage): LengthAwarePaginator
+    {
+        $currentPage = LengthAwarePaginator::resolveCurrentPage('page');
+        $total = $groups->count();
+        $items = $groups->forPage($currentPage, $perPage)->values()->all();
+
+        return (new LengthAwarePaginator(
+            $items,
+            $total,
+            $perPage,
+            $currentPage,
+            [
+                'path' => LengthAwarePaginator::resolveCurrentPath(),
+                'pageName' => 'page',
+            ]
+        ))->withQueryString();
+    }
+
+    private function countGroupQueueRows(array $group, string $queue): int
+    {
+        return collect($group['rows'] ?? [])
+            ->where('queue_key', $queue)
+            ->count();
+    }
+
+    private function indexOrderGroupColorClass(int $orderId): string
+    {
+        return match ($orderId % 4) {
+            0 => 'pd-graphic-order-group--blue',
+            1 => 'pd-graphic-order-group--green',
+            2 => 'pd-graphic-order-group--sand',
+            default => 'pd-graphic-order-group--lavender',
+        };
+    }
+
+    private function queueSortPriority(string $queueKey): int
+    {
+        return match ($queueKey) {
+            'waiting_visual' => 1,
+            'revision_requested' => 2,
+            'customer_approval_waiting' => 3,
+            'control_waiting' => 4,
+            'production_ready' => 5,
+            default => 9,
+        };
+    }
+
+    private function isTerminalGraphicStatus(?string $status): bool
+    {
+        return $status === OrderItemPrintGraphic::STATUS_PRODUCTION_READY;
+    }
+
+    private function formatSnapshotDate(mixed $value): ?string
+    {
+        if (!filled($value)) {
+            return null;
+        }
+
+        try {
+            return \Illuminate\Support\Carbon::parse((string) $value)->format('d.m.Y');
+        } catch (\Throwable) {
+            return is_string($value) ? trim($value) : null;
+        }
+    }
+
+    private function indexQueueKey(OrderItemPrintGraphic $graphic): string
+    {
+        return match ((string) $graphic->status) {
+            OrderItemPrintGraphic::STATUS_WAITING_VISUAL => 'waiting_visual',
+            OrderItemPrintGraphic::STATUS_CUSTOMER_APPROVAL_WAITING => 'customer_approval_waiting',
+            OrderItemPrintGraphic::STATUS_REVISION_REQUESTED => 'revision_requested',
+            OrderItemPrintGraphic::STATUS_PRODUCTION_READY => 'production_ready',
+            OrderItemPrintGraphic::STATUS_VISUAL_UPLOADED,
+            OrderItemPrintGraphic::STATUS_APPROVED => 'control_waiting',
+            default => 'action_waiting',
+        };
+    }
+
+    private function indexStatusLabel(OrderItemPrintGraphic $graphic): string
+    {
+        return match ((string) $graphic->status) {
+            OrderItemPrintGraphic::STATUS_WAITING_VISUAL => 'Görsel Bekliyor',
+            OrderItemPrintGraphic::STATUS_VISUAL_UPLOADED => 'Kontrol Bekliyor',
+            OrderItemPrintGraphic::STATUS_CUSTOMER_APPROVAL_WAITING => 'Müşteri Onayı Bekliyor',
+            OrderItemPrintGraphic::STATUS_REVISION_REQUESTED => 'Revize İstendi',
+            OrderItemPrintGraphic::STATUS_APPROVED => 'Onaylandı',
+            OrderItemPrintGraphic::STATUS_PRODUCTION_READY => 'Üretime Hazır',
+            default => $graphic->safeStatusLabel(),
+        };
+    }
+
+    private function indexStatusBadgeClass(?string $status): string
+    {
+        return match ($status) {
+            OrderItemPrintGraphic::STATUS_REVISION_REQUESTED => 'pd-ui-v1-graphics__badge--red',
+            OrderItemPrintGraphic::STATUS_PRODUCTION_READY,
+            OrderItemPrintGraphic::STATUS_APPROVED => 'pd-ui-v1-graphics__badge--green',
+            OrderItemPrintGraphic::STATUS_CUSTOMER_APPROVAL_WAITING,
+            OrderItemPrintGraphic::STATUS_VISUAL_UPLOADED => 'pd-ui-v1-graphics__badge--blue',
+            default => 'pd-ui-v1-graphics__badge--amber',
+        };
+    }
+
+    private function indexStatusHint(OrderItemPrintGraphic $graphic): string
+    {
+        return match ((string) $graphic->status) {
+            OrderItemPrintGraphic::STATUS_WAITING_VISUAL => 'Henüz son görsel yüklenmedi.',
+            OrderItemPrintGraphic::STATUS_VISUAL_UPLOADED => 'Son görsel kontrol veya onay adımına hazır.',
+            OrderItemPrintGraphic::STATUS_CUSTOMER_APPROVAL_WAITING => 'Gönderilen görsel için müşteri yanıtı bekleniyor.',
+            OrderItemPrintGraphic::STATUS_REVISION_REQUESTED => 'Revize gelmeden üretime geçilemez.',
+            OrderItemPrintGraphic::STATUS_APPROVED => 'Onay var, üretime hazırlık kararı ayrı verilir.',
+            OrderItemPrintGraphic::STATUS_PRODUCTION_READY => 'Grafik doğrusu üretim kabulüne hazır.',
+            default => 'Grafik operasyonunu açıp mevcut durumu inceleyin.',
+        };
+    }
+
+    private function indexNextActionNote(OrderItemPrintGraphic $graphic): string
+    {
+        return match ((string) $graphic->status) {
+            OrderItemPrintGraphic::STATUS_WAITING_VISUAL => 'Exact baskı satırına görsel ekleyin.',
+            OrderItemPrintGraphic::STATUS_VISUAL_UPLOADED => 'Görseli kontrol edip gerekiyorsa onaya yönlendirin.',
+            OrderItemPrintGraphic::STATUS_CUSTOMER_APPROVAL_WAITING => 'Müşteri kararını veya revize isteğini açın.',
+            OrderItemPrintGraphic::STATUS_REVISION_REQUESTED => 'Revize dosyasını bu baskı anahtarına yükleyin.',
+            OrderItemPrintGraphic::STATUS_APPROVED => 'Onay tek başına readiness değildir; son kararı verin.',
+            OrderItemPrintGraphic::STATUS_PRODUCTION_READY => 'Kayıt doğrulandı, detaydan ilerletin.',
+            default => 'Grafik akışını kayıttan yönetin.',
+        };
+    }
+
+    private function buildIndexPrimaryAction(OrderItemWorkForm $workForm, OrderItemPrintGraphic $graphic): array
+    {
+        $step = 'summary';
+        $label = 'Kaydı Aç';
+
+        if ($graphic->status === OrderItemPrintGraphic::STATUS_REVISION_REQUESTED) {
+            $step = 'revision';
+            $label = 'Revize Yükle';
+        } elseif ($graphic->status === OrderItemPrintGraphic::STATUS_WAITING_VISUAL) {
+            $step = 'upload';
+            $label = 'Görsel Yükle';
+        } elseif ($graphic->status === OrderItemPrintGraphic::STATUS_CUSTOMER_APPROVAL_WAITING) {
+            $step = 'approval';
+            $label = 'Onay Durumunu Aç';
+        } elseif ($graphic->status === OrderItemPrintGraphic::STATUS_VISUAL_UPLOADED) {
+            $step = 'summary';
+            $label = 'Grafiği Kontrol Et';
+        } elseif ($graphic->status === OrderItemPrintGraphic::STATUS_APPROVED && $graphic->canMarkProductionReady()) {
+            $step = 'ready';
+            $label = 'Üretime Hazırla';
+        }
+
+        return [
+            'label' => $label,
+            'url' => route('admin.graphics.show', [
+                'workForm' => $workForm,
+                'operation' => $graphic->id,
+                'step' => $step,
+            ]),
+        ];
+    }
+
+    private function buildIndexLastEvent(
+        OrderItemPrintGraphic $graphic,
+        ?OrderItemWorkFormAttachment $attachment,
+        ?GraphicApprovalRequest $latestRequest
+    ): array {
+        if ($graphic->status === OrderItemPrintGraphic::STATUS_REVISION_REQUESTED && $graphic->revision_requested_at) {
+            return [
+                'label' => 'Son revize talebi',
+                'at' => optional($graphic->revision_requested_at)->format('d.m.Y H:i') ?: '-',
+            ];
+        }
+
+        if ($graphic->status === OrderItemPrintGraphic::STATUS_PRODUCTION_READY && $graphic->production_ready_at) {
+            return [
+                'label' => 'Üretime hazır işaretlendi',
+                'at' => optional($graphic->production_ready_at)->format('d.m.Y H:i') ?: '-',
+            ];
+        }
+
+        if ($latestRequest?->responded_at) {
+            return [
+                'label' => 'Son müşteri yanıtı',
+                'at' => optional($latestRequest->responded_at)->format('d.m.Y H:i') ?: '-',
+            ];
+        }
+
+        if ($latestRequest?->created_at) {
+            return [
+                'label' => 'Onay gönderildi',
+                'at' => optional($latestRequest->created_at)->format('d.m.Y H:i') ?: '-',
+            ];
+        }
+
+        if ($attachment?->created_at) {
+            return [
+                'label' => 'Son görsel yüklendi',
+                'at' => optional($attachment->created_at)->format('d.m.Y H:i') ?: '-',
+            ];
+        }
+
+        return [
+            'label' => 'Son hareket yok',
+            'at' => '-',
         ];
     }
 
@@ -383,10 +799,10 @@ class GraphicModuleDataBuilder
             'production_ready_guidance' => $this->productionReadyGuidance($graphic),
             'attachment' => $attachment ? [
                 'file_name' => $attachment->file_name ?: basename((string) $attachment->file_path),
-                'thumbnail_url' => $attachment->isImage() ? $this->resolvePreviewUrl($attachment) : null,
-                'preview_url' => $attachment->isImage() ? $this->resolvePreviewUrl($attachment) : null,
-                'original_url' => $this->resolvePreviewUrl($attachment),
-                'open_url' => $this->resolvePreviewUrl($attachment),
+                'thumbnail_url' => $attachment->isImage() ? $this->resolveAttachmentPreviewUrl($attachment) : null,
+                'preview_url' => $attachment->isImage() ? $this->resolveAttachmentPreviewUrl($attachment) : null,
+                'original_url' => $this->resolveAttachmentPreviewUrl($attachment),
+                'open_url' => $this->resolveAttachmentPreviewUrl($attachment),
                 'is_image' => $attachment->isImage(),
                 'kind_label' => $attachment->isImage() ? 'Görsel dosyası' : strtoupper(pathinfo((string) ($attachment->file_name ?: $attachment->file_path), PATHINFO_EXTENSION) ?: 'DOSYA') . ' dosyası',
                 'visibility' => $attachment->visibility,
@@ -407,7 +823,7 @@ class GraphicModuleDataBuilder
                     'visibility' => $item->visibility,
                     'visibility_label' => $item->isCustomerVisible() ? 'Müşteriye Açık' : 'İç Kayıt',
                     'uploaded_at' => optional($item->created_at)->format('d.m.Y H:i'),
-                    'open_url' => $this->resolvePreviewUrl($item),
+                    'open_url' => $this->resolveAttachmentPreviewUrl($item),
                 ])
                 ->all(),
             'print_meta' => [
@@ -498,6 +914,7 @@ class GraphicModuleDataBuilder
     private function historyLabel(OrderItemWorkFormActivityLog $log): string
     {
         return match ($log->action_type) {
+            'procurement_request_created' => 'Tedarik ihtiyacı oluşturuldu',
             'status_updated' => $log->new_status
                 ? 'Durum güncellendi: ' . $this->statusLabel($log->new_status, ucfirst(str_replace('_', ' ', (string) $log->new_status)))
                 : 'Durum güncellendi',
@@ -706,7 +1123,17 @@ class GraphicModuleDataBuilder
         ])));
     }
 
-    private function resolvePreviewUrl(OrderItemWorkFormAttachment $attachment): ?string
+    private function resolveAttachmentPreviewUrl(OrderItemWorkFormAttachment $attachment): ?string
+    {
+        return $this->resolveAttachmentAdminUrl($attachment);
+    }
+
+    private function resolveAttachmentOriginalUrl(OrderItemWorkFormAttachment $attachment): ?string
+    {
+        return $this->resolveAttachmentAdminUrl($attachment);
+    }
+
+    private function resolveAttachmentAdminUrl(OrderItemWorkFormAttachment $attachment): ?string
     {
         if (!$attachment->file_path) {
             return null;
@@ -881,9 +1308,3 @@ class GraphicModuleDataBuilder
         return (string) preg_replace_callback('/\d+/', fn (array $matches) => str_pad($matches[0], 4, '0', STR_PAD_LEFT), $sequenceCode);
     }
 }
-
-
-
-
-
-

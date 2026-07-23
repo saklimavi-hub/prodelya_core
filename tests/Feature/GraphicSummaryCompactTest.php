@@ -32,6 +32,6 @@ class GraphicSummaryCompactTest extends TestCase
         $response->assertSee('Sıradaki İş');
         $response->assertDontSee('Kısayol Özeti');
         $response->assertDontSee('Sipariş, müşteri, ürün ve çalışma klasörü tek bakışta burada görünür.');
-        $this->assertSame(1, substr_count($response->getContent(), 'class="gg-side-title">İş Özeti'));
+        $this->assertSame(1, substr_count($response->getContent(), 'Grafik Özeti'));
     }
 }

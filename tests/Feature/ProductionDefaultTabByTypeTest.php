@@ -19,34 +19,29 @@ class ProductionDefaultTabByTypeTest extends TestCase
         $this->setUpProductionShowFixtures();
     }
 
-    public function test_default_tab_follows_production_type_and_query_param_can_override(): void
+    public function test_show_defaults_to_read_only_summary_and_genel_query_remains_supported(): void
     {
         $internal = $this->createInternalProductionForShow();
         $external = $this->createExternalProductionForShow();
         $unknown = $this->createInternalProductionForShow(['production_type' => null]);
 
-        $this->actingAs($this->adminUser)
-            ->withServerVariables(['HTTP_HOST' => self::PRODUCTION_SHOW_HOST])
-            ->get(route('admin.productions.show', $internal))
-            ->assertOk()
-            ->assertSee('Üretim Akış Adımları');
-
-        $this->actingAs($this->adminUser)
-            ->withServerVariables(['HTTP_HOST' => self::PRODUCTION_SHOW_HOST])
-            ->get(route('admin.productions.show', $external))
-            ->assertOk()
-            ->assertSee('Adet Takibi');
-
-        $this->actingAs($this->adminUser)
-            ->withServerVariables(['HTTP_HOST' => self::PRODUCTION_SHOW_HOST])
-            ->get(route('admin.productions.show', $unknown))
-            ->assertOk()
-            ->assertSee('Genel Özet');
+        foreach ([$internal, $external, $unknown] as $production) {
+            $this->actingAs($this->adminUser)
+                ->withServerVariables(['HTTP_HOST' => self::PRODUCTION_SHOW_HOST])
+                ->get(route('admin.productions.show', $production))
+                ->assertOk()
+                ->assertSee('Üretim Detayı · Exact Baskı')
+                ->assertSee('Sıradaki İşlem')
+                ->assertDontSee('Canonical Akış')
+                ->assertDontSee('?tab=ic-uretim', false)
+                ->assertDontSee('?tab=dis-uretim', false)
+                ->assertDontSee('?tab=islemler', false);
+        }
 
         $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::PRODUCTION_SHOW_HOST])
             ->get(route('admin.productions.show', $internal) . '?tab=genel')
             ->assertOk()
-            ->assertSee('Genel Özet');
+            ->assertSee('Üretim Detayı · Exact Baskı');
     }
 }

@@ -31,8 +31,8 @@ class ProcurementIndexRightPanelActionsTest extends TestCase
             ->get(route('admin.procurements.index'));
 
         $response->assertOk();
-        $response->assertSee('Birincil Aksiyonlar');
-        $response->assertSee('Diğer Aksiyonlar');
+        $response->assertSee('Talep Hazırlanacak Tedarikçiler');
+        $response->assertSee('Liste Özeti');
         $response->assertSee('Sıradaki İş');
     }
 }

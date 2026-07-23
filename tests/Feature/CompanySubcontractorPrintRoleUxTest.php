@@ -173,6 +173,7 @@ class CompanySubcontractorPrintRoleUxTest extends TestCase
                 'assigned_to' => '',
                 'cliche_required' => '0',
                 'production_note' => 'İç üretime alındı',
+                'return_to' => 'show',
             ])
             ->assertRedirect($this->tenantUrl('/admin/productions/' . $production->id));
 
@@ -188,6 +189,7 @@ class CompanySubcontractorPrintRoleUxTest extends TestCase
                 'assigned_to' => '',
                 'cliche_required' => '0',
                 'production_note' => 'Fason firmaya yönlendirildi',
+                'return_to' => 'show',
             ])
             ->assertRedirect($this->tenantUrl('/admin/productions/' . $production->id));
 

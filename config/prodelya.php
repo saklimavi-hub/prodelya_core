@@ -105,5 +105,6 @@ return [
         'api_access' => false,
         'advanced_reports' => false,
         'web_quote_widget' => false,
+        'promotion_intermediate_element_enabled' => env('PRODELYA_PROMOTION_INTERMEDIATE_ELEMENT_ENABLED', false),
     ],
 ];

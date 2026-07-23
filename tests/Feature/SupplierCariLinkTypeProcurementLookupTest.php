@@ -113,10 +113,19 @@ class SupplierCariLinkTypeProcurementLookupTest extends TestCase
         app(WorkFormCreationService::class)->createForOrder($order, $owner);
         $this->assertNotNull($item->fresh('procurement')->procurement);
 
+        $this->assertDatabaseHas('current_account_links', [
+            'tenant_account_id' => $tenant->id,
+            'current_account_id' => $account->id,
+            'link_type' => CurrentAccountLink::LINK_TENANT_SUPPLIER_ACCESS,
+            'link_id' => $access->id,
+        ]);
+
         $this->actingAs($owner, 'web')
             ->get($this->tenantUrl($tenant, '/admin/procurements'))
             ->assertOk()
-            ->assertSee('Eşleşen cari: ' . $company->legal_name)
+            ->assertSee('Talep Hazırlanacak Tedarikçiler')
+            ->assertSee('Fiyat, stok ve talep görünümü tek panelde özetlenir.')
+            ->assertDontSee('Eşleşen cari: ' . $company->legal_name)
             ->assertDontSee('Eşleşen cari: Yok');
     }
 

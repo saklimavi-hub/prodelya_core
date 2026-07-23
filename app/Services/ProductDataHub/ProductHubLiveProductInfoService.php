@@ -7,6 +7,9 @@ use App\Models\TenantAccount;
 use App\Models\TenantCatalogProduct;
 use App\Models\TenantCatalogProductVariant;
 use App\Models\TenantSupplierAccess;
+use App\Services\PromotionQuote\QuoteCurrencyAccessService;
+use App\Services\PromotionQuote\QuoteCurrencyPricingService;
+use App\Services\Stock\TenantLocalStockPresentationService;
 use Illuminate\Contracts\Auth\Authenticatable;
 
 class ProductHubLiveProductInfoService
@@ -16,6 +19,9 @@ class ProductHubLiveProductInfoService
     public function __construct(
         private readonly ProductHubSellableTruthService $sellableTruthService,
         private readonly ProductHubCurrencyService $productHubCurrencyService,
+        private readonly TenantLocalStockPresentationService $tenantLocalStockPresentationService,
+        private readonly QuoteCurrencyAccessService $quoteCurrencyAccessService,
+        private readonly QuoteCurrencyPricingService $quoteCurrencyPricingService,
     ) {
     }
 
@@ -73,13 +79,34 @@ class ProductHubLiveProductInfoService
         }
 
         $truth = $this->sellableTruthService->resolve($product, $variant);
+        $requestedDate = trim((string) ($input['quote_date'] ?? now()->format('Y-m-d')));
+        $quoteCurrencyAccess = $this->quoteCurrencyAccessService->build($tenant, $user);
+        $requestedCurrency = strtoupper(trim((string) ($input['currency'] ?? '')));
+        $requestedCurrency = $requestedCurrency === 'TL' ? 'TRY' : $requestedCurrency;
+        if (($quoteCurrencyAccess['multi_currency_enabled'] ?? false) === false) {
+            $requestedCurrency = 'TRY';
+        } elseif (! in_array($requestedCurrency, ['TRY', 'USD', 'EUR'], true)) {
+            $requestedCurrency = null;
+        } elseif (in_array($requestedCurrency, ['USD', 'EUR'], true) && ! ($quoteCurrencyAccess['can_use_foreign_document_currency'] ?? false)) {
+            $requestedCurrency = 'TRY';
+        }
+        $documentCurrency = $this->quoteCurrencyPricingService->normalizeDocumentCurrency($tenant, $quoteCurrencyAccess, $requestedCurrency ?: null);
         $supplierAccess = $this->resolveSupplierAccessState($tenant, $product, $variant);
         $quoteVisible = ($truth['quote_visibility_status'] ?? 'hidden') === 'visible';
         $tenantCatalogStatus = (string) ($truth['tenant_catalog_status'] ?? 'inactive');
         $tenantCatalogActive = $this->tenantCatalogStatusAllowsQuoteSelection($tenantCatalogStatus);
         $currentPriceValue = $this->toFloat($truth['effective_price'] ?? null);
-        $currentStock = $this->toFloat($truth['effective_stock'] ?? null);
+        $exactLocalStock = $this->toFloat($variant?->local_stock_quantity ?? $product->local_stock_quantity ?? null) ?? 0.0;
+        $exactSupplierStock = $this->toFloat($variant?->supplier_stock_quantity ?? $product->supplier_stock_quantity ?? null) ?? 0.0;
+        $exactFallbackStock = $this->toFloat($variant?->stock_quantity ?? $product->stock_quantity ?? $product->total_stock_quantity ?? null) ?? 0.0;
+        $currentStock = $this->toFloat($this->sellableTruthService->resolveEffectiveStock(
+            $exactLocalStock,
+            $exactSupplierStock,
+            $exactFallbackStock,
+            (bool) ($product->local_stock_priority ?? true)
+        ));
         $selectionSellable = $variant ? true : (bool) $product->is_sellable;
+        $localStockPresentation = $this->tenantLocalStockPresentationService->forCatalogSelection($tenant, $product, $variant);
 
         $warnings = [];
         $stockWarning = null;
@@ -124,12 +151,7 @@ class ProductHubLiveProductInfoService
 
         $snapshotPrice = $this->resolveSnapshotPrice($input, $quoteItem);
         $snapshotStock = $this->resolveSnapshotStock($input, $quoteItem);
-        $priceChanged = $this->valuesDiffer($snapshotPrice, $currentPriceValue);
         $stockChanged = $this->valuesDiffer($snapshotStock, $currentStock);
-
-        if ($priceChanged) {
-            $warnings[] = 'Bu ürünün güncel fiyatı teklif satırındaki fiyattan farklı.';
-        }
 
         if ($stockChanged) {
             $warnings[] = 'Stok bilgisi değişmiş olabilir.';
@@ -145,11 +167,49 @@ class ProductHubLiveProductInfoService
 
         $message = $this->resolvePublicMessage($isSellable, $warnings);
         $priceSnapshot = (array) data_get($variant?->meta, 'price_snapshot', data_get($product->meta, 'price_snapshot', []));
+        $catalogPriceSnapshot = $this->prepareCatalogPriceSnapshot(
+            $tenant,
+            $priceSnapshot,
+            $variant?->currency ?: $product->currency,
+            $variant?->display_price !== null ? (float) $variant->display_price : ($product->display_price !== null ? (float) $product->display_price : null),
+            $requestedDate
+        );
         $currencyPayload = $this->productHubCurrencyService->buildBrowserCurrencyPayload(
             $tenant,
             $user,
-            (array) data_get($priceSnapshot, 'currency_snapshot', $priceSnapshot)
+            (array) data_get($catalogPriceSnapshot, 'currency_snapshot', $catalogPriceSnapshot)
         );
+        $quotePayload = $this->quoteCurrencyPricingService->buildQuoteDisplayPayload(
+            $tenant,
+            $documentCurrency,
+            (array) data_get($catalogPriceSnapshot, 'currency_snapshot', $catalogPriceSnapshot),
+            ['manual_unit_price' => false],
+            $requestedDate
+        );
+        $quotePriceStatus = (string) ($quotePayload['quote_price_status'] ?? 'unavailable');
+        $quotePriceValue = $quotePayload['quote_price_value'] ?? null;
+        $quotePriceReady = $quotePriceValue !== null && in_array($quotePriceStatus, ['ready', 'not_required'], true);
+        $priceComparisonValue = $quotePriceReady ? $this->toFloat($quotePriceValue) : $currentPriceValue;
+        $priceChanged = $this->valuesDiffer($snapshotPrice, $priceComparisonValue);
+        $manualUnitPrice = $this->toFloat($input['manual_unit_price'] ?? null);
+        $manualUnitPriceCurrency = strtoupper(trim((string) ($input['manual_unit_price_currency'] ?? '')));
+        $manualUnitPriceCurrency = $manualUnitPriceCurrency === 'TL' ? 'TRY' : $manualUnitPriceCurrency;
+        $manualQuotePayload = $manualUnitPrice !== null
+            ? $this->quoteCurrencyPricingService->convertManualDocumentPrice(
+                $tenant,
+                $manualUnitPrice,
+                $manualUnitPriceCurrency ?: $documentCurrency,
+                $documentCurrency,
+                $requestedDate
+            )
+            : null;
+
+        if ($priceChanged) {
+            $warnings[] = 'Bu ürünün güncel fiyatı teklif satırındaki fiyattan farklı.';
+        }
+
+
+        $freshness = app(ProductHubFreshnessDiagnosticService::class)->buildQuoteFreshnessPayload($product, $variant);
 
         return [
             'status' => 200,
@@ -160,6 +220,16 @@ class ProductHubLiveProductInfoService
                 'display_code' => $variant?->variant_code ?: $product->display_code,
                 'current_stock' => $currentStock,
                 'stock_label' => $this->formatStock($currentStock),
+                'local_stock_quantity' => $localStockPresentation['local_stock_value'],
+                'local_stock_source' => $localStockPresentation['local_stock_source'],
+                'local_stock_scope' => $localStockPresentation['local_stock_scope'],
+                'local_stock_reason_code' => $localStockPresentation['local_stock_reason_code'],
+                'local_stock_label' => $localStockPresentation['local_stock_label'],
+                'local_stock_note' => $localStockPresentation['local_stock_note'],
+                'local_stock_projection_quantity' => $localStockPresentation['local_stock_projection_value'],
+                'local_stock_operational' => $localStockPresentation['local_stock_operational'],
+                'supplier_stock_quantity' => $exactSupplierStock,
+                'fallback_stock_quantity' => $exactFallbackStock,
                 'current_price' => $this->formatPrice($currentPriceValue, $variant?->currency ?: $product->currency ?: ($input['currency'] ?? null)),
                 'current_price_value' => $currentPriceValue,
                 'currency' => $variant?->currency ?: $product->currency ?: ($input['currency'] ?? 'TL'),
@@ -184,6 +254,9 @@ class ProductHubLiveProductInfoService
                 'applied_rate' => $currencyPayload['applied_rate'],
                 'rate_date' => $currencyPayload['rate_date'],
                 'rate_source' => $currencyPayload['rate_source'],
+                'source_to_base_rate' => $currencyPayload['applied_rate'],
+                'source_to_base_rate_date' => $currencyPayload['rate_date'],
+                'source_to_base_rate_source' => $currencyPayload['rate_source'],
                 'rate_type' => $currencyPayload['rate_type'],
                 'is_fallback_rate' => $currencyPayload['is_fallback_rate'],
                 'is_stale_rate' => $currencyPayload['is_stale_rate'],
@@ -193,10 +266,66 @@ class ProductHubLiveProductInfoService
                 'can_view_currency_details' => $currencyPayload['can_view_currency_details'],
                 'can_use_foreign_document_currency' => $currencyPayload['can_use_foreign_document_currency'],
                 'can_use_manual_rate' => $currencyPayload['can_use_manual_rate'],
+                'quote_price_value' => $quotePayload['quote_price_value'],
+                'quote_currency' => $quotePayload['quote_currency'],
+                'quote_price_status' => $quotePayload['quote_price_status'],
+                'quote_price_reason_code' => $quotePayload['quote_price_reason_code'],
+                'quote_price_message' => $quotePayload['quote_price_message'],
+                'quote_price_blocking' => $quotePayload['quote_price_blocking'],
+                'quote_price_snapshot' => $quotePayload['quote_price_snapshot'],
+                'manual_quote_price_value' => $manualQuotePayload && in_array((string) ($manualQuotePayload['conversion_status'] ?? ''), ['converted', 'not_required', 'stale_rate'], true)
+                    ? $manualQuotePayload['converted_amount']
+                    : null,
+                'manual_quote_currency' => $manualQuotePayload['document_currency'] ?? $documentCurrency,
+                'manual_quote_price_status' => $manualQuotePayload['conversion_status'] ?? null,
+                'freshness' => $freshness,
+                'manual_quote_price_snapshot' => $manualQuotePayload ? [
+                    'source_document_currency' => $manualQuotePayload['source_document_currency'] ?? null,
+                    'document_currency' => $manualQuotePayload['document_currency'] ?? null,
+                    'converted_amount' => $manualQuotePayload['converted_amount'] ?? null,
+                    'conversion_status' => $manualQuotePayload['conversion_status'] ?? null,
+                    'applied_rate' => $manualQuotePayload['applied_rate'] ?? null,
+                    'rate_date' => $manualQuotePayload['rate_date'] ?? null,
+                    'rate_source' => $manualQuotePayload['rate_source'] ?? null,
+                    'rate_type' => $manualQuotePayload['rate_type'] ?? null,
+                ] : null,
             ],
         ];
     }
 
+
+    private function prepareCatalogPriceSnapshot(
+        TenantAccount $tenant,
+        array $priceSnapshot,
+        ?string $fallbackCurrency,
+        ?float $fallbackDisplayPrice,
+        ?string $requestedDate = null,
+    ): array {
+        $sourceCurrency = $priceSnapshot['source_currency'] ?? $priceSnapshot['currency'] ?? $fallbackCurrency;
+        $normalized = array_merge($priceSnapshot, [
+            'source_price' => $priceSnapshot['source_price'] ?? $priceSnapshot['list_price'] ?? $fallbackDisplayPrice,
+            'source_currency' => $sourceCurrency,
+            'currency' => $priceSnapshot['currency'] ?? $fallbackCurrency,
+            'currency_status' => $priceSnapshot['currency_status'] ?? ($sourceCurrency ? 'resolved' : 'missing'),
+        ]);
+        $existingProjection = (array) ($priceSnapshot['currency_snapshot'] ?? []);
+        $projection = ($existingProjection['base_price'] ?? null) !== null
+            ? array_merge($normalized, $existingProjection, [
+                'source_price' => $existingProjection['source_price'] ?? $normalized['source_price'],
+                'source_currency' => $existingProjection['source_currency'] ?? $normalized['source_currency'],
+                'currency_origin' => $existingProjection['currency_origin'] ?? ($normalized['currency_origin'] ?? null),
+                'currency_status' => $existingProjection['currency_status'] ?? $normalized['currency_status'],
+            ])
+            : $this->productHubCurrencyService->buildProjectionCurrencySnapshot(
+                $tenant,
+                $normalized,
+                $requestedDate ?: now()->format('Y-m-d')
+            );
+
+        return array_merge($normalized, $projection, [
+            'currency_snapshot' => $projection,
+        ]);
+    }
     private function validateInput(array $input): ?array
     {
         $productId = $input['tenant_catalog_product_id'] ?? null;

@@ -17,15 +17,22 @@ use App\Services\ProductDataHub\SupplierWarningLabelService;
 use App\Services\ProductDataHub\TenantCatalogProjectionService;
 use App\Services\TenantResolver;
 use App\Services\TenantCatalog\TenantCatalogListRowQueryService;
+use App\Services\TenantCatalog\TenantLocalProductQueryService;
+use App\Services\TenantCatalog\LocalProductFieldCatalogService;
+use App\Services\TenantCatalog\TenantCatalogProductSourceResolver;
+use App\Services\TenantCatalog\CatalogFastStockActionService;
 use Illuminate\Http\Response;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Throwable;
 
@@ -36,6 +43,7 @@ class TenantCatalogController extends Controller
         private readonly TenantCatalogListRowQueryService $listRowQueryService,
         private readonly SupplierWarningLabelService $supplierWarningLabelService,
         private readonly TenantResolver $tenantResolver,
+        private readonly TenantLocalProductQueryService $tenantLocalProductQueryService,
     ) {
     }
 
@@ -45,7 +53,10 @@ class TenantCatalogController extends Controller
         abort_if(!$tenant, 404);
 
         [$products, $stats, $filters, $categories, $suppliers, $summary] = $this->buildCatalogPageData($tenant, $request);
-        $catalogContext = $this->catalogContextPayload($request, $tenant);
+        $catalogContext = array_merge(
+            $this->catalogContextPayload($request, $tenant),
+            $this->supplierLocalStockCatalogContext($tenant, $filters)
+        );
 
         return view('admin.catalog.index', compact('products', 'stats', 'filters', 'categories', 'suppliers', 'summary', 'catalogContext'));
     }
@@ -74,103 +85,24 @@ class TenantCatalogController extends Controller
         return view('admin.catalog.supplier-products', compact('products', 'stats', 'filters', 'categories', 'suppliers', 'summary'));
     }
 
-    public function localProducts(Request $request): View
+
+    public function localProductsSupplierStock(Request $request): RedirectResponse
     {
         $tenant = $this->currentTenant();
         abort_if(!$tenant, 404);
 
-        $filters = $this->catalogFilters($request);
-        $filters['source_type'] = 'local';
-
-        [$products, $stats, $categories, $suppliers, $summary] = $this->catalogListingData($tenant, $filters);
-        $editProduct = null;
-
-        if ($request->filled('edit')) {
-            $editProduct = TenantCatalogProduct::query()
-                ->where('tenant_account_id', $tenant->id)
-                ->where('catalog_source', 'local_product')
-                ->findOrFail((int) $request->integer('edit'));
-        }
-
-        return view('admin.catalog.local-products', compact('products', 'stats', 'filters', 'categories', 'suppliers', 'summary', 'editProduct'));
-    }
-
-    public function storeLocalProduct(Request $request): RedirectResponse
-    {
-        $tenant = $this->currentTenant();
-        abort_if(!$tenant, 404);
-
-        $validated = $this->validateLocalProduct($request, $tenant);
-        $localStock = (float) ($validated['local_stock_quantity'] ?? 0);
-
-        $product = TenantCatalogProduct::query()->create(
-            $this->buildLocalProductPayload($tenant, $validated)
-        );
-
-        $this->syncLocalStockRecord($tenant, $product, $localStock);
-
-        return redirect()
-            ->route('admin.catalog.local-products')
-            ->with('success', 'Local ürün başarıyla eklendi.');
-    }
-
-    public function updateLocalProduct(Request $request, TenantCatalogProduct $product): RedirectResponse
-    {
-        $tenant = $this->currentTenant();
-        $this->ensureTenantProduct($tenant, $product);
-        abort_unless($this->isLocalProduct($product), 404);
-
-        $validated = $this->validateLocalProduct($request, $tenant, $product);
-        $localStock = (float) ($validated['local_stock_quantity'] ?? 0);
-
-        $product->update($this->buildLocalProductPayload($tenant, $validated, $product));
-        $this->syncLocalStockRecord($tenant, $product, $localStock);
-
-        return redirect()
-            ->route('admin.catalog.local-products')
-            ->with('success', 'Local ürün güncellendi.');
-    }
-
-    public function deactivateLocalProduct(TenantCatalogProduct $product): RedirectResponse
-    {
-        $tenant = $this->currentTenant();
-        $this->ensureTenantProduct($tenant, $product);
-        abort_unless($this->isLocalProduct($product), 404);
-
-        $product->update([
-            'is_active' => false,
-            'visible_in_catalog' => false,
-            'visible_in_quote' => false,
-            'hidden_reason' => 'Tenant tarafından pasifleştirildi.',
-            'catalog_status' => 'local_inactive',
+        $query = array_merge($request->query(), [
+            'source_type' => 'supplier',
+            'stock_state' => 'local_stock',
         ]);
 
-        return back()->with('success', 'Local ürün pasif yapıldı.');
+        return redirect()->route('admin.catalog.index', $query);
     }
 
-    public function destroyLocalProduct(TenantCatalogProduct $product): RedirectResponse
-    {
-        $tenant = $this->currentTenant();
-        $this->ensureTenantProduct($tenant, $product);
-        abort_unless($this->isLocalProduct($product), 404);
 
-        if ($this->productUsedInSales($product)) {
-            $product->update([
-                'is_active' => false,
-                'visible_in_catalog' => false,
-                'visible_in_quote' => false,
-                'hidden_reason' => 'Geçmiş teklif/sipariş kaydı olduğu için arşivlendi.',
-                'catalog_status' => 'local_archived',
-            ]);
 
-            return back()->with('success', 'Local ürün geçmiş kullanımı olduğu için silinmedi, arşivlendi.');
-        }
 
-        $product->localStocks()->delete();
-        $product->delete();
 
-        return back()->with('success', 'Local ürün güvenli şekilde silindi.');
-    }
 
     public function visibility(Request $request): View
     {
@@ -319,10 +251,35 @@ class TenantCatalogController extends Controller
         $tenant = $this->currentTenant();
         $this->ensureTenantProduct($tenant, $product);
 
+        if ($this->isLocalProduct($product)) {
+            return app(LocalProductController::class)->show($product);
+        }
+
         $product->load(['category', 'standardProduct', 'images', 'primaryImage', 'variants.images', 'localStocks']);
         $product->setAttribute('warning_items', $this->productWarnings($product));
+        $selectedVariant = null;
 
-        return view('admin.catalog.show', compact('product'));
+        return view('admin.catalog.show', compact('product', 'selectedVariant'));
+    }
+
+    public function showVariant(TenantCatalogProduct $product, TenantCatalogProductVariant $variant): View
+    {
+        $tenant = $this->currentTenant();
+        $this->ensureTenantProduct($tenant, $product);
+
+        if ($this->isLocalProduct($product)) {
+            return app(LocalProductController::class)->showVariant($product, $variant);
+        }
+
+        abort_unless((int) $variant->tenant_account_id === (int) $tenant?->id, 403);
+        abort_unless((int) $variant->tenant_catalog_product_id === (int) $product->id, 404);
+
+        $product->load(['category', 'standardProduct', 'images', 'primaryImage', 'variants.images', 'localStocks']);
+        $variant->loadMissing(['images', 'catalogProduct']);
+        $product->setAttribute('warning_items', $this->productWarnings($product));
+        $selectedVariant = $variant;
+
+        return view('admin.catalog.show', compact('product', 'selectedVariant'));
     }
 
     public function toggleVisibility(TenantCatalogProduct $product): RedirectResponse
@@ -399,135 +356,56 @@ class TenantCatalogController extends Controller
             'unit_purchase_price' => 'nullable|required_if:entry_type,supplier_purchase|numeric|min:0',
             'manual_purchase_unit_price' => 'nullable|boolean',
             'currency' => 'nullable|string|max:3',
-            'vat_enabled' => 'nullable|boolean',
-            'vat_rate' => 'nullable|numeric|min:0|max:100',
+            'exchange_rate' => 'nullable|numeric|min:0.000001',
+            'exchange_rate_date' => 'nullable|date',
             'document_no' => 'nullable|string|max:100',
             'entry_date' => 'nullable|date',
             'warehouse_code' => 'nullable|string|max:100',
             'location_code' => 'nullable|string|max:100',
             'notes' => 'nullable|string|max:1000',
+            'idempotency_key' => 'nullable|string|max:120',
         ]);
 
         $variant = $this->resolveSellableVariantForLocalStock($product, $validated['tenant_catalog_product_variant_id'] ?? null);
         $this->ensureSellableForLocalStock($product, $variant);
 
-        DB::transaction(function () use ($tenant, $product, $variant, $validated): void {
-            $this->applyLocalStockEntry($tenant, $product, $validated, $variant);
-        });
+        app(CatalogFastStockActionService::class)->store(
+            $tenant,
+            $product,
+            $variant,
+            $validated,
+            $request->user()
+        );
 
         $message = $validated['entry_type'] === 'supplier_purchase'
-            ? 'Tedarikçiden satın alma kaydedildi, local stok ve borç hareketi oluşturuldu.'
-            : 'Eldeki mevcut stok borç oluşturmadan local stoğa eklendi.';
+            ? 'Tamamlanmış satın alma kaydedildi; exact stok ve tedarikçi cari borcu oluşturuldu.'
+            : 'Eldeki stok exact local stoğa eklendi. Tedarikçi carisi etkilenmedi.';
 
         return back()->with('success', $message);
     }
 
-    public function localProductsImport(Request $request): View
-    {
-        $tenant = $this->currentTenant();
-        abort_if(!$tenant, 404);
-
-        $categories = StandardCategory::query()->permanentBackbone()->orderBy('path')->get();
-        $preview = session('local_product_import_preview');
-
-        return view('admin.catalog.local-products-import', compact('categories', 'preview'));
-    }
-
-    public function localProductsImportTemplate(): Response
-    {
-        $csv = implode("\n", [
-            'urun_kodu,urun_adi,kategori,stok,liste_fiyati,para_birimi,kdv_var,renk,olcu,gorsel_url,aciklama,katalogda_gorunsun,teklifte_kullanilsin',
-            'PRD-001,Örnek Local Ürün,Promosyon Ürünleri,100,25.50,TL,1,Mavi,10x20 cm,https://example.com/gorsel.jpg,Örnek açıklama,1,1',
-        ]);
-
-        return response($csv, 200, [
-            'Content-Type' => 'text/csv; charset=UTF-8',
-            'Content-Disposition' => 'attachment; filename="prodelya-local-urun-sablonu.csv"',
-        ]);
-    }
-
-    public function previewLocalProductsImport(Request $request): RedirectResponse
+    public function cancelLocalStockEntry(Request $request, TenantSupplierPurchaseEntry $entry): RedirectResponse
     {
         $tenant = $this->currentTenant();
         abort_if(!$tenant, 404);
 
         $validated = $request->validate([
-            'file' => 'required|file|mimes:csv,txt|max:5120',
+            'cancellation_reason' => 'required|string|max:500',
         ]);
 
-        $rows = $this->parseCsvFile($validated['file']->getRealPath());
-        $headers = array_keys($rows[0] ?? []);
-        $previewRows = collect($rows)->take(20)->values()->all();
-        $errors = $this->validateImportRows($rows);
+        app(CatalogFastStockActionService::class)->cancel(
+            $tenant,
+            $entry,
+            $validated['cancellation_reason'],
+            $request->user()
+        );
 
-        session([
-            'local_product_import_preview' => [
-                'headers' => $headers,
-                'rows' => $rows,
-                'preview_rows' => $previewRows,
-                'errors' => $errors,
-                'total' => count($rows),
-            ],
-        ]);
-
-        return redirect()
-            ->route('admin.catalog.local-products.import')
-            ->with('success', 'Import önizlemesi hazırlandı. İlk 20 satırı kontrol edin.');
+        return back()->with('success', 'Stok işlemi iptal edildi ve ters kayıt oluşturuldu.');
     }
 
-    public function storeLocalProductsImport(Request $request): RedirectResponse
-    {
-        $tenant = $this->currentTenant();
-        abort_if(!$tenant, 404);
 
-        $preview = session('local_product_import_preview');
-        if (!$preview || empty($preview['rows'])) {
-            return back()->with('error', 'Import önizlemesi bulunamadı. Önce dosya yükleyin.');
-        }
 
-        $policy = $request->string('duplicate_policy')->toString() ?: 'update';
-        $result = ['created' => 0, 'updated' => 0, 'skipped' => 0, 'errors' => 0];
 
-        DB::transaction(function () use ($tenant, $preview, $policy, &$result): void {
-            foreach ($preview['rows'] as $row) {
-                $normalized = $this->normalizeImportRow($row);
-
-                if (blank($normalized['product_code']) || blank($normalized['product_name'])) {
-                    $result['errors']++;
-                    continue;
-                }
-
-                $existing = TenantCatalogProduct::query()
-                    ->where('tenant_account_id', $tenant->id)
-                    ->where('catalog_source', 'local_product')
-                    ->where('product_code', $normalized['product_code'])
-                    ->first();
-
-                if ($existing && $policy === 'skip') {
-                    $result['skipped']++;
-                    continue;
-                }
-
-                $payload = $this->buildLocalProductPayload($tenant, $normalized, $existing);
-
-                if ($existing) {
-                    $existing->update($payload);
-                    $this->syncLocalStockRecord($tenant, $existing, (float) ($normalized['local_stock_quantity'] ?? 0));
-                    $result['updated']++;
-                } else {
-                    $product = TenantCatalogProduct::query()->create($payload);
-                    $this->syncLocalStockRecord($tenant, $product, (float) ($normalized['local_stock_quantity'] ?? 0));
-                    $result['created']++;
-                }
-            }
-        });
-
-        session()->forget('local_product_import_preview');
-
-        return redirect()
-            ->route('admin.catalog.local-products')
-            ->with('success', "Import tamamlandı. Eklenen: {$result['created']}, güncellenen: {$result['updated']}, atlanan: {$result['skipped']}, hatalı: {$result['errors']}.");
-    }
 
     public function markWarningReviewed(TenantCatalogProduct $product): RedirectResponse
     {
@@ -587,6 +465,24 @@ class TenantCatalogController extends Controller
         [$products, $stats, $categories, $suppliers, $summary] = $this->catalogListingData($tenant, $filters);
 
         return [$products, $stats, $filters, $categories, $suppliers, $summary];
+    }
+
+    private function supplierLocalStockCatalogContext(TenantAccount $tenant, array $filters): array
+    {
+        if (($filters['source_type'] ?? null) !== 'supplier' || ($filters['stock_state'] ?? null) !== 'local_stock') {
+            return [];
+        }
+
+        $stats = $this->tenantLocalProductQueryService->supplierLocalStockStats($tenant);
+        $legacyUnassignedCount = (int) ($stats['legacy_unassigned_count'] ?? 0);
+        $legacyUnassignedQuantity = round((float) ($stats['legacy_unassigned_quantity'] ?? 0), 4);
+
+        return [
+            'supplier_local_stock_warning' => [
+                'legacy_unassigned_count' => $legacyUnassignedCount,
+                'legacy_unassigned_quantity' => $legacyUnassignedQuantity,
+            ],
+        ];
     }
 
     private function catalogListingData(TenantAccount $tenant, array $filters): array
@@ -1107,108 +1003,7 @@ class TenantCatalogController extends Controller
         return $supplierNames->isNotEmpty() ? $supplierNames->implode(', ') : 'Tedarikçi Ürünü';
     }
 
-    private function validateLocalProduct(Request $request, TenantAccount $tenant, ?TenantCatalogProduct $product = null): array
-    {
-        $validated = $request->validate([
-            'product_name' => 'required|string|max:255',
-            'product_code' => [
-                'required',
-                'string',
-                'max:100',
-                Rule::unique('tenant_catalog_products', 'product_code')
-                    ->ignore($product?->id)
-                    ->where(fn ($query) => $query->where('tenant_account_id', $tenant->id)),
-            ],
-            'standard_category_id' => 'nullable|exists:standard_categories,id',
-            'image_url' => 'nullable|url',
-            'display_price' => 'nullable|numeric|min:0',
-            'currency' => 'nullable|string|max:3',
-            'vat_rate' => 'nullable|numeric|min:0|max:100',
-            'local_stock_quantity' => 'nullable|numeric|min:0',
-            'description' => 'nullable|string',
-            'visible_in_catalog' => 'nullable|boolean',
-            'visible_in_quote' => 'nullable|boolean',
-            'is_active' => 'nullable|boolean',
-            'is_featured' => 'nullable|boolean',
-            'local_stock_priority' => 'nullable|boolean',
-        ]);
 
-        if (!empty($validated['standard_category_id'])) {
-            $category = StandardCategory::query()->findOrFail((int) $validated['standard_category_id']);
-            abort_if(
-                $category->isArchivedCategory() || !$category->isPermanentBackbone(),
-                422,
-                'Arşiv veya kalıcı omurga dışında kalan kategoriler local ürün kategorisi olarak kullanılamaz.'
-            );
-        }
-
-        return $validated;
-    }
-
-    private function buildLocalProductPayload(TenantAccount $tenant, array $validated, ?TenantCatalogProduct $product = null): array
-    {
-        $localStock = (float) ($validated['local_stock_quantity'] ?? 0);
-        $visibleInCatalog = (bool) ($validated['visible_in_catalog'] ?? false);
-        $visibleInQuote = (bool) ($validated['visible_in_quote'] ?? false);
-        $isActive = (bool) ($validated['is_active'] ?? false);
-        $isFeatured = (bool) ($validated['is_featured'] ?? false);
-        $localStockPriority = (bool) ($validated['local_stock_priority'] ?? true);
-
-        return [
-            'tenant_account_id' => $tenant->id,
-            'standard_product_id' => null,
-            'tenant_sku' => $product?->tenant_sku ?: 'LOCAL-' . $tenant->id . '-' . Str::upper($validated['product_code']),
-            'name' => $validated['product_name'],
-            'description' => $validated['description'] ?? null,
-            'product_code' => $validated['product_code'],
-            'product_name' => $validated['product_name'],
-            'slug' => Str::slug($validated['product_name'] . '-' . $validated['product_code']),
-            'standard_category_id' => $validated['standard_category_id'] ?? null,
-            'product_family' => 'local',
-            'image_url' => $validated['image_url'] ?? null,
-            'display_price' => $validated['display_price'] ?? null,
-            'sale_price' => $validated['display_price'] ?? null,
-            'currency' => $validated['currency'] ?? 'TL',
-            'total_stock_quantity' => $localStock,
-            'local_stock_quantity' => $localStock,
-            'supplier_stock_quantity' => 0,
-            'safe_stock_quantity' => 0,
-            'price_multiplier' => 1,
-            'source_summary' => [],
-            'visible_in_catalog' => $visibleInCatalog,
-            'visible_in_quote' => $visibleInQuote,
-            'hidden_reason' => $visibleInCatalog ? null : 'Tenant tarafından gizlendi.',
-            'is_featured' => $isFeatured,
-            'local_stock_priority' => $localStockPriority,
-            'catalog_source' => 'local_product',
-            'catalog_status' => $isActive ? 'local_active' : 'local_inactive',
-            'last_synced_at' => null,
-            'is_active' => $isActive,
-            'stock_quantity' => (int) round($localStock),
-            'allow_backorder' => false,
-            'min_order_quantity' => 1,
-            'tenant_attributes' => [
-                'catalog_images' => filled($validated['image_url'] ?? null) ? [$validated['image_url']] : [],
-            ],
-            'meta' => [
-                'catalog_source' => 'local_product',
-                'warning_snapshot' => $this->buildLocalProductWarnings($validated, $localStock),
-                'price_snapshot' => [
-                    'list_price' => $validated['display_price'] ?? null,
-                    'display_price' => $validated['display_price'] ?? null,
-                    'currency' => $validated['currency'] ?? 'TL',
-                    'vat_rate' => (float) ($validated['vat_rate'] ?? 0),
-                ],
-                'stock_snapshot' => [
-                    'stock_quantity' => $localStock,
-                    'local_stock_quantity' => $localStock,
-                    'supplier_stock_quantity' => 0,
-                ],
-                'can_use_in_quotes' => $visibleInQuote,
-                'is_local_product' => true,
-            ],
-        ];
-    }
 
     private function productUsedInSales(TenantCatalogProduct $product): bool
     {
@@ -1347,95 +1142,13 @@ class TenantCatalogController extends Controller
         return $entry;
     }
 
-    private function parseCsvFile(string $path): array
-    {
-        $handle = fopen($path, 'rb');
-        if (!$handle) {
-            return [];
-        }
 
-        $headers = null;
-        $rows = [];
 
-        while (($data = fgetcsv($handle, 0, ',')) !== false) {
-            if ($headers === null) {
-                $headers = array_map(fn ($value) => Str::of((string) $value)->trim()->lower()->snake()->toString(), $data);
-                continue;
-            }
 
-            if (count(array_filter($data, fn ($value) => filled($value))) === 0) {
-                continue;
-            }
 
-            $rows[] = array_combine($headers, array_pad($data, count($headers), null));
-        }
 
-        fclose($handle);
 
-        return $rows;
-    }
 
-    private function validateImportRows(array $rows): array
-    {
-        $errors = [];
-        $seenCodes = [];
-
-        foreach ($rows as $index => $row) {
-            $line = $index + 2;
-            $code = trim((string) ($row['urun_kodu'] ?? $row['product_code'] ?? ''));
-            $name = trim((string) ($row['urun_adi'] ?? $row['product_name'] ?? ''));
-
-            if ($code === '') {
-                $errors[] = "{$line}. satır: ürün kodu boş.";
-            }
-
-            if ($name === '') {
-                $errors[] = "{$line}. satır: ürün adı boş.";
-            }
-
-            if ($code !== '' && in_array($code, $seenCodes, true)) {
-                $errors[] = "{$line}. satır: duplicate ürün kodu ({$code}).";
-            }
-
-            if ($code !== '') {
-                $seenCodes[] = $code;
-            }
-
-            foreach (['stok', 'liste_fiyati'] as $numericField) {
-                $value = $row[$numericField] ?? null;
-                if (filled($value) && !is_numeric(str_replace(',', '.', (string) $value))) {
-                    $errors[] = "{$line}. satır: {$numericField} sayısal değil.";
-                }
-            }
-        }
-
-        return $errors;
-    }
-
-    private function normalizeImportRow(array $row): array
-    {
-        $bool = fn ($value, bool $default = false) => filled($value)
-            ? in_array(Str::lower((string) $value), ['1', 'true', 'evet', 'var', 'yes'], true)
-            : $default;
-        $decimal = fn ($value) => filled($value) ? (float) str_replace(',', '.', (string) $value) : null;
-
-        return [
-            'product_code' => trim((string) ($row['urun_kodu'] ?? $row['product_code'] ?? '')),
-            'product_name' => trim((string) ($row['urun_adi'] ?? $row['product_name'] ?? '')),
-            'standard_category_id' => null,
-            'image_url' => $row['gorsel_url'] ?? $row['image_url'] ?? null,
-            'display_price' => $decimal($row['liste_fiyati'] ?? $row['display_price'] ?? null),
-            'currency' => $row['para_birimi'] ?? $row['currency'] ?? 'TL',
-            'vat_rate' => $bool($row['kdv_var'] ?? null) ? 20 : 0,
-            'local_stock_quantity' => $decimal($row['stok'] ?? $row['stock'] ?? 0) ?? 0,
-            'description' => $row['aciklama'] ?? $row['description'] ?? null,
-            'visible_in_catalog' => $bool($row['katalogda_gorunsun'] ?? null, true),
-            'visible_in_quote' => $bool($row['teklifte_kullanilsin'] ?? null, true),
-            'is_active' => true,
-            'is_featured' => false,
-            'local_stock_priority' => true,
-        ];
-    }
 
     private function currentTenant(): ?TenantAccount
     {

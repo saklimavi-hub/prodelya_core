@@ -8,7 +8,7 @@
     $quoteHiddenTotal = (int) ($summary['quote_hidden_products'] ?? 0) + (int) ($summary['quote_hidden_variants'] ?? 0);
     $catalogNote = $summary['tenant_catalog_products'] > 0
         ? $summary['tenant_catalog_products'] . ' ürün / ' . $summary['tenant_catalog_variants'] . ' varyant'
-        : ($summary['tenant_access'] > 0 ? 'Yansıtma bekliyor' : 'Erişim tanımı bekleniyor');
+        : ($summary['tenant_access'] > 0 ? 'Otomatik yansıma bekliyor' : 'Erişim tanımı bekleniyor');
     $focusMessage = match (true) {
         $reviewTotal > 0 => 'Bekleyen Kontroller alanında ' . $reviewTotal . ' kayıt var.',
         ($decision['projection_pending'] ?? 0) > 0 => 'Satış listesine otomatik yansıması bekleyen kayıt var.',
@@ -28,7 +28,7 @@
                 <span class="pd-muted-badge">{{ $source->supplier->code }}</span>
                 <span class="pd-badge pd-badge-{{ $source->display_source_type === 'json' ? 'purple' : ($source->display_source_type === 'xml' ? 'blue' : ($source->display_source_type === 'csv' ? 'amber' : 'green')) }}">{{ strtoupper($source->display_source_type) }}</span>
                 <span class="pd-badge pd-badge-{{ $source->status_badge }}">{{ $source->status_label }}</span>
-                <span class="pd-badge pd-badge-gray">Profil: {{ $source->source_profile_template }}</span>
+                <span class="pd-badge pd-badge-gray">Profil hazır</span>
                 @if($source->is_temp_profile)
                     <span class="pd-badge pd-badge-red">Geçici Profil</span>
                 @endif
@@ -60,7 +60,7 @@
     <div class="pd-source-summary-grid pd-source-summary-grid-clean">
         <div class="pd-source-summary-card"><div class="pd-source-summary-label">Ürün</div><div class="pd-source-summary-value">{{ $summary['standard_products'] }}</div><div class="pd-source-summary-note">{{ $summary['raw_products'] }} hazırlık kaydı</div></div>
         <div class="pd-source-summary-card"><div class="pd-source-summary-label">Varyant</div><div class="pd-source-summary-value">{{ $summary['standard_variants'] }}</div><div class="pd-source-summary-note">{{ $summary['raw_variants'] }} hazırlık varyantı</div></div>
-        <div class="pd-source-summary-card"><div class="pd-source-summary-label">Kategori Bekleyen</div><div class="pd-source-summary-value">{{ $summary['category_pending'] }}</div><div class="pd-source-summary-note">{{ $source->category_mappings_count ?? 0 }} eşleme kaydı</div></div>
+        <div class="pd-source-summary-card"><div class="pd-source-summary-label">İnceleme Bekleyen</div><div class="pd-source-summary-value">{{ $summary['category_pending'] }}</div><div class="pd-source-summary-note">{{ $source->category_mappings_count ?? 0 }} eşleme kaydı</div></div>
         <div class="pd-source-summary-card"><div class="pd-source-summary-label">Teklifte Görünen</div><div class="pd-source-summary-value">{{ $quoteVisibleTotal }}</div><div class="pd-source-summary-note">{{ $summary['quote_visibility_reason'] }}</div></div>
         <div class="pd-source-summary-card" data-review-total="{{ $reviewTotal }}"><div class="pd-source-summary-label">İnceleme Bekleyen</div><div class="pd-source-summary-value">{{ $reviewTotal }}</div><div class="pd-source-summary-note">{{ $reviewTotal > 0 ? 'Kontrol bekleyen kayıtlar var' : 'Kontrol bekleyen değişiklik yok' }}</div></div>
         <div class="pd-source-summary-card"><div class="pd-source-summary-label">Abone Katalog Durumu</div><div class="pd-source-summary-value">{{ $summary['tenant_catalog_products'] }}</div><div class="pd-source-summary-note">{{ $catalogNote }}</div></div>
@@ -80,13 +80,13 @@
         <div class="pd-freshness-header">
             <div>
                 <div class="pd-source-summary-label">Katalog Tazeliği</div>
-                <div class="pd-source-summary-note">Normal fiyat/stok değişimleri sessiz akışta ilerlemeli; yalnız yeni ürün, kategori, kimlik ve satış listesine yansıma istisnaları operatöre iş çıkarmalı.</div>
+                <div class="pd-source-summary-note">Normal fiyat/stok değişimleri sessiz akışta ilerler; yalnız yeni ürün, kategori, kimlik ve satış listesi istisnaları operatöre iş çıkarır.</div>
             </div>
             <span class="pd-badge pd-badge-{{ $decision['state_tone'] ?? 'blue' }}">{{ $decision['state_label'] ?? 'Henüz delta raporu yok' }}</span>
         </div>
         <div class="pd-inline-wrap-sm pd-gap-bottom-sm">
             <span class="pd-muted-badge">Otomatik işlenen {{ $decision['automatic_updates'] ?? 0 }}</span>
-            <span class="pd-muted-badge">Review {{ $decision['review_required'] ?? 0 }}</span>
+            <span class="pd-muted-badge">İnceleme {{ $decision['review_required'] ?? 0 }}</span>
             <span class="pd-muted-badge">Yeni ürün {{ $decision['new_items'] ?? 0 }}</span>
             <span class="pd-muted-badge">Kimlik / varyant {{ $decision['identity_issues'] ?? 0 }}</span>
         </div>
@@ -128,7 +128,7 @@
             <a href="{{ route('admin.super.product-data-hub.sources.sync-reports', ['source_id' => $source->id]) }}" class="pd-btn pd-btn-sm pd-btn-light">Senkron Raporları</a>
             <a href="{{ route('admin.super.product-data-hub.sources.edit', $source) }}" class="pd-btn pd-btn-sm pd-btn-light">Kaynak Ayarları</a>
             <a href="{{ route('admin.super.product-data-hub.sources.preview', $source) }}" class="pd-btn pd-btn-sm pd-btn-light">Ön Kontrol</a>
-            <a href="{{ route('admin.super.product-data-hub.supplier-products', ['source_id' => $source->id]) }}" class="pd-btn pd-btn-sm pd-btn-light">Teknik Kayıtlar</a>
+            <a href="{{ route('admin.super.product-data-hub.supplier-products', ['source_id' => $source->id]) }}" class="pd-btn pd-btn-sm pd-btn-light">Kaynak Kayıtları</a>
         </div>
     </details>
 </article>

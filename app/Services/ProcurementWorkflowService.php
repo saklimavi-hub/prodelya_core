@@ -194,18 +194,23 @@ class ProcurementWorkflowService
             ? OrderItemProcurement::FULFILLMENT_SUPPLIER
             : ($procurement->isLocalStockBased() ? OrderItemProcurement::FULFILLMENT_LOCAL_STOCK : OrderItemProcurement::FULFILLMENT_SUPPLIER);
 
-        $status = $hasOpenRequest
-            ? OrderItemProcurement::STATUS_REQUEST_CREATED
-            : OrderItemProcurement::STATUS_PENDING;
+        $shortfall = $this->supplierShortfall($procurement);
+        $requiresProcurement = $shortfall > 0.0001;
+        $status = ! $requiresProcurement
+            ? OrderItemProcurement::STATUS_NOT_REQUIRED
+            : ($hasOpenRequest ? OrderItemProcurement::STATUS_REQUEST_CREATED : OrderItemProcurement::STATUS_PENDING);
+        $reopenSource = ! $requiresProcurement
+            ? OrderItemProcurement::FULFILLMENT_LOCAL_STOCK
+            : ((float) $procurement->local_allocated_quantity > 0.0001 ? OrderItemProcurement::FULFILLMENT_MIXED : $fallbackSource);
 
         return $this->transition(
             $procurement,
             [
-                'requires_procurement' => true,
-                'fulfillment_source' => $fallbackSource,
+                'requires_procurement' => $requiresProcurement,
+                'fulfillment_source' => $reopenSource,
                 'procurement_status' => $status,
-                'supplier_requested_quantity' => round((float) $procurement->requested_quantity, 4),
-                'remaining_quantity' => round((float) $procurement->requested_quantity, 4),
+                'supplier_requested_quantity' => round($shortfall, 4),
+                'remaining_quantity' => round($shortfall, 4),
                 'received_quantity' => 0,
                 'ordered_at' => $status === OrderItemProcurement::STATUS_REQUEST_CREATED ? $procurement->ordered_at : null,
                 'partially_received_at' => null,
@@ -239,17 +244,22 @@ class ProcurementWorkflowService
         $snapshot['supplier_source_id'] = $supplierSource?->id;
         $snapshot['supplier_source_name'] = $supplierSource?->source_name;
 
+        $shortfall = $this->supplierShortfall($procurement);
+        $requiresProcurement = $shortfall > 0.0001;
+
         return $this->transition(
             $procurement,
             [
                 'supplier_id' => $supplier->id,
                 'supplier_source_id' => $supplierSource?->id,
-                'requires_procurement' => true,
-                'fulfillment_source' => OrderItemProcurement::FULFILLMENT_SUPPLIER,
-                'procurement_status' => OrderItemProcurement::STATUS_PENDING,
-                'supplier_requested_quantity' => round((float) $procurement->requested_quantity, 4),
+                'requires_procurement' => $requiresProcurement,
+                'fulfillment_source' => $requiresProcurement
+                    ? ((float) $procurement->local_allocated_quantity > 0.0001 ? OrderItemProcurement::FULFILLMENT_MIXED : OrderItemProcurement::FULFILLMENT_SUPPLIER)
+                    : OrderItemProcurement::FULFILLMENT_LOCAL_STOCK,
+                'procurement_status' => $requiresProcurement ? OrderItemProcurement::STATUS_PENDING : OrderItemProcurement::STATUS_NOT_REQUIRED,
+                'supplier_requested_quantity' => round($shortfall, 4),
                 'received_quantity' => 0,
-                'remaining_quantity' => round((float) $procurement->requested_quantity, 4),
+                'remaining_quantity' => round($shortfall, 4),
                 'ordered_at' => null,
                 'partially_received_at' => null,
                 'fully_received_at' => null,
@@ -260,6 +270,11 @@ class ProcurementWorkflowService
             $user,
             $note ?: 'Tedarikçi değiştirildi ve tedarik kalemi yeniden açıldı.'
         );
+    }
+
+    private function supplierShortfall(OrderItemProcurement $procurement): float
+    {
+        return max(round((float) $procurement->requested_quantity - (float) $procurement->local_allocated_quantity, 4), 0.0);
     }
 
     private function transition(

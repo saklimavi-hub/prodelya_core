@@ -12,12 +12,14 @@ use App\Models\OrderItemWorkFormDelivery;
 use App\Models\OrderPayment;
 use App\Models\SupplierProcurementRequest;
 use App\Models\TenantAccount;
+use App\Services\Currency\TenantCurrencySettingsService;
 use App\Services\FinanceSummaryService;
 
 class NotificationVariableBuilder
 {
     public function __construct(
         protected FinanceSummaryService $financeSummaryService,
+        protected TenantCurrencySettingsService $tenantCurrencySettingsService,
     ) {}
 
     public function buildForOrder(Order $order, string $audienceType = NotificationTemplate::AUDIENCE_CUSTOMER): array
@@ -162,7 +164,7 @@ class NotificationVariableBuilder
             'payment_method' => $payment->safePaymentMethodLabel(),
             'payment_method_label' => $payment->safePaymentMethodLabel(),
             'payment_amount' => round((float) $payment->amount, 2),
-            'payment_currency' => $payment->currency,
+            'payment_currency' => $this->tenantCurrencySettingsService->displayLabel($payment->currency),
             'payment_reference' => $payment->payment_reference,
             'paid_at' => optional($payment->paid_at)?->toAtomString(),
             'due_date' => optional($payment->due_date)?->toAtomString(),

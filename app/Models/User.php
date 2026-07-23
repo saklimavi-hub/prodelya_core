@@ -36,7 +36,7 @@ class User extends Authenticatable
     // TODO: Add tenant-aware role relationships
     // TODO: Add permission checking methods
     // TODO: Add tenant context methods
-    
+
     /**
      * Get the user's roles across all tenants
      */
@@ -76,13 +76,13 @@ class User extends Authenticatable
     public function hasPermissionInTenant($permission, $tenantId)
     {
         $roles = $this->rolesForTenant($tenantId);
-        
+
         foreach ($roles as $role) {
             if ($role->hasPermission($permission)) {
                 return true;
             }
         }
-        
+
         return false;
     }
 
@@ -92,13 +92,13 @@ class User extends Authenticatable
     public function hasAnyPermissionInTenant(array $permissions, $tenantId)
     {
         $roles = $this->rolesForTenant($tenantId);
-        
+
         foreach ($roles as $role) {
             if ($role->hasAnyPermission($permissions)) {
                 return true;
             }
         }
-        
+
         return false;
     }
 
@@ -147,6 +147,7 @@ class User extends Authenticatable
     /**
      * Check if user can view sensitive financial data in a tenant
      */
+
     public function canViewFinancialData($tenantId)
     {
         $financialPermissions = [
@@ -161,7 +162,7 @@ class User extends Authenticatable
             'manage_current_account_transactions',
             'cancel_current_account_transactions',
         ];
-        
+
         return $this->hasAnyPermissionInTenant($financialPermissions, $tenantId);
     }
 }

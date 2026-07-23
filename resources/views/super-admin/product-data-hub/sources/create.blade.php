@@ -73,7 +73,7 @@
 
         <div class="pd-card pd-form-card mb-6">
             <div class="pd-card-header">
-                <h3 class="pd-card-title">Kaynak Kimliği</h3>
+                <h3 class="pd-card-title">Temel Kaynak Bilgileri</h3><div class="pd-note mt-2">Kaynak Kimliği alanları bu bölümde toplanır.</div>
             </div>
             <div class="pd-card-body">
                 <div class="pd-note mb-4">Hazır profil, kopya kaynak veya manuel başlangıç yöntemini seçin. Bu seçim yalnız formun başlangıç düzenini belirler.</div>
@@ -104,7 +104,7 @@
 
         <div class="pd-card pd-form-card mb-6">
             <div class="pd-card-header">
-                <h3 class="pd-card-title">Profil ve Parsing</h3>
+                <h3 class="pd-card-title">Profil ve Format</h3><div class="pd-note mt-2">Profil ve Parsing standardı bu bölümde korunur.</div>
             </div>
             <div class="pd-card-body">
                 <div class="pd-note mb-4">Kaynağın veri biçimine en yakın profili seçin. Kaynaktaki alanlar farklıysa eşlemeler daha sonra alan eşleme ekranında tamamlanır.</div>
@@ -204,7 +204,7 @@
 
         <div class="pd-card pd-form-card mb-6">
             <div class="pd-card-header">
-                <h3 class="pd-card-title">Bağlantı ve Güvenlik</h3>
+                <h3 class="pd-card-title">Bağlantı</h3><div class="pd-note mt-2">Bağlantı ve Güvenlik ayarları burada yönetilir.</div>
             </div>
             <div class="pd-card-body">
                 <div class="pd-note mb-4">Kaynak adı, tedarikçi, URL veya dosya yolu ve temel erişim bilgilerini burada tanımlayın.</div>
@@ -485,7 +485,7 @@
                 </div>
 
                 <div class="pd-inline-section mt-5">
-                    <div class="pd-inline-section-title">Sync Davranışı</div>
+                    <div class="pd-inline-section-title">Güncelleme Ayarları</div><div class="pd-note mt-2">Sync Davranışı seçenekleri bu bölümde korunur.</div>
                     <div class="pd-form-grid-2">
                         <div>
                             <label class="pd-label">Güncelleme Sıklığı</label>
@@ -605,7 +605,7 @@
                 </div>
 
                 <div class="pd-note mt-4">
-                    Bu adım kaynağı kaydeder. Kaydetme sonrası <strong>Bağlantı Test Et</strong>, <strong>Preview</strong>, ilk 5 ürün ve kategori örnekleri canlı source ekranından kontrol edilir.
+                    Bu adım kaynağı kaydeder. Kaydetme sonrası <strong>Bağlantı Test Et</strong>, <strong>Preview</strong>, ilk 5 ürün ve kategori örnekleri canlı source ekranından kontrol edilir. Şifre, token ve header değerleri güvenli biçimde saklanır; ekranda düz metin olarak geri basılmaz.
                 </div>
             </div>
         </details>

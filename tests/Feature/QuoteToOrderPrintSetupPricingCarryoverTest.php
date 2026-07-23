@@ -18,6 +18,7 @@ class QuoteToOrderPrintSetupPricingCarryoverTest extends TestCase
 
     public function test_quote_to_order_preserves_setup_pricing_fields(): void
     {
+        config()->set('prodelya.features.promotion_intermediate_element_enabled', true);
         $adminUser = User::query()->where('email', 'admin@prodelya.local')->firstOrFail();
         $customer = Company::query()->where('legal_name', 'ABC İnşaat A.Ş.')->firstOrFail();
 

@@ -82,7 +82,7 @@ class NoPrintOrderSkipsGraphicProductionTest extends TestCase
         $ordersIndex->assertSee($order->document_number);
         $ordersIndex->assertDontSee('Grafik Bekliyor');
         $ordersIndex->assertDontSee('Üretim Bekliyor');
-        $ordersIndex->assertSeeTextInOrder([$order->document_number, 'Tedarik Bekliyor', 'Tedarik bekliyor']);
+        $ordersIndex->assertSeeTextInOrder([$order->document_number, 'Talep Hazırlanacak', 'Tedarik talebini hazırla']);
         $ordersIndex->assertDontSee('group_code', false);
     }
 

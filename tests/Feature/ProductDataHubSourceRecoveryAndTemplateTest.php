@@ -66,7 +66,7 @@ class ProductDataHubSourceRecoveryAndTemplateTest extends TestCase
         $response->assertSee('Akdeniz Promosyon');
         $response->assertSee('İlpen');
         $response->assertSee('Yeni Nesil Temp');
-        $response->assertSee('Detaya Git');
+        $response->assertSee('Kaynak Kartları');
         $response->assertSee('Geçici Profil');
         $response->assertSee('Bağlantı Bekleyen');
     }
@@ -356,7 +356,7 @@ class ProductDataHubSourceRecoveryAndTemplateTest extends TestCase
             ->get('/admin/super-admin/product-data-hub/sources');
 
         $response->assertOk();
-        $response->assertSee('Detaya Git');
+        $response->assertSee('Kaynak Kartları');
         $response->assertDontSee('Pasifleştir');
         $response->assertDontSee('Sil');
         $response->assertDontSee('Arşivle');
@@ -394,7 +394,7 @@ class ProductDataHubSourceRecoveryAndTemplateTest extends TestCase
 
         $tempResponse->assertOk();
         $tempResponse->assertSee('Filtre Temp');
-        $tempResponse->assertSee('Detaya Git');
+        $tempResponse->assertSee('Kaynak Kartları');
     }
 
     public function test_deactivated_source_disappears_from_active_dropdowns_but_real_others_remain(): void

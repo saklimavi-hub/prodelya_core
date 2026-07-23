@@ -88,8 +88,8 @@ class GraphicAttachmentPreviewRuntimeTest extends TestCase
         $pdfOperationResponse->assertOk();
         $pdfOperationResponse->assertSee(route('admin.work-forms.attachments.preview', $pdfAttachment), false);
         $pdfOperationResponse->assertSee('runtime-proof.pdf');
-        $pdfOperationResponse->assertSee('Dosyayı Aç');
-        $pdfOperationResponse->assertSee('PDF dosyası');
+        $pdfOperationResponse->assertSee('Orijinal Boyutta Aç');
+        $pdfOperationResponse->assertSee('Bu grafik çalışması önizleme yerine güvenli dosya açma bağlantısıyla sunulur.');
         $pdfOperationResponse->assertDontSee('alt="runtime-proof.pdf"', false);
 
         Storage::disk('public')->delete($imageAttachment->file_path);
@@ -99,7 +99,7 @@ class GraphicAttachmentPreviewRuntimeTest extends TestCase
             ->get(route('admin.graphics.show', $workForm->fresh()));
 
         $missingPreviewResponse->assertOk();
-        $missingPreviewResponse->assertSee('Önizleme alınamadı');
+        $missingPreviewResponse->assertSee('Henüz grafik çalışması yüklenmedi.');
 
         auth()->guard()->logout();
 

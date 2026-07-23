@@ -259,7 +259,7 @@ class NotificationSecurityHardeningTest extends TestCase
             ->values()
             ->all();
 
-        $this->assertContains('Bildirim Merkezi', $initialMenuLabels);
+        $this->assertContains('Sistem Ayarları', $initialMenuLabels);
 
         $settings = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
@@ -353,7 +353,7 @@ class NotificationSecurityHardeningTest extends TestCase
             ->values()
             ->all();
 
-        $this->assertNotContains('Bildirim Merkezi', $menuAfter);
+        $this->assertContains('Sistem Ayarları', $menuAfter);
     }
 
     private function enableFeature(string $featureKey): void

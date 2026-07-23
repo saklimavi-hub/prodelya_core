@@ -8,17 +8,20 @@ use App\Models\OrderItemWorkForm;
 use App\Models\OrderItemWorkFormAttachment;
 use App\Models\User;
 use App\Services\Notifications\NotificationEventService;
+use App\Services\Notifications\NotificationRecipientResolver;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
+use Illuminate\Support\Collection;
 use InvalidArgumentException;
 use RuntimeException;
 
 class GraphicApprovalRequestService
 {
     public function __construct(
-        protected NotificationEventService $notificationEventService
+        protected NotificationEventService $notificationEventService,
+        protected NotificationRecipientResolver $notificationRecipientResolver
     ) {
     }
 
@@ -38,7 +41,9 @@ class GraphicApprovalRequestService
 
         $this->assertAttachmentEligible($graphic, $attachment);
 
-        $request = DB::transaction(function () use ($graphic, $attachment, $data, $user) {
+        $contact = $this->resolveCustomerContactPayload($graphic, $data);
+
+        $request = DB::transaction(function () use ($graphic, $attachment, $data, $user, $contact) {
             $this->cancelOpenRequests($graphic, 'replaced_by_new_send', $user);
 
             $request = GraphicApprovalRequest::query()->create([
@@ -50,9 +55,9 @@ class GraphicApprovalRequestService
                 'work_form_id' => $graphic->order_item_work_form_id,
                 'attachment_id' => $attachment->id,
                 'customer_company_id' => $graphic->order?->customer_company_id,
-                'contact_name' => $data['contact_name'] ?? $graphic->order?->customer?->getPrimaryContact()?->name,
-                'contact_email' => $data['contact_email'] ?? $graphic->order?->customer?->getPrimaryContact()?->email,
-                'contact_phone' => $data['contact_phone'] ?? $graphic->order?->customer?->getPrimaryContact()?->mobile ?: $graphic->order?->customer?->getPrimaryContact()?->phone,
+                'contact_name' => $contact['name'],
+                'contact_email' => $contact['email'],
+                'contact_phone' => $contact['phone'],
                 'token' => $this->generateUniqueToken(),
                 'status' => GraphicApprovalRequest::STATUS_WAITING,
                 'expires_at' => $data['expires_at'] ?? now()->addDays((int) ($data['expires_in_days'] ?? 7)),
@@ -63,6 +68,7 @@ class GraphicApprovalRequestService
                     'visibility' => $attachment->visibility,
                     'sequence_code' => $graphic->sequence_code,
                     'print_label' => $this->resolvePrintLabel($graphic),
+                    'recipient_source' => $contact['source'],
                 ],
             ]);
 
@@ -355,6 +361,115 @@ class GraphicApprovalRequestService
         } while (GraphicApprovalRequest::query()->where('token', $token)->exists());
 
         return $token;
+    }
+
+    private function resolveCustomerContactPayload(OrderItemPrintGraphic $graphic, array $data): array
+    {
+        $graphic->loadMissing(['order.customer.contacts', 'workForm']);
+
+        $resolvedRecipient = collect($this->notificationRecipientResolver->resolveCustomerRecipients($graphic->order ?: $graphic))->first() ?? [];
+        $customer = $graphic->order?->customer;
+        $contacts = $customer?->relationLoaded('contacts') ? $customer->contacts : collect();
+        $primaryContact = $customer?->getPrimaryContact();
+        $firstContact = $contacts instanceof Collection ? $contacts->first() : null;
+        $snapshot = (array) ($graphic->workForm?->customer_snapshot ?? []);
+
+        $name = $this->firstFilledValue([
+            $data['contact_name'] ?? null,
+            $primaryContact?->name,
+            $firstContact?->name,
+            $customer?->legal_name,
+            data_get($snapshot, 'contact_name'),
+            data_get($snapshot, 'company_name'),
+            $resolvedRecipient['name'] ?? null,
+        ]);
+
+        $email = $this->normalizeEmail($this->firstFilledValue([
+            $data['contact_email'] ?? null,
+            $primaryContact?->email,
+            $firstContact?->email,
+            $customer?->email,
+            data_get($snapshot, 'contact_email'),
+            data_get($snapshot, 'email'),
+            $resolvedRecipient['email'] ?? null,
+        ]));
+
+        $phone = $this->normalizePhone($this->firstFilledValue([
+            $data['contact_phone'] ?? null,
+            $primaryContact?->mobile,
+            $primaryContact?->phone,
+            $firstContact?->mobile,
+            $firstContact?->phone,
+            $customer?->mobile,
+            $customer?->phone,
+            data_get($snapshot, 'contact_phone'),
+            data_get($snapshot, 'phone'),
+            $resolvedRecipient['phone'] ?? null,
+        ]));
+
+        $source = 'none';
+
+        if (filled($data['contact_email'] ?? null) || filled($data['contact_phone'] ?? null) || filled($data['contact_name'] ?? null)) {
+            $source = 'request_override';
+        } elseif ($email !== null && $email === $this->normalizeEmail($primaryContact?->email)) {
+            $source = 'company_primary_contact';
+        } elseif ($email !== null && $email === $this->normalizeEmail($firstContact?->email)) {
+            $source = 'company_contact';
+        } elseif ($email !== null && $email === $this->normalizeEmail($customer?->email)) {
+            $source = 'company_record';
+        } elseif ($email !== null && $email === $this->normalizeEmail(data_get($snapshot, 'contact_email'))) {
+            $source = 'work_form_customer_snapshot';
+        } elseif ($email !== null && $email === $this->normalizeEmail(data_get($snapshot, 'email'))) {
+            $source = 'work_form_customer_snapshot';
+        } elseif ($phone !== null && ($phone === $this->normalizePhone($primaryContact?->mobile) || $phone === $this->normalizePhone($primaryContact?->phone))) {
+            $source = 'company_primary_contact';
+        } elseif ($phone !== null && ($phone === $this->normalizePhone($firstContact?->mobile) || $phone === $this->normalizePhone($firstContact?->phone))) {
+            $source = 'company_contact';
+        } elseif ($phone !== null && ($phone === $this->normalizePhone($customer?->mobile) || $phone === $this->normalizePhone($customer?->phone))) {
+            $source = 'company_record';
+        } elseif ($phone !== null && ($phone === $this->normalizePhone(data_get($snapshot, 'contact_phone')) || $phone === $this->normalizePhone(data_get($snapshot, 'phone')))) {
+            $source = 'work_form_customer_snapshot';
+        } elseif (filled($resolvedRecipient['email'] ?? null) || filled($resolvedRecipient['phone'] ?? null)) {
+            $source = 'notification_recipient_resolver';
+        }
+
+        return [
+            'name' => $name,
+            'email' => $email,
+            'phone' => $phone,
+            'source' => $source,
+        ];
+    }
+
+    private function firstFilledValue(array $values): ?string
+    {
+        foreach ($values as $value) {
+            $string = trim((string) ($value ?? ''));
+
+            if ($string !== '') {
+                return $string;
+            }
+        }
+
+        return null;
+    }
+
+    private function normalizeEmail(?string $email): ?string
+    {
+        $value = strtolower(trim((string) ($email ?? '')));
+
+        if ($value === '') {
+            return null;
+        }
+
+        return filter_var($value, FILTER_VALIDATE_EMAIL) ? $value : null;
+    }
+
+    private function normalizePhone(?string $phone): ?string
+    {
+        $value = trim((string) ($phone ?? ''));
+
+        return $value === '' ? null : $value;
     }
 
     private function sanitizeNote(?string $value): ?string

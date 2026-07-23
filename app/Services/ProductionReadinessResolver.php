@@ -5,11 +5,16 @@ namespace App\Services;
 use App\Models\OrderItemPrintGraphic;
 use App\Models\OrderItemPrintProduction;
 use App\Models\OrderItemProcurement;
+use App\Services\PromotionIntermediateElementPolicy;
 use App\Models\OrderItemPrintSetupRequirement;
 use App\Models\OrderItemWorkFormAttachment;
 
 class ProductionReadinessResolver
 {
+    public function __construct(
+        protected PromotionIntermediateElementPolicy $promotionIntermediateElementPolicy
+    ) {}
+
     private const PROCUREMENT_READY_STATUSES = [
         OrderItemProcurement::STATUS_FULLY_RECEIVED,
         OrderItemProcurement::STATUS_NOT_REQUIRED,
@@ -243,6 +248,10 @@ class ProductionReadinessResolver
 
     private function resolveSetupReadiness(OrderItemPrintProduction $production): array
     {
+        if (! $this->promotionIntermediateElementPolicy->blocksProductionReadiness()) {
+            return [true, false, []];
+        }
+
         $requirements = $production->orderItemPrint?->setupRequirements;
 
         if ($requirements && $requirements->isNotEmpty()) {

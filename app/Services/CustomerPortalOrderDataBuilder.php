@@ -50,8 +50,13 @@ class CustomerPortalOrderDataBuilder
                     'product_name' => $item->product_name ?: '-',
                     'product_code' => $item->product_code ?: null,
                     'quantity' => $this->formatQuantity($item->quantity, $item->unit),
-                    'unit_price' => $customerFacing['customer_unit_price_label'],
-                    'line_total' => $customerFacing['customer_line_total_label'],
+                    'unit_price' => $customerFacing['customer_main_unit_price_label'],
+                    'line_total' => $customerFacing['customer_main_total_label'],
+                    'unit_price_label' => $customerFacing['main_unit_label'],
+                    'line_total_label' => $customerFacing['main_total_label'],
+                    'show_commercial_total' => (bool) $customerFacing['show_commercial_total'],
+                    'commercial_total_label' => $customerFacing['commercial_total_label'],
+                    'commercial_total_value' => $customerFacing['commercial_line_total_label'],
                     'prints' => collect($customerFacing['prints'])->map(function (array $print): array {
                         return [
                             'label' => trim(collect([$print['print_type'] ?? null, $print['print_option'] ?? null])->filter()->implode(' ')),

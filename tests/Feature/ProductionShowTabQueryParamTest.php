@@ -41,9 +41,7 @@ class ProductionShowTabQueryParamTest extends TestCase
 
         $response = $this->actingAs($this->adminUser)->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])->get("/admin/productions/{$production->id}?tab=ic-uretim");
 
-        $response->assertStatus(200);
-        $response->assertSee('İç Üretim');
-        $response->assertSee('tabs-nav-item active');
+        $response->assertRedirect(route('admin.productions.operator', $production));
     }
 
     public function test_production_show_with_dis_uretim_tab(): void
@@ -52,9 +50,7 @@ class ProductionShowTabQueryParamTest extends TestCase
 
         $response = $this->actingAs($this->adminUser)->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])->get("/admin/productions/{$production->id}?tab=dis-uretim");
 
-        $response->assertStatus(200);
-        $response->assertSee('Dış Üretim / Fason');
-        $response->assertSee('tabs-nav-item active');
+        $response->assertRedirect(route('admin.productions.subcontract-assignment', $production));
     }
 
     public function test_production_show_with_islemler_tab(): void
@@ -63,9 +59,7 @@ class ProductionShowTabQueryParamTest extends TestCase
 
         $response = $this->actingAs($this->adminUser)->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])->get("/admin/productions/{$production->id}?tab=islemler");
 
-        $response->assertStatus(200);
-        $response->assertSee('İşlemler');
-        $response->assertSee('tabs-nav-item active');
+        $response->assertRedirect(route('admin.productions.operator', $production));
     }
 
     public function test_production_show_with_fotograflar_tab(): void
@@ -76,7 +70,7 @@ class ProductionShowTabQueryParamTest extends TestCase
 
         $response->assertStatus(200);
         $response->assertSee('Fotoğraflar');
-        $response->assertSee('tabs-nav-item active');
+        $response->assertSee('pd-production-detail__collapse', false);
     }
 
     public function test_production_show_with_gecmis_tab(): void
@@ -87,7 +81,7 @@ class ProductionShowTabQueryParamTest extends TestCase
 
         $response->assertStatus(200);
         $response->assertSee('Geçmiş');
-        $response->assertSee('tabs-nav-item active');
+        $response->assertSee('pd-production-detail__collapse', false);
     }
 
     public function test_production_show_with_invalid_tab_falls_to_genel(): void
@@ -97,8 +91,8 @@ class ProductionShowTabQueryParamTest extends TestCase
         $response = $this->actingAs($this->adminUser)->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])->get("/admin/productions/{$production->id}?tab=invalid-tab");
 
         $response->assertStatus(200);
-        $response->assertSee('Genel Özet');
-        $response->assertSee('tabs-nav-item active');
+        $response->assertSee('Üretim Detayı · Exact Baskı');
+        $response->assertSee('pd-production-detail__collapse', false);
     }
 
     public function test_production_show_with_empty_tab_falls_to_genel(): void
@@ -108,8 +102,8 @@ class ProductionShowTabQueryParamTest extends TestCase
         $response = $this->actingAs($this->adminUser)->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])->get("/admin/productions/{$production->id}?tab=");
 
         $response->assertStatus(200);
-        $response->assertSee('Genel Özet');
-        $response->assertSee('tabs-nav-item active');
+        $response->assertSee('Üretim Detayı · Exact Baskı');
+        $response->assertSee('pd-production-detail__collapse', false);
     }
 
     public function test_production_show_without_query_param_uses_type_based_default_tab(): void
@@ -122,16 +116,17 @@ class ProductionShowTabQueryParamTest extends TestCase
             ->get("/admin/productions/{$internalProduction->id}");
 
         $internalResponse->assertStatus(200);
-        $internalResponse->assertSee('İç Üretim');
-        $internalResponse->assertSee('Üretim Akış Adımları');
+        $internalResponse->assertSee('Üretim Detayı · Exact Baskı');
+        $internalResponse->assertSee('Sıradaki İşlem');
 
         $externalResponse = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->get("/admin/productions/{$externalProduction->id}");
 
         $externalResponse->assertStatus(200);
+        $externalResponse->assertSee('Üretim Detayı · Exact Baskı');
         $externalResponse->assertSee('Dış Üretim / Fason');
-        $externalResponse->assertSee('Adet Takibi');
+        $externalResponse->assertSee('Sıradaki İşlem');
     }
 
     private function createProductionRecord(string $productionType = OrderItemPrintProduction::TYPE_INTERNAL): OrderItemPrintProduction

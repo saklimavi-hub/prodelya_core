@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 return [
     'tenant' => [
@@ -216,15 +216,62 @@ return [
                 [
                     'key' => 'catalog-local-products',
                     'label' => 'Kendi Ürünlerim',
+                    'type' => 'accordion',
                     'route' => 'admin.catalog.local-products',
-                    'module_key' => 'advanced_catalog',
-                    'feature_key' => 'local_stock',
                     'active_patterns' => [
                         'admin.catalog.local-products',
-                        'admin.catalog.local-products.*',
+                        'admin.catalog.local-products.create',
+                        'admin.catalog.local-products.import',
+                        'admin.catalog.local-products.import.*',
+                        'admin.catalog.local-products.supplier-stock',
                     ],
+                    'module_key' => 'advanced_catalog',
+                    'feature_key' => 'local_stock',
                     'status' => 'active',
                     'sort_order' => 30,
+                    'children' => [
+                        [
+                            'key' => 'catalog-local-products-own-list',
+                            'label' => 'Ürün Listem',
+                            'route' => 'admin.catalog.local-products',
+                            'active_patterns' => [
+                                'admin.catalog.local-products',
+                            ],
+                            'status' => 'active',
+                            'sort_order' => 10,
+                        ],
+                        [
+                            'key' => 'catalog-local-products-supplier-stock',
+                            'label' => 'Tedarikçiden Stoğa Alınanlar',
+                            'route' => 'admin.catalog.local-products.supplier-stock',
+                            'active_patterns' => [
+                                'admin.catalog.local-products.supplier-stock',
+                            ],
+                            'status' => 'active',
+                            'sort_order' => 20,
+                        ],
+                        [
+                            'key' => 'catalog-local-products-create',
+                            'label' => 'Yeni Ürün Ekle',
+                            'route' => 'admin.catalog.local-products.create',
+                            'active_patterns' => [
+                                'admin.catalog.local-products.create',
+                            ],
+                            'status' => 'active',
+                            'sort_order' => 30,
+                        ],
+                        [
+                            'key' => 'catalog-local-products-import',
+                            'label' => 'Dosyadan Ürün Aktar',
+                            'route' => 'admin.catalog.local-products.import',
+                            'active_patterns' => [
+                                'admin.catalog.local-products.import',
+                                'admin.catalog.local-products.import.*',
+                            ],
+                            'status' => 'active',
+                            'sort_order' => 40,
+                        ],
+                    ],
                 ],
                 [
                     'key' => 'print-settings',
@@ -303,7 +350,19 @@ return [
                     ],
                     'icon' => 'check-circle',
                     'module_key' => 'multi_currency',
-                    'permission' => 'manage_users',
+                    'permission_any' => [
+                        'manage_users',
+                        'view_order_finance_summary',
+                        'view_sales_prices',
+                        'view_quote_totals',
+                        'view_profit_margin',
+                        'view_customer_balance',
+                        'view_payment_details',
+                        'view_actual_costs',
+                        'view_current_account_transactions',
+                        'manage_current_account_transactions',
+                        'cancel_current_account_transactions',
+                    ],
                     'status' => 'active',
                     'sort_order' => 50,
                 ],
@@ -604,4 +663,3 @@ return [
         ],
     ],
 ];
-

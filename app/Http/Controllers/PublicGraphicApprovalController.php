@@ -14,35 +14,32 @@ use RuntimeException;
 
 class PublicGraphicApprovalController extends Controller
 {
-    private const FORBIDDEN_PATTERNS = [
-        '/\bunit_price\b/i',
-        '/\bprint_unit_price\b/i',
-        '/\bprint_total\b/i',
-        '/\bproduct_total\b/i',
-        '/\bsubtotal\b/i',
-        '/\bvat_total\b/i',
-        '/\bgrand_total\b/i',
-        '/\bpurchase_total\b/i',
-        '/\bpurchase_unit_price\b/i',
-        '/\bsupplier_cost\b/i',
-        '/\bsubcontractor_cost\b/i',
-        '/\bsetup_cost\b/i',
-        '/\bbalance_due\b/i',
-        '/\bbalance\b/i',
-        '/\bpaid_total\b/i',
-        '/\bpayment_amount\b/i',
-        '/\bcurrent_account_transactions\b/i',
-        '/\bnotification_logs\b/i',
-        '/\bgroup_code\b/i',
-        '/\bpdh_raw\b/i',
-        '/\braw xml\b/i',
-        '/\braw json\b/i',
-        '/\bfile_path\b/i',
-        '/\bphysical_path\b/i',
-        '/\binternal note\b/i',
-        '/(^|[\s"\'])storage[\/\\\\]/i',
-        '/(^|[\s"\'])work-forms[\/\\\\]/i',
-        '/[A-Z]:\\\\/i',
+    private const FORBIDDEN_TERMS = [
+        'unit_price',
+        'print_unit_price',
+        'print_total',
+        'product_total',
+        'subtotal',
+        'vat_total',
+        'grand_total',
+        'purchase_total',
+        'purchase_unit_price',
+        'supplier_cost',
+        'subcontractor_cost',
+        'setup_cost',
+        'balance_due',
+        'balance',
+        'paid_total',
+        'payment_amount',
+        'current_account_transactions',
+        'notification_logs',
+        'group_code',
+        'pdh_raw',
+        'raw xml',
+        'raw json',
+        'file_path',
+        'physical_path',
+        'internal note',
     ];
 
     public function __construct(
@@ -67,6 +64,8 @@ class PublicGraphicApprovalController extends Controller
             } catch (RuntimeException) {
                 $approvalRequest = $approvalRequest->fresh([
                     'tenant',
+                    'customerCompany',
+                    'graphic.order.customer.contacts',
                     'graphic.orderItem',
                     'graphic.orderItemPrint.tenantPrintSetting',
                     'graphic.workForm',
@@ -218,6 +217,8 @@ class PublicGraphicApprovalController extends Controller
 
         return $approvalRequest->fresh([
             'tenant',
+            'customerCompany',
+            'graphic.order.customer.contacts',
             'graphic.orderItem',
             'graphic.orderItemPrint.tenantPrintSetting',
             'graphic.workForm',
@@ -231,7 +232,8 @@ class PublicGraphicApprovalController extends Controller
         $attachment = $approvalRequest->attachment;
         $workForm = $graphic?->workForm;
         $orderItem = $graphic?->orderItem;
-
+        $productSnapshot = (array) ($workForm?->product_snapshot ?? []);
+        $referenceImageUrl = $this->sanitizePublicText(data_get($productSnapshot, 'image_url'));
         $pageStatus = $approvalRequest->isExpired()
             ? GraphicApprovalRequest::STATUS_EXPIRED
             : $approvalRequest->status;
@@ -246,15 +248,32 @@ class PublicGraphicApprovalController extends Controller
             'pageMessage' => $this->publicStatusMessage($pageStatus),
             'canRespond' => $this->canRespond($approvalRequest),
             'graphic' => [
+                'customer_name' => $approvalRequest->customerCompany?->legal_name
+                    ?: $approvalRequest->contact_name
+                    ?: data_get($workForm?->customer_snapshot, 'company_name', '-'),
+                'company_name' => $approvalRequest->customerCompany?->legal_name
+                    ?: data_get($workForm?->customer_snapshot, 'company_name', '-'),
                 'order_number' => $graphic?->order?->document_number ?: data_get($workForm?->order_snapshot, 'document_number', '-'),
                 'work_form_number' => $workForm?->work_form_number ?: '-',
-                'product_name' => $orderItem?->product_name ?: data_get($workForm?->product_snapshot, 'product_name', '-'),
+                'product_name' => $orderItem?->product_name ?: data_get($productSnapshot, 'product_name', '-'),
+                'product_code' => $orderItem?->product_code ?: data_get($productSnapshot, 'product_code', '-'),
+                'quantity' => $this->formatQuantity(
+                    $orderItem?->quantity ?? data_get($productSnapshot, 'quantity'),
+                    $orderItem?->unit ?? data_get($productSnapshot, 'unit')
+                ),
                 'print_label' => $this->resolvePrintLabel($graphic),
+                'print_type' => $graphic?->orderItemPrint?->displayPrintType() ?: '-',
                 'status_label' => $graphic?->safeCustomerApprovalLabel() ?: 'Onay Bekliyor',
                 'attachment_name' => $attachment?->file_name ?: 'Görsel',
-                'customer_note' => $this->sanitizePublicText($graphic?->customer_note),
-                'attachment_preview_data_url' => $this->resolveInlinePreviewDataUrl($attachment),
+                'attachment_preview_url' => $this->resolvePublicAttachmentUrl($workForm, $attachment),
+                'attachment_original_url' => $this->resolvePublicAttachmentUrl($workForm, $attachment),
+                'attachment_uploaded_at' => optional($attachment?->created_at)->format('d.m.Y H:i'),
                 'attachment_missing' => ! $this->attachmentFileExists($attachment),
+                'attachment_is_image' => (bool) $attachment?->isImage(),
+                'customer_note' => $this->sanitizePublicText($graphic?->customer_note),
+                'reference_image_url' => $referenceImageUrl,
+                'reference_image_title' => $orderItem?->product_name ?: data_get($productSnapshot, 'product_name', 'Ürün Referansı'),
+                'updated_at' => optional($graphic?->updated_at ?: $attachment?->created_at)->format('d.m.Y H:i'),
             ],
         ];
     }
@@ -313,10 +332,26 @@ class PublicGraphicApprovalController extends Controller
             return null;
         }
 
-        foreach (self::FORBIDDEN_PATTERNS as $pattern) {
-            if (preg_match($pattern, $text) === 1) {
+        $normalized = mb_strtolower($text, 'UTF-8');
+
+        foreach (self::FORBIDDEN_TERMS as $term) {
+            if (str_contains($normalized, $term)) {
                 return null;
             }
+        }
+
+        $normalizedPaths = str_replace('\\', '/', $normalized);
+
+        if (str_contains($normalizedPaths, 'storage/')) {
+            return null;
+        }
+
+        if (str_contains($normalizedPaths, 'work-forms/')) {
+            return null;
+        }
+
+        if (preg_match('/[A-Za-z]:\\\\/u', $text) === 1) {
+            return null;
         }
 
         return $text;
@@ -338,23 +373,16 @@ class PublicGraphicApprovalController extends Controller
         return $parts === [] ? '-' : implode(' ', $parts);
     }
 
-    private function resolveInlinePreviewDataUrl(?\App\Models\OrderItemWorkFormAttachment $attachment): ?string
+    private function resolvePublicAttachmentUrl(?\App\Models\OrderItemWorkForm $workForm, ?\App\Models\OrderItemWorkFormAttachment $attachment): ?string
     {
-        if (! $attachment || ! $attachment->isImage() || ! $this->attachmentFileExists($attachment)) {
+        if (! $workForm || ! $attachment || ! filled($workForm->public_tracking_token) || ! $this->attachmentFileExists($attachment)) {
             return null;
         }
 
-        try {
-            $contents = Storage::disk($attachment->disk ?: config('filesystems.default'))->get($attachment->file_path);
-        } catch (\Throwable) {
-            return null;
-        }
-
-        if ($contents === '') {
-            return null;
-        }
-
-        return 'data:' . ($attachment->mime_type ?: 'image/png') . ';base64,' . base64_encode($contents);
+        return route('public.work-forms.attachments.show', [
+            'token' => $workForm->public_tracking_token,
+            'attachment' => $attachment->id,
+        ]);
     }
 
     private function attachmentFileExists(?\App\Models\OrderItemWorkFormAttachment $attachment): bool
@@ -368,5 +396,17 @@ class PublicGraphicApprovalController extends Controller
         } catch (\Throwable) {
             return false;
         }
+    }
+
+    private function formatQuantity(mixed $quantity, ?string $unit = null): string
+    {
+        if ($quantity === null || $quantity === '') {
+            return '-';
+        }
+
+        $formatted = number_format((float) $quantity, 2, ',', '.');
+        $formatted = rtrim(rtrim($formatted, '0'), ',');
+
+        return trim($formatted . ' ' . ($unit ?: ''));
     }
 }

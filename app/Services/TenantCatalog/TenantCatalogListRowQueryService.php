@@ -447,7 +447,7 @@ class TenantCatalogListRowQueryService
             tcp.image_url as image_url,
             tcp.standard_category_id as standard_category_id,
             COALESCE(sc.path, sc.name) as category_name,
-            COALESCE(tcp.local_stock_quantity, 0) as local_stock_quantity,
+            COALESCE((SELECT SUM(tls.quantity_on_hand) FROM tenant_local_stocks tls WHERE tls.tenant_account_id = tcp.tenant_account_id AND tls.tenant_catalog_product_id = tcp.id AND tls.tenant_catalog_product_variant_id IS NULL), 0) as local_stock_quantity,
             COALESCE(tcp.supplier_stock_quantity, tcp.total_stock_quantity, tcp.stock_quantity, 0) as supplier_stock_quantity,
             tcp.display_price as display_price,
             tcp.currency as currency,
@@ -487,7 +487,7 @@ class TenantCatalogListRowQueryService
             COALESCE(tcpv.image_url, tcp.image_url) as image_url,
             tcp.standard_category_id as standard_category_id,
             COALESCE(sc.path, sc.name) as category_name,
-            COALESCE(tcpv.local_stock_quantity, 0) as local_stock_quantity,
+            COALESCE((SELECT SUM(tls.quantity_on_hand) FROM tenant_local_stocks tls WHERE tls.tenant_account_id = tcp.tenant_account_id AND tls.tenant_catalog_product_id = tcp.id AND tls.tenant_catalog_product_variant_id = tcpv.id), 0) as local_stock_quantity,
             COALESCE(tcpv.supplier_stock_quantity, tcpv.stock_quantity, tcp.supplier_stock_quantity, tcp.total_stock_quantity, 0) as supplier_stock_quantity,
             COALESCE(tcpv.display_price, tcp.display_price) as display_price,
             COALESCE(tcpv.currency, tcp.currency) as currency,
@@ -623,18 +623,20 @@ class TenantCatalogListRowQueryService
             }
 
             $sellableTruth = $this->sellableTruthService->resolve($product, $variant);
+            $catalogRowSupplierId = $this->resolveRowSupplierId($row, $sourceSummary);
             if ($sellableTruth['effective_price'] !== null) {
                 $product->setAttribute('display_price', $sellableTruth['effective_price']);
             }
 
             $product->setAttribute('catalog_row_type', $isVariantRow ? 'variant' : ($isParentRow ? 'parent' : 'flat'));
             $product->setAttribute('catalog_row_variant_id', $row->tenant_catalog_product_variant_id ? (int) $row->tenant_catalog_product_variant_id : null);
+            $product->setAttribute('catalog_row_supplier_id', $catalogRowSupplierId);
             $product->setAttribute('catalog_source_label', $row->catalog_source === 'local_product' ? 'Local Ürün' : 'Tedarikçi Ürünü');
             $product->setAttribute('effective_stock_quantity', $sellableTruth['effective_stock']);
             $product->setAttribute('has_local_stock_priority', (bool) $row->local_stock_priority && (float) $row->local_stock_quantity > 0);
             $product->setAttribute('warning_items', $this->warningsForRow($row, $meta));
-            $product->setAttribute('supplier_label', $row->supplier_name ?: 'Tedarikçi');
-            $product->setAttribute('local_stock_action_available', true);
+            $product->setAttribute('supplier_label', $row->supplier_name ?: data_get($sourceSummary, 'supplier_name') ?: 'Tedarikçi');
+            $product->setAttribute('local_stock_action_available', !$isParentRow);
             $product->setAttribute('catalog_row_role_label', $isVariantRow ? 'Satılabilir varyant' : ($isParentRow ? 'Grup ürün' : 'Satılabilir ürün'));
             $product->setAttribute('quote_visibility_label', $this->quoteVisibilityLabel($isVariantRow, $isParentRow, $resolvedVisibleInQuote));
             $product->setAttribute('quote_visibility_hint', $isParentRow ? 'Varyanttan seçilir' : null);
@@ -800,6 +802,39 @@ class TenantCatalogListRowQueryService
         $query
             ->orWhere($column, 'like', '%"supplier_id":' . $supplierId . '%')
             ->orWhere($column, 'like', '%"supplier_id": ' . $supplierId . '%');
+    }
+
+    private function resolveRowSupplierId(object $row, array $sourceSummary): ?int
+    {
+        $rowSupplierId = (int) ($row->supplier_id ?? 0);
+
+        if ($rowSupplierId > 0) {
+            return $rowSupplierId;
+        }
+
+        $summary = $this->extractPrimarySourceSummary($sourceSummary);
+        $summarySupplierId = (int) data_get($summary, 'supplier_id', 0);
+
+        return $summarySupplierId > 0 ? $summarySupplierId : null;
+    }
+
+    private function extractPrimarySourceSummary(array $sourceSummary): array
+    {
+        if ($sourceSummary === []) {
+            return [];
+        }
+
+        if (array_is_list($sourceSummary)) {
+            foreach ($sourceSummary as $row) {
+                if (is_array($row) && filled(data_get($row, 'supplier_id'))) {
+                    return $row;
+                }
+            }
+
+            return is_array($sourceSummary[0] ?? null) ? $sourceSummary[0] : [];
+        }
+
+        return $sourceSummary;
     }
 
     private function decodeJson(mixed $value): array

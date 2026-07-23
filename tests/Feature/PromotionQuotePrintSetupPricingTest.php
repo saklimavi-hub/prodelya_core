@@ -22,6 +22,8 @@ class PromotionQuotePrintSetupPricingTest extends TestCase
     {
         parent::setUp();
 
+        config()->set('prodelya.features.promotion_intermediate_element_enabled', true);
+
         $this->adminUser = User::query()->where('email', 'admin@prodelya.local')->firstOrFail();
     }
 

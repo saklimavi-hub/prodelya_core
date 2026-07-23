@@ -29,7 +29,7 @@ class SuperAdminProductDataHubUiShellTest extends TestCase
             route('admin.super.product-data-hub.index') => ['Senkron Sonuç Merkezi', 'Bugün aksiyon gereken ürün var mı?', 'pd-kpi-strip'],
             route('admin.super.product-data-hub.category-mappings.index', ['mode' => 'advanced']) => ['Filtre ve Kuyruk', 'Manuel Review Listesi', 'pd-kpi-strip'],
             route('admin.super.standard-categories.index') => ['Standart Kategori Ağacı', 'Kategori Notları', 'pd-kpi-strip'],
-            route('admin.super.product-data-hub.sources.index') => ['Tedarikçi Akışları', 'Tedarikçi Listesi', 'pd-kpi-strip'],
+            route('admin.super.product-data-hub.sources.index') => ['Tedarikçi Akışları', 'Kaynak Kartları', 'pd-kpi-strip'],
             route('admin.super.product-data-hub.catalog-output') => ['Abone Katalog Yayını', 'Katalog Yayını Özeti', 'pd-mini-kpi-strip'],
             route('admin.super.product-data-hub.standard-products.index') => ['Teknik Standart Ürünler', 'Standart Ürün Listesi', 'pd-kpi-strip'],
             route('admin.super.product-data-hub.pipeline') => ['Akış Kontrol', 'Teknik Akış Özeti', 'pd-mini-kpi-strip'],

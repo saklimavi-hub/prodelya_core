@@ -197,7 +197,7 @@ class ProductHubSupplierFlowStepperTest extends TestCase
         $catalogPendingCard = $this->extractSourceCard($this->renderSupplierDetail($catalogPending)->getContent(), $catalogPending->id);
         $this->assertStringContainsString('data-flow-step="standard_pool" data-flow-status="ready"', $catalogPendingCard);
         $this->assertStringContainsString('data-flow-step="catalog_projection" data-flow-status="warning"', $catalogPendingCard);
-        $this->assertStringContainsString('Erişim var ama projection bekliyor.', $catalogPendingCard);
+        $this->assertStringContainsString('Uygun ürünler, Abone Firmanın aktif tedarikçi erişimine göre kataloğa otomatik yansır.', $catalogPendingCard);
         $this->assertStringContainsString('data-primary-action="Ürünleri Senkronize Et"', $catalogPendingCard);
     }
 

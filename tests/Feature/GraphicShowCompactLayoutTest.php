@@ -31,7 +31,7 @@ class GraphicShowCompactLayoutTest extends TestCase
         $response->assertSee('İş Özeti');
         $response->assertSee('Grafik Operasyonları');
         $response->assertSee('Çalışma Klasörü');
-        $response->assertSee('Kısayollar');
+        $response->assertSee('Hızlı İşlemler');
         $response->assertSee('Büyük Önizleme');
         $response->assertSee('graphic-quick-links', false);
         $response->assertSee('gg-summary-layout', false);

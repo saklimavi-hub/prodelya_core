@@ -86,6 +86,20 @@ class PromotionQuoteCreateEditUiRegressionTest extends TestCase
         $response->assertDontSee('Firma: İç Üretim');
         $response->assertDontSee(route('admin.orders.convert.from.quote', ['quote' => 1]), false);
         $response->assertDontSee('group_code', false);
+        $response->assertDontSee("localStockPresentation.note || ''", false);
+        $response->assertSee('buildCompactProductMetaLine(item, payload)', false);
+        $response->assertSee('buildCompactProductMetaLine(entry, entry, { includePrice: true })', false);
+        $response->assertSee('class="pd-product-live-info__meta-line"', false);
+        $response->assertDontSee('pd-product-live-info__meta-row', false);
+        $response->assertDontSee('pd-product-live-info__meta-bit', false);
+        $response->assertDontSee('Katalog stok bilgisi', false);
+        $response->assertDontSee('Siparişe dönüşümde yerel stok yeniden kontrol edilir.', false);
+        $response->assertDontSee('Yerel stok doğrulanamadı', false);
+        $response->assertDontSee('Katalog stok:', false);
+        $response->assertDontSee('Satış liste:', false);
+        $response->assertSee('Güncel fiyat:', false);
+        $response->assertSee('Local stok:', false);
+        $response->assertSee('Tedarikçi stok:', false);
 
         $css = file_get_contents(public_path('css/prodelya-admin.css'));
 
@@ -154,6 +168,14 @@ class PromotionQuoteCreateEditUiRegressionTest extends TestCase
         $response->assertSee(route('admin.promotion-quotes.show', $quote), false);
         $response->assertDontSee('Siparişe Çevir ve Süreci Başlat');
         $response->assertDontSee('group_code', false);
+        $response->assertDontSee("localStockPresentation.note || ''", false);
+        $response->assertSee('buildCompactProductMetaLine(item, payload)', false);
+        $response->assertDontSee('pd-product-live-info__meta-row', false);
+        $response->assertDontSee('pd-product-live-info__meta-bit', false);
+        $response->assertDontSee('Siparişe dönüşümde yerel stok yeniden kontrol edilir.', false);
+        $response->assertDontSee('Yerel stok doğrulanamadı', false);
+        $response->assertDontSee('Katalog stok:', false);
+        $response->assertDontSee('Satış liste:', false);
     }
 
     public function test_show_screen_displays_mark_approved_action_for_preparing_quote(): void
@@ -212,7 +234,9 @@ class PromotionQuoteCreateEditUiRegressionTest extends TestCase
             'workflow_status' => 'quote',
             'quote_date' => now()->toDateString(),
             'invoice_status' => 'fis',
-            'currency' => 'TL',
+            'delivery_type' => 'Ofis Teslim',
+            'delivery_type_id' => 1,
+            'currency' => 'TRY',
             'subtotal' => 0,
             'vat_total' => 0,
             'grand_total' => 0,
@@ -226,67 +250,54 @@ class PromotionQuoteCreateEditUiRegressionTest extends TestCase
             ->get(route('admin.promotion-quotes.show', $quote));
 
         $response->assertOk();
-        $response->assertSee('Bu kayıt teklif aşamasındadır. Onaylandıktan sonra siparişe çevrilir.');
-        $response->assertSee('Ürün &amp; Baskı Kalemleri', false);
-        $response->assertDontSee('data-testid="quote-convert-cta"', false);
+        $response->assertSee('Siparişe çevirmek için en az bir ürün kalemi gerekli.');
+        $response->assertDontSee(route('admin.orders.convert.from.quote', $quote), false);
         $response->assertDontSee('data-testid="quote-convert-form"', false);
     }
 
-    private function createPromotionQuote(Company $customer, array $overrides = []): Order
+    private function createPromotionQuote(Company $customer, array $attributes = []): Order
     {
         $quote = Order::query()->create(array_merge([
-            'tenant_account_id' => $customer->tenant_account_id,
+            'tenant_account_id' => 1,
             'order_family' => 'promotion',
             'order_mode' => 'product_sale_print',
             'document_type' => 'quote',
-            'document_number' => 'TK-2026-'.str_pad((string) random_int(3000, 9999), 4, '0', STR_PAD_LEFT),
+            'document_number' => 'TK-2026-3001',
             'customer_company_id' => $customer->id,
             'status' => 'draft',
             'workflow_status' => 'quote',
             'quote_date' => now()->toDateString(),
+            'valid_until' => now()->addDays(7)->toDateString(),
             'invoice_status' => 'fis',
-            'currency' => 'TL',
-            'subtotal' => 1000,
+            'delivery_type' => 'Ofis Teslim',
+            'delivery_type_id' => 1,
+            'currency' => 'TRY',
+            'subtotal' => 1200,
             'vat_total' => 0,
-            'grand_total' => 1000,
-            'product_total' => 900,
-            'print_total' => 100,
+            'grand_total' => 1200,
+            'product_total' => 1200,
+            'print_total' => 0,
             'created_by' => $this->adminUser->id,
-        ], $overrides));
+        ], $attributes));
 
-        $item = OrderItem::query()->create([
-            'tenant_account_id' => $quote->tenant_account_id,
+        OrderItem::query()->create([
+            'tenant_account_id' => 1,
             'order_id' => $quote->id,
             'item_type' => 'product',
             'product_source' => 'manual',
-            'product_name' => 'Regression Ürünü',
-            'product_code' => 'REG-001',
-            'quantity' => 100,
-            'unit' => 'Adet',
-            'line_total' => 900,
-            'unit_price' => 9,
+            'product_name' => 'Kalem Seti',
+            'product_code' => 'KLM-001',
+            'quantity' => 1,
+            'unit' => 'adet',
+            'list_price' => 1200,
+            'discount_rate' => 0,
+            'unit_price' => 1200,
+            'line_total' => 1200,
             'has_print' => true,
-            'print_total' => 100,
+            'print_total' => 0,
             'status' => 'pending',
-            'product_snapshot' => ['warning_badges' => []],
-            'price_snapshot' => ['vat_mode' => 'none', 'vat_rate' => 0, 'product_line_total' => 900],
-            'stock_snapshot' => ['supplier_stock_quantity' => 500],
         ]);
 
-        $item->prints()->create([
-            'tenant_account_id' => $quote->tenant_account_id,
-            'order_id' => $quote->id,
-            'order_item_id' => $item->id,
-            'print_type' => 'UV Baskı',
-            'print_option' => 'Tek taraf baskı',
-            'production_type' => 'İç üretim',
-            'print_quantity' => 100,
-            'print_unit_price' => 1,
-            'print_total' => 100,
-            'note' => 'Logo baskı',
-            'status' => 'draft',
-        ]);
-
-        return $quote;
+        return $quote->fresh();
     }
 }

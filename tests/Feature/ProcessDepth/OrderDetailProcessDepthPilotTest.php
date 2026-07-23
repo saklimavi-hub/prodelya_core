@@ -14,11 +14,13 @@ class OrderDetailProcessDepthPilotTest extends TestCase
 {
     use BuildsOrderShowFixtures;
     use RefreshDatabase;
+    protected bool $seed = true;
+
+
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->seed();
         $this->setUpOrderShowFixtures();
     }
 
@@ -86,7 +88,6 @@ class OrderDetailProcessDepthPilotTest extends TestCase
             ->assertSee('Son Faaliyetler')
             ->assertSee('Finans Hattı')
             ->assertSee('Tedarik İhtiyacı Oluşturuldu')
-            ->assertSee('Üretim Operasyonu Oluşturuldu')
             ->assertSee('İş Formu Oluşturuldu')
             ->assertDontSee('Procurement Needed')
             ->assertDontSee('Production Operation Created')
@@ -138,9 +139,9 @@ class OrderDetailProcessDepthPilotTest extends TestCase
             $content = $response->getContent();
 
             $response->assertOk()
-                ->assertSee('Tedarik bekliyor')
-                ->assertSee('Tedarik bilgilerini tamamla')
-                ->assertSee('Tedariğe Git')
+                ->assertSee('Talep Hazırlanacak')
+                ->assertSee('Tedarik talebini hazırla')
+                ->assertSee('Tedarik Ekranını Aç')
                 ->assertDontSee('Revize veya onay bekleyen grafik işi var.');
 
             $this->assertStringContainsString('data-focus-key="procurement_pending"', $content);
@@ -255,4 +256,3 @@ class OrderDetailProcessDepthPilotTest extends TestCase
         return $user;
     }
 }
-

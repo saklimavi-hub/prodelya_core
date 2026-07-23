@@ -27,10 +27,12 @@ class OrderShowSummaryService
     {
         $order->loadMissing([
             'tenant',
+            'items.prints',
             'workForms.orderItem',
             'workForms.attachments',
             'workForms.activityLogs.creator',
             'procurements.orderItem',
+            'procurements.supplierRequestItems.request',
             'printProductions.orderItemPrint.orderItem',
             'printProductions.workForm.attachments',
             'deliveries.workForm.attachments',
@@ -80,6 +82,8 @@ class OrderShowSummaryService
         $procurement = $order->procurements->first();
         $production = $order->printProductions->first();
         $delivery = $order->deliveries->first();
+        $hasPrintProcess = $this->hasPrintProcess($order);
+        $moduleStatuses = (array) data_get($overview, 'sticky_panel.module_statuses', []);
 
         $cards = [
             [
@@ -91,24 +95,24 @@ class OrderShowSummaryService
             ],
             [
                 'title' => 'Grafik',
-                'status' => $this->graphicModuleStatus($order->workForms),
-                'badge' => $this->graphicModuleBadge($order->workForms),
+                'status' => (string) data_get($moduleStatuses, 'graphic.label', $this->graphicModuleStatus($order->workForms, $hasPrintProcess)),
+                'badge' => (string) data_get($moduleStatuses, 'graphic.badge', $this->graphicModuleBadge($order->workForms, $hasPrintProcess)),
                 'copy' => 'Grafik ekranını aç',
                 'url' => $workForm ? route('admin.graphics.show', $workForm) : null,
             ],
             [
                 'title' => 'Tedarik',
-                'status' => $procurement?->safeStatusLabel() ?: 'Kayıt yok',
-                'badge' => $this->procurementBadge($procurement),
+                'status' => (string) data_get($moduleStatuses, 'procurement.label', $procurement?->userFacingStatusLabel() ?: 'Gerekli Değil'),
+                'badge' => (string) data_get($moduleStatuses, 'procurement.badge', $this->procurementBadge($procurement)),
                 'copy' => 'Tedarik ekranını aç',
-                'url' => $procurement ? route('admin.procurements.show', $procurement) : null,
+                'url' => $procurement ? route('admin.procurements.show', $procurement) : route('admin.procurements.index'),
             ],
             [
                 'title' => 'Üretim',
-                'status' => $production?->safeStatusLabel() ?: 'Başlamadı',
-                'badge' => $this->productionBadge($production),
+                'status' => (string) data_get($moduleStatuses, 'production.label', $production?->safeStatusLabel() ?: ($hasPrintProcess ? 'Başlamadı' : 'Gerekli Değil')),
+                'badge' => (string) data_get($moduleStatuses, 'production.badge', $this->productionBadge($production, $hasPrintProcess)),
                 'copy' => 'Üretim ekranını aç',
-                'url' => $production ? route('admin.productions.show', $production) : null,
+                'url' => $production ? route('admin.productions.show', $production) : route('admin.productions.index'),
             ],
             [
                 'title' => 'Teslimat',
@@ -187,7 +191,7 @@ class OrderShowSummaryService
         }
 
         if ($item->procurement && !$item->procurement->isNotRequired() && !$item->procurement->isFullyReceived()) {
-            return $item->procurement->safeStatusLabel();
+            return $item->procurement->userFacingStatusLabel();
         }
 
         if ($item->workForm && !in_array((string) data_get($item->workForm->graphic_snapshot, 'status', ''), ['gerekli_degil', 'uretime_hazir'], true)) {
@@ -197,10 +201,19 @@ class OrderShowSummaryService
         return 'Siparişi İzle';
     }
 
-    private function graphicModuleStatus(Collection $workForms): string
+    private function hasPrintProcess(Order $order): bool
     {
+        return $order->items->contains(fn (OrderItem $item) => $item->prints->isNotEmpty());
+    }
+
+    private function graphicModuleStatus(Collection $workForms, bool $hasPrintProcess): string
+    {
+        if (!$hasPrintProcess) {
+            return 'Gerekli Değil';
+        }
+
         if ($workForms->isEmpty()) {
-            return 'Kayıt yok';
+            return 'Grafik Bekliyor';
         }
 
         $hasPending = $workForms->contains(function (OrderItemWorkForm $workForm): bool {
@@ -212,9 +225,13 @@ class OrderShowSummaryService
         return $hasPending ? 'Grafik Bekliyor' : 'Hazır';
     }
 
-    private function graphicModuleBadge(Collection $workForms): string
+    private function graphicModuleBadge(Collection $workForms, bool $hasPrintProcess): string
     {
-        return $this->graphicModuleStatus($workForms) === 'Hazır' ? 'green' : 'amber';
+        if (!$hasPrintProcess) {
+            return 'gray';
+        }
+
+        return $this->graphicModuleStatus($workForms, $hasPrintProcess) === 'Hazır' ? 'green' : 'amber';
     }
 
     private function procurementBadge(?OrderItemProcurement $procurement): string
@@ -223,20 +240,22 @@ class OrderShowSummaryService
             return 'gray';
         }
 
-        return match ($procurement->procurement_status) {
-            OrderItemProcurement::STATUS_FULLY_RECEIVED,
-            OrderItemProcurement::STATUS_NOT_REQUIRED,
-            OrderItemProcurement::STATUS_CUSTOMER_RECEIVED => 'green',
-            OrderItemProcurement::STATUS_CANCELLED => 'red',
-            OrderItemProcurement::STATUS_PARTIALLY_RECEIVED => 'blue',
+        return match ($procurement->userFacingState()) {
+            'received', 'no_need' => 'green',
+            'cancelled' => 'red',
+            'request_sent', 'partial_received' => 'blue',
             default => 'amber',
         };
     }
 
-    private function productionBadge(?OrderItemPrintProduction $production): string
+    private function productionBadge(?OrderItemPrintProduction $production, bool $hasPrintProcess): string
     {
-        if (!$production) {
+        if (!$hasPrintProcess) {
             return 'gray';
+        }
+
+        if (!$production) {
+            return 'blue';
         }
 
         if ($production->isProblematic()) {

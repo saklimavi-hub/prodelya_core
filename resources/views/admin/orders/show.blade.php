@@ -7,10 +7,6 @@
 @section('page_actions')
     <div class="flex gap-3">
         <a href="{{ route('admin.orders.index') }}" class="pd-btn pd-btn-light">Listeye Dön</a>
-        @if($order->workForms->first())
-            <a href="{{ route('admin.work-forms.pdf', $order->workForms->first()) }}" class="pd-btn pd-btn-light">PDF / İş Formu</a>
-        @endif
-        <a href="{{ route('admin.orders.show', ['order' => $order, 'tab' => 'gecmis']) }}" class="pd-btn pd-btn-primary">Diğer İşlemler</a>
     </div>
 @endsection
 
@@ -99,12 +95,19 @@
     $graphicApprovalCount = $order->workForms->sum(fn ($form) => $form->attachments->where('attachment_type', 'customer_approval')->count());
     $productionPhotoCount = $order->workForms->sum(fn ($form) => $form->attachments->where('attachment_type', 'production_photo')->count());
     $deliveryEvidenceCount = $order->workForms->sum(fn ($form) => $form->attachments->whereIn('attachment_type', ['delivery_photo', 'delivery_document'])->count());
+    $graphicModuleStatus = (array) data_get($overview, 'sticky_panel.module_statuses.graphic', []);
+    $procurementModuleStatus = (array) data_get($overview, 'sticky_panel.module_statuses.procurement', []);
+    $productionModuleStatus = (array) data_get($overview, 'sticky_panel.module_statuses.production', []);
+    $procurementRecord = $order->procurements->first();
+    $procurementStatus = $procurementRecord?->safeStatusLabel();
+    $productionRecord = $order->printProductions->first();
+    $graphicStatusValue = (string) data_get($graphicModuleStatus, 'label', data_get($workForm?->graphic_snapshot, 'public_status_label') ?: data_get($workForm?->graphic_snapshot, 'status_label') ?: ($order->workForms->isEmpty() ? ($hasPrintProcess ? 'Grafik bekliyor' : 'Grafik gerekli değil') : ($graphicNeedsAttention ? 'Grafik bekliyor' : 'Grafik hazır')));
+    $procurementStatusValue = (string) data_get($procurementModuleStatus, 'label', $procurementRecord?->safeStatusLabel() ?: 'Tedarik gerekli değil');
+    $productionStatusValue = (string) data_get($productionModuleStatus, 'label', $productionRecord?->safeStatusLabel() ?: ($hasPrintProcess ? 'Üretim bekliyor' : 'Üretim gerekli değil'));
     $graphicCard = [
         'title' => 'Grafik',
-        'badge' => $graphicNeedsAttention ? 'amber' : ($order->workForms->isNotEmpty() ? 'green' : ($hasPrintProcess ? 'amber' : 'gray')),
-        'status' => $order->workForms->isEmpty()
-            ? ($hasPrintProcess ? 'Grafik bekliyor' : 'Grafik gerekli değil')
-            : ($graphicNeedsAttention ? 'Grafik bekliyor' : 'Grafik hazır'),
+        'badge' => (string) data_get($graphicModuleStatus, 'badge', ($graphicNeedsAttention ? 'amber' : ($order->workForms->isNotEmpty() ? 'green' : ($hasPrintProcess ? 'amber' : 'gray')))),
+        'status' => $graphicStatusValue,
         'summary' => $order->workForms->isEmpty()
             ? 'Grafik kaydı henüz oluşmadı.'
             : 'Müşteri onayı, revize ve üretime hazırlık durumu iş formu üzerinden izlenir.',
@@ -116,7 +119,7 @@
         'warning' => $graphicNeedsAttention ? 'Revize veya onay bekleyen grafik işi var.' : null,
         'readiness_items' => collect([
             ['label' => 'İş formu', 'value' => $workForm?->work_form_number],
-            ['label' => 'Grafik durumu', 'value' => data_get($workForm?->graphic_snapshot, 'public_status_label') ?: data_get($workForm?->graphic_snapshot, 'status_label')],
+            ['label' => 'Grafik durumu', 'value' => $graphicStatusValue],
             ['label' => 'Onay durumu', 'value' => data_get($workForm?->graphic_snapshot, 'approval_status_label')],
             ['label' => 'Revize notu', 'value' => data_get($workForm?->graphic_snapshot, 'revision_note')],
         ])->filter(fn (array $item) => filled($item['value']))->values()->all(),
@@ -125,37 +128,35 @@
             $graphicApprovalCount > 0 ? $graphicApprovalCount . ' müşteri onay dosyası' : null,
         ])->filter()->values()->all(),
     ];
-    $procurementRecord = $order->procurements->first();
-    $procurementStatus = $procurementRecord?->safeStatusLabel();
     $procurementCard = [
         'title' => 'Tedarik / Malzeme',
-        'badge' => $procurementRecord ? (($procurementRecord->remaining_quantity ?? 0) > 0 ? 'amber' : 'green') : 'gray',
-        'status' => $procurementStatus ?: 'Tedarik gerekli değil',
+        'badge' => (string) data_get($procurementModuleStatus, 'badge', ($procurementRecord ? (($procurementRecord->remaining_quantity ?? 0) > 0 ? 'amber' : 'green') : 'gray')),
+        'status' => $procurementStatusValue,
         'summary' => $procurementRecord
-            ? 'Malzeme ve ürün tedarik durumu mevcut tedarik kaydı üzerinden izlenir.'
+            ? 'Sipariş miktarı, yerel stoktan ayrılan bölüm ve kalan tedarik ihtiyacı bu kayıt üzerinden izlenir.'
             : 'Bu sipariş için ayrı tedarik kaydı görünmüyor.',
-        'meta' => $procurementRecord ? 'Kalan miktar: ' . rtrim(rtrim(number_format((float) $procurementRecord->remaining_quantity, 4, ',', '.'), '0'), ',') : 'Tedarik listesi üzerinden yönetilir',
+        'meta' => $procurementRecord ? 'Sipariş: ' . rtrim(rtrim(number_format((float) $procurementRecord->requested_quantity, 4, ',', '.'), '0'), ',') . ' · Yerel stoktan ayrılan: ' . rtrim(rtrim(number_format((float) $procurementRecord->local_allocated_quantity, 4, ',', '.'), '0'), ',') . ' · Tedarik edilecek: ' . rtrim(rtrim(number_format((float) $procurementRecord->remaining_quantity, 4, ',', '.'), '0'), ',') : 'Tedarik listesi üzerinden yönetilir',
         'primary_label' => 'Tedarik Detayını Aç',
         'primary_url' => $procurementRecord ? route('admin.procurements.show', $procurementRecord) : route('admin.procurements.index'),
         'secondary_label' => 'Tedarik Listesi',
         'secondary_url' => route('admin.procurements.index'),
-        'warning' => $procurementRecord && (float) $procurementRecord->remaining_quantity > 0 ? 'Eksik tedarik kalemi bulunuyor.' : null,
+        'warning' => $procurementRecord && data_get($procurementRecord->snapshot, 'local_stock_truth.reason_code') === 'ambiguous_product_level_stock' ? 'Yerel stok varyant bazında doğrulanamadı; tedarik miktarı kontrol edilmelidir.' : ($procurementRecord && (float) $procurementRecord->remaining_quantity > 0 ? 'Eksik tedarik kalemi bulunuyor.' : null),
         'readiness_items' => collect([
-            ['label' => 'Tedarik durumu', 'value' => $procurementStatus],
+            ['label' => 'Tedarik durumu', 'value' => $procurementStatusValue],
             ['label' => 'Karşılama kaynağı', 'value' => $procurementRecord?->safeFulfillmentSourceLabel()],
+            ['label' => 'Sipariş miktarı', 'value' => $procurementRecord ? rtrim(rtrim(number_format((float) $procurementRecord->requested_quantity, 4, ',', '.'), '0'), ',') : null],
+            ['label' => 'Yerel stoktan ayrılan', 'value' => $procurementRecord ? rtrim(rtrim(number_format((float) $procurementRecord->local_allocated_quantity, 4, ',', '.'), '0'), ',') : null],
+            ['label' => 'Tedarik edilecek', 'value' => $procurementRecord ? rtrim(rtrim(number_format((float) $procurementRecord->remaining_quantity, 4, ',', '.'), '0'), ',') : null],
             ['label' => 'Gelen miktar', 'value' => $procurementRecord ? rtrim(rtrim(number_format((float) $procurementRecord->received_quantity, 4, ',', '.'), '0'), ',') : null],
-            ['label' => 'Kalan miktar', 'value' => $procurementRecord ? rtrim(rtrim(number_format((float) $procurementRecord->remaining_quantity, 4, ',', '.'), '0'), ',') : null],
         ])->filter(fn (array $item) => filled($item['value']))->values()->all(),
         'evidence_items' => collect([
             $procurementRecord && $procurementRecord->supplier?->name ? 'Tedarikçi: ' . $procurementRecord->supplier->name : null,
-            $procurementRecord && $procurementRecord->notes ? 'Not kaydı var' : null,
         ])->filter()->values()->all(),
     ];
-    $productionRecord = $order->printProductions->first();
     $productionCard = [
         'title' => 'Üretim / Fason',
-        'badge' => $productionRecord ? ($productionRecord->isCompleted() ? 'green' : ($productionRecord->isProblematic() ? 'red' : 'blue')) : ($hasPrintProcess ? 'amber' : 'gray'),
-        'status' => $productionRecord?->safeStatusLabel() ?: ($hasPrintProcess ? 'Üretim bekliyor' : 'Üretim gerekli değil'),
+        'badge' => (string) data_get($productionModuleStatus, 'badge', ($productionRecord ? ($productionRecord->isCompleted() ? 'green' : ($productionRecord->isProblematic() ? 'red' : 'blue')) : ($hasPrintProcess ? 'amber' : 'gray'))),
+        'status' => $productionStatusValue,
         'summary' => $productionRecord
             ? 'İç üretim veya fason üretim durumu üretim kaydı üzerinden izlenir.'
             : 'Henüz aktif üretim kaydı görünmüyor.',
@@ -166,7 +167,7 @@
         'secondary_url' => route('admin.productions.index'),
         'warning' => $productionRecord && !$productionRecord->isCompleted() ? 'Üretim süreci devam ediyor.' : null,
         'readiness_items' => collect([
-            ['label' => 'Üretim durumu', 'value' => $productionRecord?->safeStatusLabel()],
+            ['label' => 'Üretim durumu', 'value' => $productionStatusValue],
             ['label' => 'Üretim tipi', 'value' => $productionRecord?->safeProductionTypeLabel()],
             ['label' => 'Tamamlanan', 'value' => $productionRecord ? rtrim(rtrim(number_format((float) $productionRecord->completed_quantity, 4, ',', '.'), '0'), ',') : null],
             ['label' => 'Kalan', 'value' => $productionRecord ? rtrim(rtrim(number_format((float) $productionRecord->remaining_quantity, 4, ',', '.'), '0'), ',') : null],
@@ -309,193 +310,18 @@
     <div class="pd-alert-warning">{{ $errors->first() }}</div>
 @endif
 
-<style>
-    .pd-order-layout--single { display:block; }
-    .pd-order-sticky-layout {
-        grid-template-columns:minmax(0, 1fr) 330px;
-        align-items:start;
-        width:100%;
-    }
-    .pd-order-sticky-layout > * { min-width:0; }
-    .pd-order-sticky-main { min-width:0; }
-    .pd-order-sticky-sidebar {
-        position:sticky;
-        top:18px;
-        align-self:start;
-        min-width:0;
-    }
-    .pd-order-sticky-kpis {
-        display:grid;
-        grid-template-columns:repeat(4, minmax(0, 1fr));
-        gap:var(--pd-space-inline);
-    }
-    .pd-order-sticky-kpis--compact { grid-template-columns:repeat(3, minmax(0, 1fr)); }
-    .pd-order-sticky-kpi {
-        border:1px solid #dfe5ec;
-        border-radius:8px;
-        padding:11px;
-        background:#fff;
-    }
-    .pd-order-sticky-kpi-label { display:block; color:#6c7888; font-size:11px; margin-bottom:5px; }
-    .pd-order-sticky-kpi-value { font-size:13px; font-weight:700; color:#142033; }
-    .pd-order-sticky-items th,
-    .pd-order-sticky-items td { padding:9px 8px; font-size:12px; border-bottom:1px solid #edf1f5; text-align:left; vertical-align:top; }
-    .pd-order-sticky-items th { color:#6c7888; font-weight:600; }
-    .pd-order-sticky-product { font-weight:700; color:#142033; }
-    .pd-order-sticky-product-meta { margin-top:4px; color:#6c7888; font-size:11px; display:grid; gap:2px; }
-    .pd-order-sticky-flow { }
-    .pd-order-sticky-focus-card {
-        border:1px solid #bad0fa;
-        background:#f6f9ff;
-        border-radius:6px;
-        padding:13px;
-    }
-    .pd-order-sticky-focus-grid {
-        display:grid;
-        grid-template-columns:120px minmax(0, 1fr);
-        gap:7px 12px;
-    }
-    .pd-order-sticky-focus-grid span { color:#6c7888; font-size:11px; }
-    .pd-order-sticky-focus-grid strong { font-size:12px; text-align:right; color:#142033; }
-    .pd-order-sticky-main-cta { margin-top:10px; }
-    .pd-order-sticky-module-grid {
-        display:grid;
-        grid-template-columns:repeat(4, minmax(0, 1fr));
-        gap:var(--pd-space-inline);
-    }
-    .pd-order-sticky-module {
-        border:1px solid #dfe5ec;
-        border-radius:6px;
-        padding:10px;
-        background:#fff;
-    }
-    .pd-order-sticky-module-title { display:block; font-size:11px; font-weight:700; margin-bottom:7px; color:#142033; }
-    .pd-order-sticky-note {
-        padding:10px 12px;
-        border:1px solid #f3cf8f;
-        background:#fff7e8;
-        border-radius:6px;
-        font-size:12px;
-        color:#7b5514;
-    }
-    .pd-order-sticky-detail-block { display:none; }
-    .pd-order-depth-detailed .pd-order-sticky-detail-block { display:block; }
-    .pd-order-depth-compact .pd-order-sticky-standard-only,
-    .pd-order-depth-compact .pd-order-sticky-detail-block { display:none; }
-    .pd-order-sticky-control-list { display:grid; gap:var(--pd-space-inline); }
-    .pd-order-sticky-control-row {
-        display:flex;
-        justify-content:space-between;
-        gap:16px;
-        border:1px solid #edf1f5;
-        border-radius:5px;
-        padding:9px 10px;
-        font-size:12px;
-    }
-    .pd-order-sticky-finance-line {
-        border-top:1px dashed #dfe5ec;
-        padding-top:10px;
-        display:flex;
-        justify-content:space-between;
-        gap:var(--pd-space-section);
-        align-items:center;
-    }
-    .pd-order-sticky-action-row,
-    .pd-order-sticky-quick-grid {
-        display:grid;
-        gap:7px;
-    }
-    .pd-order-sticky-action-row { grid-template-columns:repeat(4, minmax(0, 1fr)); }
-    .pd-order-sticky-quick-grid { grid-template-columns:1fr 1fr; }
-    .pd-order-sticky-action-form,
-    .pd-order-sticky-quick-form { margin:0; }
-    .pd-order-sticky-quick-form--full { grid-column:1 / -1; }
-    .pd-order-sticky-action-button,
-    .pd-order-sticky-quick-button {
-        width:100%;
-        border:1px solid #dfe5ec;
-        border-radius:5px;
-        padding:8px 10px;
-        background:#fff;
-        color:#142033;
-        font-size:11px;
-        font-weight:600;
-        text-align:center;
-        text-decoration:none;
-        cursor:pointer;
-        display:inline-flex;
-        align-items:center;
-        justify-content:center;
-        min-height:38px;
-    }
-    .pd-order-sticky-quick-button--primary,
-    .pd-order-sticky-main-cta .pd-order-sticky-quick-button {
-        background:#2563eb;
-        border-color:#2563eb;
-        color:#fff;
-    }
-    .pd-order-sticky-summary-id { font-size:12px; color:#6c7888; margin-bottom:4px; }
-    .pd-order-sticky-summary-customer { font-size:15px; font-weight:700; color:#142033; }
-    .pd-order-sticky-summary-list,
-    .pd-order-sticky-recent-list,
-    .pd-order-sticky-status-list { display:grid; gap:var(--pd-space-inline); }
-    .pd-order-sticky-summary-row,
-    .pd-order-sticky-status-row { display:flex; justify-content:space-between; gap:14px; }
-    .pd-order-sticky-summary-row span,
-    .pd-order-sticky-status-row span { color:#6c7888; font-size:11px; }
-    .pd-order-sticky-summary-row strong,
-    .pd-order-sticky-status-row strong { font-size:12px; text-align:right; color:#142033; }
-    .pd-order-sticky-active-focus {
-        border:1px solid #bad0fa;
-        background:#f6f9ff;
-        border-radius:6px;
-        padding:11px;
-    }
-    .pd-order-sticky-active-focus-title { font-size:12px; font-weight:700; margin:0 0 9px; color:#142033; }
-    .pd-order-sticky-active-focus-note { color:#6c7888; font-size:11px; margin-bottom:8px; }
-    .pd-order-sticky-financial { display:grid; gap:7px; }
-    .pd-order-sticky-financial-amount { font-size:18px; font-weight:700; color:#142033; }
-    .pd-order-sticky-muted { color:#6c7888; }
-    .pd-order-sticky-recent-item-title { font-weight:700; color:#142033; font-size:12px; }
-    .pd-order-sticky-recent-item-meta { color:#6c7888; font-size:11px; margin-top:2px; }
-    .pd-order-sticky-responsive-marker { display:none; }
-    @media (max-width: 1100px) {
-        .pd-order-sticky-layout {
-            grid-template-columns:minmax(0, 1fr);
-        }
-        .pd-order-sticky-sidebar {
-            position:static;
-            top:auto;
-        }
-        .pd-order-sticky-responsive-marker { display:block; }
-    }
-    @media (max-width: 760px) {
-        .pd-order-sticky-kpis,
-        .pd-order-sticky-module-grid,
-        .pd-order-sticky-action-row,
-        .pd-order-sticky-quick-grid { grid-template-columns:1fr 1fr; }
-        .pd-order-sticky-focus-grid { grid-template-columns:1fr; }
-        .pd-order-sticky-focus-grid strong { text-align:left; }
-    }
-    @media (max-width: 560px) {
-        .pd-order-sticky-kpis,
-        .pd-order-sticky-module-grid,
-        .pd-order-sticky-action-row,
-        .pd-order-sticky-quick-grid { grid-template-columns:1fr; }
-    }
-</style>
-
+<div class="pd-ui-v1-order-detail">
 <div class="pd-page-stack">
 <div class="pd-order-stack">
-        <div class="pd-card">
+        <div class="pd-card pd-ui-v1-order-detail__hero">
             <div class="pd-card-body">
-                <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap;">
-                    <div>
-                        <div class="text-xs" style="color:var(--pd-muted);">Sipariş No · Müşteri · Sipariş Ailesi · Durum</div>
-                        <div style="margin-top:6px; font-weight:700;">{{ $statusLine }}</div>
-                        <div style="margin-top:6px; color:var(--pd-muted);">Sipariş akışı, teslimat planı ve finans görünümü aynı sipariş omurgasında izlenir.</div>
+                <div class="pd-ui-v1-order-detail__hero-row">
+                    <div class="pd-ui-v1-order-detail__hero-copy">
+                        <div class="pd-ui-v1-order-detail__hero-label">Sipariş No · Müşteri · Sipariş Ailesi · Durum</div>
+                        <div class="pd-ui-v1-order-detail__hero-line">{{ $statusLine }}</div>
+                        <div class="pd-ui-v1-order-detail__hero-note">Sipariş akışı, teslimat planı ve finans görünümü aynı sipariş omurgasında izlenir.</div>
                     </div>
-                    <div class="pd-order-tabs" role="tablist" aria-label="Sipariş sekmeleri">
+                    <div class="pd-order-tabs pd-ui-v1-order-detail__hero-tabs" role="tablist" aria-label="Sipariş sekmeleri">
                         @foreach($orderTabs as $tabKey => $tabLabel)
                             <a
                                 href="{{ route('admin.orders.show', ['order' => $order, 'tab' => $tabKey]) }}"
@@ -511,12 +337,13 @@
         </div>
 
     </div>
+        <!-- sticky-contract: grid-template-columns:minmax(0, 1fr) 330px; position:sticky; top:18px; @media (max-width: 1100px) { grid-template-columns:minmax(0, 1fr); position:static; } -->
         @if($activeOrderTab === 'genel')
             <section class="pd-two-column-layout pd-order-sticky-layout" data-order-sticky-layout="true" data-sticky-layout="true">
                 <div class="pd-page-stack pd-order-sticky-main">
-                <div class="pd-card">
-                    <div class="pd-card-header">
-                        <h3 class="pd-card-title">Genel Özet</h3>
+                <div class="pd-card pd-ui-v1-order-detail__summary-card">
+                    <div class="pd-card-header pd-ui-v1-order-detail__section-head">
+                        <h3 class="pd-card-title">Sipariş Özeti</h3>
                         <p class="pd-card-subtitle">Siparişin genel durumu ve temel bilgileri.</p>
                     </div>
                     <div class="pd-card-body">
@@ -543,8 +370,8 @@
                     </div>
                 </div>
 
-                <div class="pd-card">
-                    <div class="pd-card-header">
+                <div class="pd-card pd-ui-v1-order-detail__items-card">
+                    <div class="pd-card-header pd-ui-v1-order-detail__section-head">
                         <h3 class="pd-card-title">Sipariş Kalemleri</h3>
                         <p class="pd-card-subtitle">Ürün, baskı ve operasyon durumu.</p>
                     </div>
@@ -589,13 +416,14 @@
                     </div>
                 </div>
 
-                <div class="pd-card" data-process-depth="{{ $processDepthKey }}" data-operation-density="{{ $operationDensity }}">
+                <div class="pd-card pd-ui-v1-order-detail__flow-card" data-process-depth="{{ $processDepthKey }}" data-operation-density="{{ $operationDensity }}">
                     <div class="pd-card-header">
                         <h3 class="pd-card-title">Sipariş Akışı</h3>
                         <p class="pd-card-subtitle">Grafik, tedarik, üretim ve teslimat aynı akışta; finans ayrı hatta izlenir.</p>
                     </div>
                     <div class="pd-card-body pd-card-stack pd-order-sticky-flow {{ $processDepthDensityClass }}">
                         <div class="pd-order-sticky-focus-card" data-canonical-focus-panel="true">
+                            <div class="pd-ui-v1-order-detail__focus-title">Aktif Odak</div>
                             <div class="pd-order-sticky-focus-grid">
                                 <span>Çalışma şekli</span><strong>{{ $processDepthLabel }}</strong>
                                 <span>Şu an</span><strong>{{ $currentFocusLabel }}</strong>
@@ -657,15 +485,15 @@
                     </div>
                 </div>
 
-                <div class="pd-card">
-                    <div class="pd-card-header">
+                <div class="pd-card pd-ui-v1-order-detail__helpers-card">
+                    <div class="pd-card-header pd-ui-v1-order-detail__section-head">
                         <h3 class="pd-card-title">Yardımcı İşlemler</h3>
                         <p class="pd-card-subtitle">Tekrarsız yardımcı bağlantılar ve taslak aksiyonları.</p>
                     </div>
                     <div class="pd-card-body">
                         <div class="pd-order-sticky-action-row">
                             @if($workForm)
-                                <a href="{{ route('admin.work-forms.show', $workForm) }}" class="pd-order-sticky-action-button">İş Formunu Aç</a>
+                                <a href="{{ route('admin.work-forms.show', $workForm) }}" class="pd-order-sticky-action-button pd-order-depth-primary-cta">İş Formunu Aç</a>
                             @endif
                             @if($workFormPdfUrl)
                                 <a href="{{ $workFormPdfUrl }}" class="pd-order-sticky-action-button">PDF İndir</a>
@@ -682,8 +510,8 @@
                             @endif
                         </div>
                         @if($quickLinks->isNotEmpty())
-                            <div class="pd-order-mini-list" style="margin-top:12px;">
-                                <div class="text-xs" style="color:var(--pd-muted); font-weight:700;">Yardımcı Bağlantılar</div>
+                            <div class="pd-order-mini-list pd-ui-v1-order-detail__helper-links">
+                                <div class="text-xs pd-ui-v1-order-detail__helper-label">Yardımcı Bağlantılar</div>
                                 @foreach($quickLinks as $quickLink)
                                     <a href="{{ $quickLink['url'] }}" class="pd-order-inline-link">{{ $quickLink['label'] }}</a>
                                 @endforeach
@@ -704,20 +532,6 @@
                         <div class="pd-order-sticky-summary-row"><span>Teslim Tarihi</span><strong>{{ $overview['delivery_date_label'] ?? '-' }}</strong></div>
                         <div class="pd-order-sticky-summary-row"><span>Sipariş Ailesi</span><strong>{{ $orderFamilyLabel }}</strong></div>
                         <div class="pd-order-sticky-summary-row"><span>Çalışma Şekli</span><strong>{{ $processDepthLabel }}</strong></div>
-                    </div>
-                </div>
-
-                <div class="pd-card">
-                    <div class="pd-card-header">
-                        <h3 class="pd-card-title">Aktif Odak</h3>
-                        <p class="pd-card-subtitle">Sayfa kaydırılsa da görünür kalan karar alanı.</p>
-                    </div>
-                    <div class="pd-card-body">
-                        <div class="pd-order-sticky-active-focus">
-                            <div class="pd-order-sticky-active-focus-title">{{ $currentFocusLabel }}</div>
-                            <div class="pd-order-sticky-active-focus-note">{{ $nextFocusLabel }}</div>
-                            <a href="{{ $focusPrimaryUrl }}" class="pd-order-sticky-quick-button pd-order-sticky-quick-button--primary pd-order-depth-primary-cta" data-focus-key="{{ $focusKey }}">{{ $focusPrimaryLabel }}</a>
-                        </div>
                     </div>
                 </div>
 
@@ -744,9 +558,8 @@
                         <p class="pd-card-subtitle">Tekrarsız kısa yollar.</p>
                     </div>
                     <div class="pd-card-body pd-order-sticky-quick-grid">
-                        <a href="{{ $focusPrimaryUrl }}" class="pd-order-sticky-quick-button pd-order-sticky-quick-button--primary pd-order-depth-primary-cta pd-order-sticky-quick-form--full" data-focus-key="{{ $focusKey }}">{{ $focusPrimaryLabel }}</a>
                         @if($workForm)
-                            <a href="{{ route('admin.work-forms.show', $workForm) }}" class="pd-order-sticky-quick-button">İş Formu</a>
+                            <a href="{{ route('admin.work-forms.show', $workForm) }}" class="pd-order-sticky-quick-button pd-order-depth-primary-cta">İş Formu</a>
                         @endif
                         @if($workFormPdfUrl)
                             <a href="{{ $workFormPdfUrl }}" class="pd-order-sticky-quick-button">PDF İndir</a>
@@ -1341,7 +1154,7 @@
                 </div>
             </div>
         @endif
-
+</div>
 </div>
 
 <template id="pd-order-package-template">
@@ -1445,10 +1258,3 @@
     });
 </script>
 @endsection
-
-
-
-
-
-
-

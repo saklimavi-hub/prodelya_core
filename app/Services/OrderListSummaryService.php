@@ -46,6 +46,8 @@ class OrderListSummaryService
 
     public function buildRow(Order $order, bool $canViewFinancialData): array
     {
+        $order->loadMissing(['items.prints', 'procurements.supplierRequestItems.request']);
+
         /** @var Collection<int, OrderItemWorkForm> $workForms */
         $workForms = $order->workForms;
         /** @var Collection<int, OrderItemProcurement> $procurements */
@@ -55,11 +57,12 @@ class OrderListSummaryService
         /** @var Collection<int, OrderItemWorkFormDelivery> $deliveries */
         $deliveries = $order->deliveries;
 
+        $hasPrintProcess = $this->hasPrintProcess($order);
         $isCancelled = $this->isCancelled($order);
         $isCompleted = $this->isCompleted($order, $deliveries, $isCancelled);
-        $graphicPending = $this->hasGraphicPending($workForms);
+        $graphicPending = $hasPrintProcess && $this->hasGraphicPending($workForms);
         $pendingProcurement = $this->firstPendingProcurement($procurements);
-        $pendingProduction = $this->firstPendingProduction($productions);
+        $pendingProduction = $hasPrintProcess ? $this->firstPendingProduction($productions) : null;
         $deliveryIssue = $deliveries->first(fn (OrderItemWorkFormDelivery $delivery) => $delivery->hasIssue());
         $productionIssue = $productions->first(fn (OrderItemPrintProduction $production) => $production->isProblematic());
         $isProblematic = $deliveryIssue !== null || $productionIssue !== null || in_array((string) $order->status, ['failed', 'problematic'], true);
@@ -97,7 +100,7 @@ class OrderListSummaryService
 
         [$generalStatusLabel, $generalStatusBadge] = $this->generalStatus($isCancelled, $isProblematic, $isCompleted);
         [$operationStatusLabel, $operationStatusBadge] = $this->operationStatus($workflowFocusKey, $pendingProcurement, $pendingProduction);
-        $nextActionLabel = $this->nextAction($workflowFocusKey);
+        $nextActionLabel = $this->nextAction($workflowFocusKey, $pendingProcurement);
 
         $stickyPanel = [
             'order_id' => $order->id,
@@ -120,9 +123,9 @@ class OrderListSummaryService
                 'delivery' => $deliveries->first() ? route('admin.deliveries.show', $deliveries->first()) : null,
             ],
             'module_statuses' => [
-                'graphic' => $this->stickyGraphicStatus($workForms),
+                'graphic' => $this->stickyGraphicStatus($workForms, $hasPrintProcess),
                 'procurement' => $this->stickyProcurementStatus($procurements),
-                'production' => $this->stickyProductionStatus($productions),
+                'production' => $this->stickyProductionStatus($productions, $hasPrintProcess),
                 'delivery' => $this->stickyDeliveryStatus($deliveries),
             ],
         ];
@@ -177,10 +180,14 @@ class OrderListSummaryService
         ];
     }
 
-    private function stickyGraphicStatus(Collection $workForms): array
+    private function stickyGraphicStatus(Collection $workForms, bool $hasPrintProcess): array
     {
+        if (!$hasPrintProcess) {
+            return ['label' => 'Gerekli Değil', 'badge' => 'gray'];
+        }
+
         if ($workForms->isEmpty()) {
-            return ['label' => 'Kayıt Yok', 'badge' => 'gray'];
+            return ['label' => 'Bekliyor', 'badge' => 'amber'];
         }
 
         return $this->hasGraphicPending($workForms)
@@ -192,22 +199,34 @@ class OrderListSummaryService
     {
         $pending = $this->firstPendingProcurement($procurements);
         if ($pending) {
-            return ['label' => 'Bekliyor', 'badge' => 'amber'];
+            return [
+                'label' => $pending->userFacingStatusLabel(),
+                'badge' => match ($pending->userFacingState()) {
+                    'need_unrequested', 'request_draft' => 'amber',
+                    'request_sent', 'partial_received' => 'blue',
+                    'cancelled' => 'red',
+                    default => 'green',
+                },
+            ];
+        }
+
+        if ($procurements->contains(fn (OrderItemProcurement $procurement) => $procurement->isFullyReceived())) {
+            return ['label' => 'Tedarik Tamamlandı', 'badge' => 'green'];
         }
 
         if ($procurements->contains(fn (OrderItemProcurement $procurement) => $procurement->procurement_status === OrderItemProcurement::STATUS_CANCELLED)) {
-            return ['label' => 'Problemli', 'badge' => 'red'];
+            return ['label' => 'İptal Edildi', 'badge' => 'red'];
         }
 
-        if ($procurements->isNotEmpty()) {
-            return ['label' => 'Hazır', 'badge' => 'green'];
-        }
-
-        return ['label' => 'Kayıt Yok', 'badge' => 'gray'];
+        return ['label' => 'Gerekli Değil', 'badge' => 'gray'];
     }
 
-    private function stickyProductionStatus(Collection $productions): array
+    private function stickyProductionStatus(Collection $productions, bool $hasPrintProcess): array
     {
+        if (!$hasPrintProcess) {
+            return ['label' => 'Gerekli Değil', 'badge' => 'gray'];
+        }
+
         if ($productions->contains(fn (OrderItemPrintProduction $production) => $production->isProblematic())) {
             return ['label' => 'Problemli', 'badge' => 'red'];
         }
@@ -221,7 +240,7 @@ class OrderListSummaryService
             return ['label' => 'Tamamlandı', 'badge' => 'green'];
         }
 
-        return ['label' => 'Kayıt Yok', 'badge' => 'gray'];
+        return ['label' => 'Bekliyor', 'badge' => 'blue'];
     }
 
     private function stickyDeliveryStatus(Collection $deliveries): array
@@ -240,6 +259,11 @@ class OrderListSummaryService
         }
 
         return ['label' => 'Planlanacak', 'badge' => 'gray'];
+    }
+
+    private function hasPrintProcess(Order $order): bool
+    {
+        return $order->items->contains(fn ($item) => $item->prints->isNotEmpty());
     }
 
     private function generalStatus(bool $isCancelled, bool $isProblematic, bool $isCompleted): array
@@ -270,7 +294,14 @@ class OrderListSummaryService
             'completed' => ['Tamamlandı', 'green'],
             'delivery_pending' => ['Teslimat Bekliyor', 'orange'],
             'graphic_pending' => ['Grafik Bekliyor', 'amber'],
-            'procurement_pending' => [$pendingProcurement?->safeStatusLabel() ?: 'Tedarik Bekliyor', 'amber'],
+            'procurement_pending' => [
+                $pendingProcurement?->userFacingStatusLabel() ?: 'Talep Hazırlanacak',
+                match ($pendingProcurement?->userFacingState()) {
+                    'request_sent', 'partial_received' => 'blue',
+                    'cancelled' => 'red',
+                    default => 'amber',
+                }
+            ],
             'production_pending' => [match ($pendingProduction?->production_status) {
                 OrderItemPrintProduction::STATUS_PENDING => 'Üretim Bekliyor',
                 OrderItemPrintProduction::STATUS_COMPLETED => 'Teslimat Bekliyor',
@@ -280,13 +311,14 @@ class OrderListSummaryService
         };
     }
 
-    private function nextAction(string $workflowFocusKey): string
+    private function nextAction(string $workflowFocusKey, ?OrderItemProcurement $pendingProcurement = null): string
     {
         return match ($workflowFocusKey) {
-            'completed', 'payment_pending' => 'Tahsilat bekliyor',
+            'payment_pending' => 'Tahsilat bekliyor',
+            'completed' => 'Tamamlandı',
             'delivery_pending' => 'Teslimat planla',
             'graphic_pending' => 'Grafik kontrol et',
-            'procurement_pending' => 'Tedarik bekliyor',
+            'procurement_pending' => $pendingProcurement?->userFacingNextActionLabel() ?: 'Tedarik kaydını incele',
             'production_pending' => 'Üretim bekliyor',
             default => 'Siparişi incele',
         };

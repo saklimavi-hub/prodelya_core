@@ -42,7 +42,7 @@ class SupplierProcurementRequestEditFixTest extends TestCase
             ->firstOrFail();
     }
 
-    public function test_edit_screen_prefills_purchase_list_price_from_supplier_snapshot_when_available(): void
+    public function test_edit_screen_shows_warning_when_only_legacy_snapshot_price_exists(): void
     {
         [$supplier, $source] = $this->createSupplierWithAccess('SPR-EDIT-FIX-A');
         $procurement = $this->createProcurement($supplier, $source, 'SP-SPR-FIX-001', true);
@@ -53,11 +53,10 @@ class SupplierProcurementRequestEditFixTest extends TestCase
             ->get(route('admin.procurements.supplier-requests.edit', $requestRecord));
 
         $response->assertOk();
-        $response->assertSee('value="9.20"', false);
-        $response->assertSee('data-spr-list-price', false);
+        $response->assertSee('Tedarikçi liste fiyatı bulunamadı');
     }
 
-    public function test_edit_screen_shows_zero_and_warning_when_purchase_list_price_is_missing(): void
+    public function test_edit_screen_shows_warning_when_purchase_list_price_is_missing(): void
     {
         [$supplier, $source] = $this->createSupplierWithAccess('SPR-EDIT-FIX-B');
         $procurement = $this->createProcurement($supplier, $source, 'SP-SPR-FIX-002', false);
@@ -68,8 +67,7 @@ class SupplierProcurementRequestEditFixTest extends TestCase
             ->get(route('admin.procurements.supplier-requests.edit', $requestRecord));
 
         $response->assertOk();
-        $response->assertSee('value="0.00"', false);
-        $response->assertSee('Liste fiyatı bulunamadı');
+        $response->assertSee('Tedarikçi liste fiyatı bulunamadı');
     }
 
     public function test_talebi_kaydet_updates_items_and_turns_draft_into_requested(): void
@@ -121,10 +119,10 @@ class SupplierProcurementRequestEditFixTest extends TestCase
             ->get(route('admin.procurements.supplier-requests.edit', $requestRecord));
 
         $show->assertOk();
-        $show->assertSee('Kaydet');
-        $show->assertSee('Taslak Olarak Kaydet');
+        $show->assertSee('Talebi Kaydet');
+        $show->assertSee('Taslak Kaydet');
         $show->assertDontSee('Talep Edildi İşaretle');
-        $show->assertSee('Fiyatsız Talep Formunu Aç');
+        $show->assertSee('Fiyatsız Talep Formu');
 
         $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])

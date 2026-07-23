@@ -88,7 +88,7 @@ class PublicLinkScreensUxPolishTest extends TestCase
         $trackingResponse->assertSee('Sipariş Takibi');
         $trackingResponse->assertSee('Müşteri Takip Ekranı');
         $trackingResponse->assertSee('Siparişiniz şu aşamada');
-        $trackingResponse->assertSee('Müşteri Dosyaları');
+        $trackingResponse->assertSee('Dosyayı Görüntüle');
         $trackingResponse->assertDontSee('Public Tracking');
         $trackingResponse->assertDontSee($trackingContext['workForm']->public_tracking_token);
         $trackingResponse->assertDontSee('file_path', false);
@@ -101,7 +101,7 @@ class PublicLinkScreensUxPolishTest extends TestCase
         $quoteResponse = $this->get(route('public.quotes.approval.show', ['token' => $quoteContext['request']->token]));
 
         $quoteResponse->assertOk();
-        $quoteResponse->assertSee('Teklifinizi İnceleyin');
+        $quoteResponse->assertSee('Teklifi İncele');
         $quoteResponse->assertSee('Teklifi Onayla');
         $quoteResponse->assertSee('Revize İste');
         $quoteResponse->assertSee('Teklifi Reddet');
@@ -117,7 +117,7 @@ class PublicLinkScreensUxPolishTest extends TestCase
         $graphicResponse = $this->get(route('public.graphics.approval.show', ['token' => $graphicContext['request']->token]));
 
         $graphicResponse->assertOk();
-        $graphicResponse->assertSee('Grafik Tasarımınızı İnceleyin');
+        $graphicResponse->assertSee('Grafik Çalışmasını İncele');
         $graphicResponse->assertSee('Grafiği Onayla');
         $graphicResponse->assertSee('Revize İste');
         $graphicResponse->assertDontSee('Teklifi Reddet');

@@ -25,7 +25,7 @@ class PublicQuoteApprovalTurkishTerminologyTest extends TestCase
 
         $this->get($this->quoteApprovalShowUrl($context['request']))
             ->assertOk()
-            ->assertSee('Teklifinizi İnceleyin')
+            ->assertSee('Teklifi İncele')
             ->assertSee('Kararınızı Bildirin')
             ->assertSee('Geçerlilik Tarihi')
             ->assertSee('Genel Toplam')

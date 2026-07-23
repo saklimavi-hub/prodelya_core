@@ -31,7 +31,7 @@ class PromotionQuotePdfService
         $visibleItems = $quote->items->values()->map(function ($item, int $index): array {
             $customerFacing = $this->customerFacingPriceDisplayService->buildItem(
                 $item,
-                $item->order?->currency ?: 'TL'
+                $item->order?->currency ?: 'TRY'
             );
             $prints = $item->prints
                 ->filter(function ($print) {
@@ -62,11 +62,18 @@ class PromotionQuotePdfService
                 'quantity' => (float) $item->quantity,
                 'unit' => $item->unit ?: 'Adet',
                 'description' => $item->description,
-                'unit_price' => (float) $item->unit_price,
-                'line_total' => (float) $item->line_total,
-                'print_total' => (float) $item->print_total,
+                'unit_price' => (float) data_get($item->price_snapshot, 'actual_sales_unit_price_document', $item->unit_price),
+                'line_total' => (float) data_get($item->price_snapshot, 'product_line_total_document', $item->line_total),
+                'print_total' => (float) data_get($item->price_snapshot, 'print_line_total_document', $item->print_total),
+                'customer_main_unit_price' => (float) $customerFacing['customer_main_unit_price'],
+                'customer_main_total' => (float) $customerFacing['customer_main_total'],
                 'customer_unit_price' => (float) $customerFacing['customer_unit_price'],
                 'customer_line_total' => (float) $customerFacing['customer_line_total'],
+                'main_unit_label' => $customerFacing['main_unit_label'],
+                'main_total_label' => $customerFacing['main_total_label'],
+                'commercial_total_label' => $customerFacing['commercial_total_label'],
+                'commercial_line_total' => (float) $customerFacing['commercial_line_total'],
+                'show_commercial_total' => (bool) $customerFacing['show_commercial_total'],
                 'show_print_price_details' => (bool) $customerFacing['show_print_price_details'],
                 'customer_prints' => $customerFacing['prints'],
                 'prints' => $prints,
@@ -86,7 +93,7 @@ class PromotionQuotePdfService
             'showPrintPriceDetails' => $showPrintPriceDetails,
             'items' => $visibleItems,
             'vatRows' => $this->buildVatRows($quote),
-            'currency' => $quote->currency ?: 'TL',
+            'currency' => $this->customerFacingPriceDisplayService->displayCurrency($quote->currency ?: 'TRY'),
             'quoteDate' => optional($quote->quote_date)->format('d.m.Y'),
             'validUntil' => optional($quote->valid_until)->format('d.m.Y'),
             'documentTypeLabel' => 'Promosyon Teklifi',

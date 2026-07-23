@@ -48,8 +48,8 @@ class ProductHubTemplateCleanupTest extends TestCase
         $response->assertOk();
         $response->assertSeeText('Durum Merkezi');
         $response->assertSeeText('Aktif Hazır Tedarikçi Kaynağı');
-        $response->assertSeeText('Kontrol Bekleyen Ürün');
-        $response->assertSeeText('Abone Katalog Yayını Bekleyen');
+        $response->assertSeeText('İnceleme Bekleyen');
+        $response->assertSeeText('Kategori Temizliği Gereken');
         $response->assertSeeText('Ürünleri Senkronize Et');
         $response->assertSeeText('Yeni Kaynak Ekle');
         $response->assertSeeText('Abone Firma Erişimi');
@@ -69,7 +69,7 @@ class ProductHubTemplateCleanupTest extends TestCase
         $card = $this->extractSourceCard($this->renderSupplierDetail($source)->getContent(), $source->id);
         $this->assertSame(1, substr_count($card, 'data-primary-action="'));
         $this->assertStringContainsString('data-primary-action="Ürünleri Senkronize Et"', $card);
-        $this->assertStringContainsString('Bu kaynakta ürünler hazır, ancak Abone Firma kataloğuna henüz yansıtılmamış kayıtlar var.', $card);
+        $this->assertStringContainsString('Uygun ürünler, Abone Firmanın aktif tedarikçi erişimine göre kataloğa otomatik yansır.', $card);
         $this->assertStringContainsString('Gelişmiş İşlemler', $card);
         $this->assertStringContainsString('Abone Katalog Durumu', $card);
         $this->assertStringContainsString('Satış Listesi Onar', $card);

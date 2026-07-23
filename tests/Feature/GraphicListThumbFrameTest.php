@@ -41,9 +41,8 @@ class GraphicListThumbFrameTest extends TestCase
             ->get(route('admin.graphics.index'));
 
         $response->assertOk();
-        $response->assertSee('gg-list-thumb-frame', false);
+        $response->assertSee('pd-ui-v1-graphics__thumb', false);
         $response->assertSee('pd-allow-large', false);
-        $response->assertSee('width: 64px;', false);
         $response->assertDontSee('Display Path');
         $response->assertDontSee('file_path', false);
     }

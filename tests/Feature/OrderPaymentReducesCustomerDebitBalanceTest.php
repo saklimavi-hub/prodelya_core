@@ -45,8 +45,9 @@ class OrderPaymentReducesCustomerDebitBalanceTest extends TestCase
 
         $this->assertSame(CurrentAccountTransaction::STATUS_PARTIALLY_PAID, $debit->status);
         $this->assertSame(CurrentAccountTransaction::TYPE_CUSTOMER_PAYMENT, $payment->transaction_type);
-        $this->assertSame('receivable', $summary['balance_direction']);
-        $this->assertSame(13000.0, (float) $summary['balance']);
+        $this->assertSame('mixed', $summary['balance_direction']);
+        $this->assertTrue($summary['has_multiple_currencies']);
+        $this->assertNull($summary['balance']);
 
         $this->createCollectionPayment($order->fresh(['customer.companyRoles', 'payments']), 13000);
 
@@ -54,7 +55,8 @@ class OrderPaymentReducesCustomerDebitBalanceTest extends TestCase
         $debit->refresh();
 
         $this->assertSame(CurrentAccountTransaction::STATUS_PAID, $debit->status);
-        $this->assertSame('closed', $afterPaid['balance_direction']);
-        $this->assertSame(0.0, (float) $afterPaid['balance']);
+        $this->assertSame('mixed', $afterPaid['balance_direction']);
+        $this->assertTrue($afterPaid['has_multiple_currencies']);
+        $this->assertNull($afterPaid['balance']);
     }
 }

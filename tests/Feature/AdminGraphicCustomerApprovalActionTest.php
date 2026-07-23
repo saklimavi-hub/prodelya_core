@@ -156,7 +156,7 @@ class AdminGraphicCustomerApprovalActionTest extends TestCase
             ]);
 
         $response->assertRedirect(route('admin.graphics.show', $context['workForm']));
-        $response->assertSessionHas('success');
+        $response->assertSessionHas('warning');
 
         $request = GraphicApprovalRequest::query()->latest('id')->firstOrFail();
         $this->assertSame($context['customerVisibleGraphic']->id, $request->attachment_id);

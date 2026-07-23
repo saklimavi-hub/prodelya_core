@@ -19,16 +19,21 @@ class ProductionExternalLabelClarityTest extends TestCase
         $this->setUpProductionShowFixtures();
     }
 
-    public function test_external_tab_uses_single_clear_dil_standard(): void
+    public function test_legacy_external_tab_redirects_to_single_canonical_fason_surface(): void
     {
         $production = $this->createExternalProductionForShow();
 
+        $this->actingAs($this->adminUser)
+            ->withServerVariables(['HTTP_HOST' => self::PRODUCTION_SHOW_HOST])
+            ->get(route('admin.productions.show', $production) . '?tab=dis-uretim')
+            ->assertRedirect(route('admin.productions.subcontract-tracking', $production));
+
         $response = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::PRODUCTION_SHOW_HOST])
-            ->get(route('admin.productions.show', $production) . '?tab=dis-uretim');
+            ->get(route('admin.productions.subcontract-tracking', $production));
 
         $response->assertOk();
-        $response->assertSee('Dış Üretim / Fason');
+        $response->assertSee('Fason Takibi');
         $response->assertDontSee('<h2 class="prd-section-title">Dış Üretim</h2>', false);
     }
 }

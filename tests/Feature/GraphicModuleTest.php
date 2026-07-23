@@ -40,7 +40,7 @@ class GraphicModuleTest extends TestCase
             ->get(route('admin.graphics.index'));
 
         $response->assertOk();
-        $response->assertSee('Grafik Yönetimi');
+        $response->assertSee('Grafik İşleri');
         $response->assertSee($workForm->work_form_number);
         $response->assertSee((string) data_get($workForm->order_snapshot, 'document_number'));
         $response->assertSee((string) data_get($workForm->customer_snapshot, 'company_name'));
@@ -49,10 +49,8 @@ class GraphicModuleTest extends TestCase
         $response->assertSee('1b');
         $response->assertSee('UV Baskı');
         $response->assertSee('Lazer');
-        $response->assertSee('Düzenle');
-        $response->assertSee(route('admin.graphics.show', $workForm), false);
-        $response->assertDontSee(route('admin.work-forms.show', $workForm), false);
-        $response->assertDontSee('>Görsel Ekle<', false);
+        $response->assertSee('Görsel Yükle');
+        $response->assertDontSee('Düzenle');
         $response->assertDontSee('>Üretime Hazır İşaretle<', false);
         $response->assertDontSee('unit_price', false);
         $response->assertDontSee('price_snapshot', false);

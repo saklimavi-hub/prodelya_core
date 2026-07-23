@@ -425,7 +425,7 @@
                                             </div>
                                             <div>
                                                 <label class="text-sm font-medium">Belge / Sipariş / Açıklama</label>
-                                                <input type="text" name="statement_search" value="{{ $statementFilters['statement_search'] ?? '' }}" placeholder="Sipariş no, talep no, açıklama...">
+                                                <input type="text" name="statement_search" value="{{ $statementFilters['statement_search'] ?? '' }}" aria-label="Sipariş no, talep no, açıklama">
                                             </div>
                                             <div style="display:flex; align-items:end; gap:8px;">
                                                 <button type="submit" class="pd-btn pd-btn-primary">Filtrele</button>
@@ -601,7 +601,7 @@
                             <h3 class="pd-card-title">Yetkili Kişiler</h3>
                             <p class="pd-card-subtitle">Firma ile ilgili operasyonel ve satış iletişimleri.</p>
                         </div>
-                        <a href="#contact-create-form" class="pd-btn pd-btn-light pd-btn-sm">Yetkili Ekle</a>
+                        <a href="#contact-create-form" class="pd-btn pd-btn-light pd-btn-sm">Yeni Yetkili Ekle</a>
                     </div>
                 </div>
                 <div class="pd-card-body" id="company-contacts">
@@ -646,11 +646,11 @@
                             </table>
                         </div>
                     @else
-                        <div class="pd-note">Henüz yetkili kişi eklenmemiş.</div>
+                        <div class="pd-note">Henüz yetkili eklenmemiş.</div>
                     @endif
 
                     <div id="contact-create-form" style="margin-top: 18px; padding: 16px; border: 1px solid var(--pd-line); border-radius: 10px; background: #fafafa;">
-                        <h4 style="margin: 0 0 8px; font-size: 15px;">Yeni Yetkili Kişi</h4>
+                        <h4 style="margin: 0 0 8px; font-size: 15px;">Yeni Yetkili Ekle</h4>
                         <p style="margin: 0 0 14px; color: var(--pd-muted); font-size: 13px;">Firma iletişim kayıtlarını burada yönetin. Bu alan portal kullanıcısı oluşturmaz.</p>
 
                         <form method="POST" action="{{ route('admin.companies.contacts.store', $company) }}" style="display: grid; gap: 12px;">
@@ -683,9 +683,9 @@
 
                             <div class="pd-grid pd-grid-2">
                                 <div>
-                                    <label for="contact_mobile" class="text-xs" style="color: var(--pd-muted);">WhatsApp Cep Telefonu</label>
+                                    <label for="contact_mobile" class="text-xs" style="color: var(--pd-muted);">WhatsApp / Telefon</label>
                                     <div style="display:flex; align-items:center; border:1px solid #d0d5dd; border-radius:10px; overflow:hidden; background:#fff; margin-top: 6px;">
-                                        <span style="display:inline-flex; align-items:center; gap:8px; padding:0 12px; min-height:42px; background:#f8fafc; border-right:1px solid #e4e7ec; color:#344054; font-size:13px; white-space:nowrap;">🇹🇷 +90</span>
+                                        <span style="display:inline-flex; align-items:center; gap:8px; padding:0 12px; min-height:42px; background:#f8fafc; border-right:1px solid #e4e7ec; color:#344054; font-size:13px; white-space:nowrap;">+90</span>
                                         <input id="contact_mobile" name="contact_mobile" type="text" value="{{ old('contact_mobile') }}" class="pd-input" style="width: 100%; border:0; border-radius:0; margin-top: 0;">
                                     </div>
                                     @error('contact_mobile')<div class="text-xs" style="color: #b42318; margin-top: 6px;">{{ $message }}</div>@enderror
@@ -711,7 +711,7 @@
                             <h3 class="pd-card-title">Adresler</h3>
                             <p class="pd-card-subtitle">Fatura, teslimat ve varsayılan adres kayıtları.</p>
                         </div>
-                        <a href="#address-create-form" class="pd-btn pd-btn-light pd-btn-sm">Adres Ekle</a>
+                        <a href="#address-create-form" class="pd-btn pd-btn-light pd-btn-sm">Yeni Adres Ekle</a>
                     </div>
                 </div>
                 <div class="pd-card-body" id="company-addresses">
@@ -748,7 +748,7 @@
                     @endif
 
                     <div id="address-create-form" style="margin-top: 18px; padding: 16px; border: 1px solid var(--pd-line); border-radius: 10px; background: #fafafa;">
-                        <h4 style="margin: 0 0 8px; font-size: 15px;">Yeni Adres</h4>
+                        <h4 style="margin: 0 0 8px; font-size: 15px;">Yeni Adres Ekle</h4>
                         <p style="margin: 0 0 14px; color: var(--pd-muted); font-size: 13px;">Fatura, teslimat veya genel kullanım adreslerini aynı ekrandan ekleyin.</p>
 
                         <form method="POST" action="{{ route('admin.companies.addresses.store', $company) }}" style="display: grid; gap: 12px;">

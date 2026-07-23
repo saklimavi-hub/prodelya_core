@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Company;
+use App\Models\CompanyRole;
 use App\Models\Order;
 use App\Models\OrderItemPrintGraphic;
 use App\Models\OrderItemPrintProduction;
@@ -123,6 +124,7 @@ class ProductionReadinessPerPrintGraphicTest extends TestCase
         }
 
         $procurementWorkflow->markFullyReceived($procurement->fresh(), $this->adminUser);
+        $production->forceFill(['assigned_to' => $this->adminUser->id])->save();
         $started = $productionWorkflow->assignInternal($production->fresh(), $this->adminUser, 'UV Hattı 1');
 
         $this->assertSame(OrderItemPrintProduction::STATUS_INTERNAL, $started->production_status);
@@ -146,9 +148,12 @@ class ProductionReadinessPerPrintGraphicTest extends TestCase
             ->get(route('admin.productions.index', ['graphic_ready' => 'evet']));
 
         $readyResponse->assertOk();
-        $readyResponse->assertSee('one-a-preview.jpg');
-        $readyResponse->assertSee('one-b-preview.jpg');
+        $readyResponse->assertSee('1a');
+        $readyResponse->assertSee('1b');
+        $readyResponse->assertSee('Grafik Hazır');
         $readyResponse->assertDontSee('Final Görsel Yok');
+        $readyResponse->assertDontSee('one-a-preview.jpg');
+        $readyResponse->assertDontSee('one-b-preview.jpg');
 
         $notReadyResponse = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
@@ -176,6 +181,96 @@ class ProductionReadinessPerPrintGraphicTest extends TestCase
         $showResponse->assertDontSee('group_code', false);
     }
 
+    public function test_ProductionPoolReadiness_uses_live_exact_labels_over_stale_snapshot_without_sibling_leak(): void
+    {
+        $workForm = $this->createConvertedWorkForm('PRP-POOL-LIVE-001');
+        $graphics = OrderItemPrintGraphic::query()
+            ->where('order_item_work_form_id', $workForm->id)
+            ->orderBy('sequence_code')
+            ->get()
+            ->keyBy('sequence_code');
+        $this->prepareGraphicAsProductionReady($graphics['1a'], 'pool-one-a-final.jpg');
+
+        app(ProcurementWorkflowService::class)->markFullyReceived($workForm->procurement()->firstOrFail(), $this->adminUser);
+
+        $readyProduction = OrderItemPrintProduction::query()
+            ->where('order_item_print_id', $graphics['1a']->order_item_print_id)
+            ->firstOrFail();
+        $waitingProduction = OrderItemPrintProduction::query()
+            ->where('order_item_print_id', $graphics['1b']->order_item_print_id)
+            ->firstOrFail();
+
+        $readyProduction->forceFill([
+            'production_snapshot' => [
+                'graphic_status_label' => 'Grafik Bekliyor',
+                'procurement_status_label' => 'Tedarik Bekliyor',
+                'ui_can_start' => false,
+            ],
+        ])->save();
+
+        $response = $this->actingAs($this->adminUser)
+            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
+            ->get(route('admin.productions.index', ['q' => 'PRP-POOL-LIVE-001']));
+
+        $response->assertOk();
+        $readyRow = $this->productionPoolArticle($response->getContent(), $readyProduction->order_item_print_id);
+        $waitingRow = $this->productionPoolArticle($response->getContent(), $waitingProduction->order_item_print_id);
+
+        $this->assertStringContainsString('Grafik Hazır', $readyRow);
+        $this->assertStringContainsString('Tedarik Tamamlandı', $readyRow);
+        $this->assertStringNotContainsString('Grafik Bekliyor', $readyRow);
+        $this->assertStringNotContainsString('Tedarik Bekliyor', $readyRow);
+        $this->assertStringContainsString('Üretimi Aç', $readyRow);
+
+        $this->assertStringContainsString('Grafik Bekliyor', $waitingRow);
+        $this->assertStringContainsString('Grafiği Gör', $waitingRow);
+        $this->assertStringNotContainsString('pool-one-a-final.jpg', $waitingRow);
+    }
+
+    public function test_ProductionRouteTransfer_preserves_exact_print_identity_and_readiness_bindings(): void
+    {
+        $workForm = $this->createConvertedWorkForm('PRP-TRANSFER-001');
+        $graphic = OrderItemPrintGraphic::query()
+            ->where('order_item_work_form_id', $workForm->id)
+            ->orderBy('sequence_code')
+            ->firstOrFail();
+        $graphic = $this->prepareGraphicAsProductionReady($graphic, 'transfer-final.jpg');
+        app(ProcurementWorkflowService::class)->markFullyReceived($workForm->procurement()->firstOrFail(), $this->adminUser);
+
+        $production = OrderItemPrintProduction::query()
+            ->where('order_item_print_id', $graphic->order_item_print_id)
+            ->firstOrFail();
+        $partner = $this->productionPartnerCompany();
+        $productionId = $production->id;
+        $printId = $production->order_item_print_id;
+        $planned = (float) $production->planned_quantity;
+        $remaining = (float) $production->remaining_quantity;
+        $activityCount = $workForm->activityLogs()->count();
+
+        $this->actingAs($this->adminUser)
+            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
+            ->patch(route('admin.productions.update-assignment', $production), [
+                'production_type' => OrderItemPrintProduction::TYPE_OUTSOURCED,
+                'production_company_id' => $partner->id,
+                'production_note' => 'Exact print transfer smoke.',
+            ])
+            ->assertRedirect(route('admin.productions.subcontract-assignment', $production));
+
+        $production = $production->fresh(['graphicOperation.latestAttachment', 'workForm.procurement']);
+        $readiness = app(ProductionReadinessResolver::class)->resolve($production);
+
+        $this->assertSame($productionId, $production->id);
+        $this->assertSame($printId, $production->order_item_print_id);
+        $this->assertSame(OrderItemPrintProduction::TYPE_OUTSOURCED, $production->production_type);
+        $this->assertSame($partner->id, $production->production_company_id);
+        $this->assertSame($planned, (float) $production->planned_quantity);
+        $this->assertSame($remaining, (float) $production->remaining_quantity);
+        $this->assertSame(1, OrderItemPrintProduction::query()->where('order_item_print_id', $printId)->count());
+        $this->assertTrue($readiness['graphic_ready']);
+        $this->assertTrue($readiness['procurement_ready']);
+        $this->assertSame($graphic->latest_attachment_id, $readiness['final_graphic_attachment']->id);
+        $this->assertGreaterThan($activityCount, $workForm->activityLogs()->count());
+    }
     private function prepareGraphicAsProductionReady(OrderItemPrintGraphic $graphic, string $fileName): OrderItemPrintGraphic
     {
         $attachmentService = app(WorkFormAttachmentService::class);
@@ -249,5 +344,44 @@ class ProductionReadinessPerPrintGraphicTest extends TestCase
             ->whereHas('order', fn ($query) => $query->where('source_quote_id', $quote->id))
             ->latest('id')
             ->firstOrFail();
+    }
+    private function productionPoolArticle(string $html, int $printId): string
+    {
+        $pattern = '/<article class="pd-production-job-row"[^>]*data-print-row-id="' . preg_quote((string) $printId, '/') . '"[^>]*>.*?<\/article>/su';
+
+        $this->assertMatchesRegularExpression($pattern, $html);
+        preg_match($pattern, $html, $matches);
+
+        return $matches[0];
+    }
+
+    private function productionPartnerCompany(): Company
+    {
+        $tenantId = (int) $this->adminUser->userRoles()->firstOrFail()->tenant_account_id;
+        $existing = Company::query()
+            ->where('tenant_account_id', $tenantId)
+            ->active()
+            ->whereHas('companyRoles', fn ($query) => $query->whereIn('role_key', ['print_fason', 'production_partner']))
+            ->orderBy('id')
+            ->first();
+
+        if ($existing) {
+            return $existing;
+        }
+
+        $company = Company::query()->create([
+            'tenant_account_id' => $tenantId,
+            'legal_name' => 'M13 B2 Fason Partner',
+            'short_name' => 'M13 B2 Fason',
+            'status' => 'active',
+        ]);
+
+        CompanyRole::query()->create([
+            'tenant_account_id' => $tenantId,
+            'company_id' => $company->id,
+            'role_key' => 'print_fason',
+        ]);
+
+        return $company;
     }
 }

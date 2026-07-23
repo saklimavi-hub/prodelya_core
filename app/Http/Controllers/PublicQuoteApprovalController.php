@@ -235,6 +235,7 @@ class PublicQuoteApprovalController extends Controller
         $snapshot = (array) ($approvalRequest->sendSnapshot?->snapshot_json ?? []);
         $totals = (array) data_get($snapshot, 'totals', []);
         $snapshotCurrency = data_get($snapshot, 'currency', $approvalRequest->quote?->currency ?: 'TL');
+        $snapshotCurrency = strtoupper((string) $snapshotCurrency) === 'TRY' ? 'TL' : $snapshotCurrency;
         $items = collect(data_get($snapshot, 'items', []))
             ->map(function (array $item) use ($snapshotCurrency, $snapshot): array {
                 $currency = data_get($item, 'currency', $snapshotCurrency);
@@ -243,8 +244,22 @@ class PublicQuoteApprovalController extends Controller
                     'product_name' => $item['product_name'] ?? '-',
                     'product_code' => $item['product_code'] ?? null,
                     'quantity' => $this->formatQuantity($item['quantity'] ?? 0, $item['unit'] ?? null),
-                    'unit_price' => $this->formatMoney($item['customer_unit_price'] ?? null, $currency),
-                    'line_total' => $this->formatMoney($item['customer_line_total'] ?? ($item['line_total'] ?? null), $currency),
+                    'unit_price' => $this->formatMoney(
+                        $item['customer_main_unit_price'] ?? $item['customer_unit_price'] ?? null,
+                        $currency
+                    ),
+                    'line_total' => $this->formatMoney(
+                        $item['customer_main_total'] ?? $item['customer_line_total'] ?? ($item['line_total'] ?? null),
+                        $currency
+                    ),
+                    'unit_price_label' => $item['main_unit_label'] ?? 'Birim Fiyat',
+                    'line_total_label' => $item['main_total_label'] ?? 'Satır Toplamı',
+                    'show_commercial_total' => (bool) ($item['show_commercial_total'] ?? false),
+                    'commercial_total_label' => $item['commercial_total_label'] ?? 'Ürün + Baskı Toplamı',
+                    'commercial_total_value' => $this->formatMoney(
+                        $item['commercial_line_total'] ?? $item['customer_line_total'] ?? null,
+                        $currency
+                    ),
                     'print_lines' => collect($item['print_lines'] ?? [])
                         ->map(function (array $print) use ($item, $currency, $snapshot): array {
                             $showPriceDetails = array_key_exists('show_price_details', $print)
@@ -417,7 +432,9 @@ class PublicQuoteApprovalController extends Controller
             return null;
         }
 
-        return number_format((float) $amount, 2, ',', '.') . ' ' . ($currency ?: 'TL');
+        $displayCurrency = strtoupper((string) ($currency ?: 'TL')) === 'TRY' ? 'TL' : ($currency ?: 'TL');
+
+        return number_format((float) $amount, 2, ',', '.') . ' ' . $displayCurrency;
     }
 
     private function formatDate(?string $date): ?string

@@ -98,13 +98,12 @@ class GraphicPreviewSizeUiTest extends TestCase
             ->get(route('admin.graphics.index'));
 
         $indexResponse->assertOk();
-        $indexResponse->assertSee('gg-list-thumb-frame', false);
-        $indexResponse->assertSee('graphic-index-product-thumb', false);
-        $indexResponse->assertSee('graphic-index-product-image', false);
-        $indexResponse->assertSee('graphic-index-preview-thumb', false);
-        $indexResponse->assertSee('graphic-index-preview-image', false);
+        $indexResponse->assertSee('pd-ui-v1-graphics__thumb', false);
+        $indexResponse->assertSee('pd-graphic-operation-row__main', false);
+        $indexResponse->assertSee('pd-graphic-operation-row__main', false);
+        $indexResponse->assertSee('pd-ui-v1-graphics__product', false);
+        $indexResponse->assertSee('pd-graphic-operation-step', false);
         $indexResponse->assertSee('pd-allow-large', false);
-        $indexResponse->assertSee('size-proof.pdf');
         $indexResponse->assertDontSee('file_path', false);
         $indexResponse->assertDontSee('physical_path', false);
         $indexResponse->assertDontSee('group_code', false);

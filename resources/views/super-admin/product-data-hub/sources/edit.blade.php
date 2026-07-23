@@ -52,7 +52,7 @@
         </div>
 </section>
 
-<div class="pd-note">Bu kaynak Super Admin tarafından yönetilir. Abone Firma bu URL’yi değiştiremez. Abone Firma erişimi Abone Firma Tedarikçi Erişimleri ekranından verilir.</div>
+<div class="pd-note">Bu kaynak Super Admin tarafından yönetilir. Abone Firma bu URL’yi değiştiremez. Abone Firma erişimi Abone Firma Tedarikçi Erişimleri ekranından verilir. Şifre, token ve header değerleri düzenleme ekranında maskeli ve güvenli tutulur.</div>
 @if(\Illuminate\Support\Str::startsWith($source->supplier->code, 'TMP-') || \Illuminate\Support\Str::startsWith((string) ($source->config['profile_key'] ?? ''), 'TMP-'))
     <div class="pd-warn mt-3">Bu kaynak geçici/test profilidir. Gerçek tedarikçi profili olarak kullanılmamalıdır.</div>
 @endif
@@ -63,7 +63,7 @@
 
     <div class="pd-card pd-form-card mb-6">
         <div class="pd-card-header">
-            <h3 class="pd-card-title">Kaynak Kimliği</h3>
+            <h3 class="pd-card-title">Temel Kaynak Bilgileri</h3><div class="pd-note mt-2">Kaynak Kimliği alanları bu bölümde toplanır.</div>
         </div>
         <div class="pd-card-body">
             <div class="pd-note mb-4">Kaynağın temel kimliği, bağlı tedarikçi ve veri biçimi burada tutulur.</div>
@@ -129,7 +129,7 @@
 
     <details class="pd-card pd-form-card mb-6">
         <summary class="pd-card-header">
-            <h3 class="pd-card-title">Profil ve Parsing</h3>
+            <h3 class="pd-card-title">Profil ve Format</h3><div class="pd-note mt-2">Profil ve Parsing standardı bu bölümde korunur.</div>
             <span class="pd-badge pd-badge-gray">Gelişmiş</span>
         </summary>
         <div class="pd-card-body">
@@ -160,7 +160,7 @@
 
     <details class="pd-card pd-form-card mb-6">
         <summary class="pd-card-header">
-            <h3 class="pd-card-title">Bağlantı ve Güvenlik</h3>
+            <h3 class="pd-card-title">Bağlantı</h3><div class="pd-note mt-2">Bağlantı ve Güvenlik ayarları burada yönetilir.</div>
             <span class="pd-badge pd-badge-gray">Gelişmiş</span>
         </summary>
         <div class="pd-card-body">
@@ -287,7 +287,7 @@
 
     <details class="pd-card pd-form-card mb-6">
         <summary class="pd-card-header">
-            <h3 class="pd-card-title">Gelişmiş Ayarlar</h3>
+            <h3 class="pd-card-title">Gelişmiş Teknik Ayarlar</h3><div class="pd-note mt-2">Gelişmiş Ayarlar bu bölümde korunur.</div>
             <span class="pd-badge pd-badge-gray">Gelişmiş</span>
         </summary>
         <div class="pd-card-body">
@@ -347,7 +347,7 @@
 
     <details class="pd-card pd-form-card mb-6">
         <summary class="pd-card-header">
-            <h3 class="pd-card-title">Sync Davranışı</h3>
+            <h3 class="pd-card-title">Güncelleme Ayarları</h3><div class="pd-note mt-2">Sync Davranışı seçenekleri bu bölümde korunur.</div>
             <span class="pd-badge pd-badge-gray">Gelişmiş</span>
         </summary>
         <div class="pd-card-body">

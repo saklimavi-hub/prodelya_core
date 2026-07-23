@@ -28,13 +28,14 @@ class ProductionShowMockupPolishTest extends TestCase
             ->get(route('admin.productions.show', $production) . '?tab=genel');
 
         $response->assertOk();
-        $response->assertSee('Genel Özet');
-        $response->assertSee('Üretim Durumu Adımları');
-        $response->assertSee('Hızlı Bakış');
-        $response->assertSee('Hızlı İşlemler');
-        $response->assertSee('Takip');
-        $response->assertSee('Görevlerim');
-        $response->assertSee('Bildirimler');
-        $response->assertSee('Raporlar');
+        $response->assertSee('Üretim Detayı · Exact Baskı');
+        $response->assertSee('Süreç durumu');
+        $response->assertSee('Kompakt üretim özeti');
+        $response->assertSee('Sıradaki İşlem');
+        $response->assertSee('Operatör Ekranını Aç');
+        $response->assertDontSee('prd-show-sidebar');
+        $response->assertDontSee('Görevlerim');
+        $response->assertDontSee('Bildirimler');
+        $response->assertDontSee('Raporlar');
     }
 }

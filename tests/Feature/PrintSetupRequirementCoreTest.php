@@ -129,8 +129,50 @@ class PrintSetupRequirementCoreTest extends TestCase
         $this->assertSame(2, OrderItemPrintSetupRequirement::query()->where('order_item_print_id', $printA->id)->count());
     }
 
+    public function test_quote_to_order_conversion_does_not_create_setup_requirements_when_feature_disabled_by_default(): void
+    {
+        $uvSetting = $this->settingByCode('UV_PRINT');
+        $uvSetting->forceFill([
+            'custom_name' => 'UV Setup Ayarı',
+            'requires_setup' => true,
+            'setup_types' => ['cliche'],
+        ])->save();
+
+        $laserSetting = $this->settingByCode('LASER_PRINT');
+        $laserSetting->forceFill([
+            'custom_name' => 'Lazer Setup Yok',
+            'requires_setup' => false,
+            'setup_types' => [],
+        ])->save();
+
+        $quote = $this->makeQuoteWithTwoPrints($uvSetting, $laserSetting);
+
+        $this->actingAs($this->adminUser)
+            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
+            ->post(route('admin.orders.convert.from.quote', $quote))
+            ->assertRedirect();
+
+        $order = Order::query()
+            ->where('document_type', 'order')
+            ->where('source_quote_id', $quote->id)
+            ->firstOrFail();
+        $order->load('items.prints.setupRequirements', 'workForms', 'printProductions');
+
+        $printedItem = $order->items->firstOrFail();
+        $this->assertCount(2, $printedItem->prints);
+
+        $setupPrint = $printedItem->prints->firstWhere('print_type', 'UV Setup Ayarı');
+        $plainPrint = $printedItem->prints->firstWhere('print_type', 'Lazer Setup Yok');
+
+        $this->assertNotNull($setupPrint);
+        $this->assertNotNull($plainPrint);
+        $this->assertCount(0, $setupPrint->setupRequirements);
+        $this->assertCount(0, $plainPrint->setupRequirements);
+    }
+
     public function test_quote_to_order_conversion_creates_setup_requirements_and_status_actions_update_them_with_tenant_scope(): void
     {
+        config()->set('prodelya.features.promotion_intermediate_element_enabled', true);
         $uvSetting = $this->settingByCode('UV_PRINT');
         $uvSetting->forceFill([
             'custom_name' => 'UV Setup Ayarı',
@@ -219,6 +261,7 @@ class PrintSetupRequirementCoreTest extends TestCase
 
     public function test_work_form_and_production_views_show_safe_setup_summary_without_cost_leakage(): void
     {
+        config()->set('prodelya.features.promotion_intermediate_element_enabled', true);
         $uvSetting = $this->settingByCode('UV_PRINT');
         $uvSetting->forceFill([
             'custom_name' => 'UV Setup Ekran Ayarı',
@@ -277,9 +320,9 @@ class PrintSetupRequirementCoreTest extends TestCase
                 'tab' => 'genel',
             ]))
             ->assertOk()
-            ->assertSee('Hazırlık / Ara Eleman')
-            ->assertSee('Klişe')
-            ->assertSee('Hazır')
+            ->assertSee('Üretim Detayı · Exact Baskı')
+            ->assertSee('Sıradaki İşlem')
+            ->assertDontSee('Hazırlık / Ara Eleman')
             ->assertDontSee('999.99')
             ->assertDontSee('TRY')
             ->assertDontSee('SETUP-COST-SECRET')

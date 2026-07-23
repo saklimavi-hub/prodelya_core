@@ -121,10 +121,26 @@ class ProcurementUsesCanonicalSupplierCariTest extends TestCase
         app(TenantSupplierCurrentAccountSyncService::class)
             ->repairDuplicateSupplierCariLinks($tenant, $supplier, $canonical);
 
+        $this->assertDatabaseHas('current_account_links', [
+            'tenant_account_id' => $tenant->id,
+            'current_account_id' => $canonicalAccount->id,
+            'link_type' => CurrentAccountLink::LINK_SUPPLIER,
+            'link_id' => $supplier->id,
+        ]);
+
+        $this->assertDatabaseMissing('current_account_links', [
+            'tenant_account_id' => $tenant->id,
+            'current_account_id' => $duplicateAccount->id,
+            'link_type' => CurrentAccountLink::LINK_SUPPLIER,
+            'link_id' => $supplier->id,
+        ]);
+
         $this->actingAs($owner, 'web')
             ->get($this->tenantUrl($tenant, '/admin/procurements'))
             ->assertOk()
-            ->assertSee('Eşleşen cari: ' . $canonical->short_name)
+            ->assertSee('Talep Hazırlanacak Tedarikçiler')
+            ->assertSee('Fiyat, stok ve talep görünümü tek panelde özetlenir.')
+            ->assertDontSee('Eşleşen cari: ' . $canonical->short_name)
             ->assertDontSee('Eşleşen cari: ' . $duplicate->short_name)
             ->assertDontSee('Eşleşen cari: Yok');
     }

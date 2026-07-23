@@ -60,9 +60,9 @@ class ProductionOperatorPanelSimplificationTest extends TestCase
         $response->assertDontSee('Üretime Başlama Kontrol Kartları');
         $response->assertDontSee('QC Uygun');
         $response->assertDontSee('Mobil Fotoğraf Alanı');
-        $response->assertSee('Fotoğraf Ekle');
-        $response->assertSee('Üretim Durumu Adımları');
-        $response->assertSee('Hızlı Bakış');
+        $response->assertSee('Fotoğraflar');
+        $response->assertSee('Süreç durumu');
+        $response->assertSee('Kompakt üretim özeti');
         $response->assertSee('Siparişi Aç');
         $response->assertSee('İş Formu');
         $response->assertSee('UV Baskı');
@@ -100,8 +100,9 @@ class ProductionOperatorPanelSimplificationTest extends TestCase
             ->get(route('admin.productions.show', $preparedProduction->fresh()) . '?tab=genel');
 
         $preparedResponse->assertOk();
-        $preparedResponse->assertSee('Önemli Notlar');
-        $preparedResponse->assertSee('Bu baskı için gerekli ara eleman hazır olmadan baskıya başlanmaz.');
+        $preparedResponse->assertSee('Üretim Detayı · Exact Baskı');
+        $preparedResponse->assertSee('Sıradaki İşlem');
+        $preparedResponse->assertDontSee('Bu baskı için gerekli ara eleman hazır olmadan baskıya başlanmaz.');
     }
 
     private function createMultiPrintWorkForm(): array

@@ -6,11 +6,18 @@ use App\Models\OrderItemProcurement;
 use App\Models\SupplierProcurementRequest;
 use App\Models\SupplierProcurementRequestItem;
 use App\Models\TenantAccount;
+use App\Services\Procurement\ProcurementPurchasePricingService;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
 class SupplierProcurementRequestDataBuilder
 {
+    public function __construct(
+        private readonly ProcurementPurchasePricingService $purchasePricingService,
+    ) {
+    }
+
     public function buildSupplierGroups(TenantAccount $tenant, array $filters = []): array
     {
         $procurements = $this->baseOpenProcurementQuery($tenant, $filters)
@@ -78,7 +85,7 @@ class SupplierProcurementRequestDataBuilder
         $request->loadMissing(['supplier', 'items.order', 'items.orderItem', 'items.workForm', 'items.procurement.orderItem']);
 
         $items = $request->items->map(function (SupplierProcurementRequestItem $item) {
-            $suggestedPrice = $item->purchase_list_price;
+            $suggestedPrice = $item->purchase_list_price_try ?? $item->purchase_list_price;
             $missingPrice = false;
 
             if ($suggestedPrice === null && $item->procurement) {
@@ -91,18 +98,17 @@ class SupplierProcurementRequestDataBuilder
 
             if ($item->purchase_list_price === null && $suggestedPrice !== null) {
                 $item->purchase_list_price = round((float) $suggestedPrice, 2);
-                $item->recalculatePurchaseTotals();
+            }
+
+            if ($item->purchase_list_price_try === null && $suggestedPrice !== null) {
+                $item->purchase_list_price_try = round((float) $suggestedPrice, 6);
             }
 
             if ($item->discount_rate === null) {
                 $item->discount_rate = 0.0;
             }
 
-            $salesReference = $this->buildSalesReference($item);
-            $item->setAttribute('sales_unit_price', $salesReference['sales_unit_price']);
-            $item->setAttribute('sales_total', $salesReference['sales_total']);
-            $item->setAttribute('sales_reference_missing', $salesReference['sales_reference_missing']);
-            $item->setAttribute('purchase_sales_warnings', $salesReference['warnings']);
+            $item->setAttribute('purchase_ui', $this->buildPurchasePresentation($item));
 
             return $item;
         });
@@ -115,6 +121,7 @@ class SupplierProcurementRequestDataBuilder
             'total_quantity' => round($items->sum(fn ($item) => (float) $item->requested_quantity), 2),
             'purchase_total' => round($items->sum(fn ($item) => (float) ($item->purchase_total ?? 0)), 2),
             'has_missing_purchase_prices' => $items->contains(fn ($item) => (bool) ($item->purchase_list_price_missing ?? false)),
+            'legacy_purchase_truth_item_count' => $items->filter(fn (SupplierProcurementRequestItem $item) => !$item->hasCanonicalPurchaseSnapshot())->count(),
         ];
     }
 
@@ -242,119 +249,81 @@ class SupplierProcurementRequestDataBuilder
             return null;
         }
 
-        $procurement->loadMissing('orderItem');
-
-        $snapshot = is_array($procurement->snapshot) ? $procurement->snapshot : [];
-        $productSnapshot = is_array($procurement->orderItem?->product_snapshot) ? $procurement->orderItem->product_snapshot : [];
-        $itemPriceSnapshot = is_array($procurement->orderItem?->price_snapshot) ? $procurement->orderItem->price_snapshot : [];
-
-        $candidates = [
-            data_get($snapshot, 'purchase_list_price'),
-            data_get($snapshot, 'supplier_list_price'),
-            data_get($snapshot, 'source_list_price'),
-            data_get($snapshot, 'price_snapshot.list_price'),
-            data_get($snapshot, 'supplier_price_snapshot.list_price'),
-            data_get($snapshot, 'catalog_price_snapshot.list_price'),
-            data_get($productSnapshot, 'purchase_list_price'),
-            data_get($productSnapshot, 'supplier_list_price'),
-            data_get($productSnapshot, 'source_list_price'),
-            data_get($productSnapshot, 'list_price'),
-            data_get($productSnapshot, 'list_price_snapshot'),
-            data_get($productSnapshot, 'supply_price_snapshot.list_price'),
-            data_get($productSnapshot, 'price_snapshot.list_price'),
-            data_get($productSnapshot, 'meta.price_snapshot.list_price'),
-            data_get($itemPriceSnapshot, 'purchase_list_price'),
-            data_get($itemPriceSnapshot, 'supplier_list_price'),
-            data_get($itemPriceSnapshot, 'list_price'),
-        ];
-
-        foreach ($candidates as $candidate) {
-            if ($candidate === null || $candidate === '') {
-                continue;
-            }
-
-            return round((float) $candidate, 2);
-        }
-
-        return null;
+        return $this->purchasePricingService->suggestLegacyListPriceTry($procurement);
     }
 
-    protected function buildSalesReference(SupplierProcurementRequestItem $item): array
+    public function buildPurchasePresentation(SupplierProcurementRequestItem $item): array
     {
-        $orderItem = $item->orderItem ?: $item->procurement?->orderItem;
-        $priceSnapshot = is_array($orderItem?->price_snapshot) ? $orderItem->price_snapshot : [];
+        $snapshot = is_array($item->purchase_price_snapshot) ? $item->purchase_price_snapshot : [];
+        $sourceAmount = $item->purchase_source_amount ?? data_get($snapshot, 'purchase_source_amount');
+        $sourceCurrency = (string) ($item->purchase_source_currency ?? data_get($snapshot, 'purchase_source_currency') ?? '');
+        $tryEquivalent = $item->purchase_list_price_try ?? data_get($snapshot, 'purchase_list_price_try') ?? $item->purchase_list_price;
+        $fxRate = $item->purchase_fx_rate ?? data_get($snapshot, 'purchase_fx_rate');
+        $fxRateDate = $item->purchase_fx_rate_date ?? data_get($snapshot, 'purchase_fx_rate_date');
+        $calculatedUnit = $item->purchase_calculated_unit_price ?? data_get($snapshot, 'purchase_calculated_unit_price');
+        $finalUnit = $item->purchase_unit_price ?? data_get($snapshot, 'purchase_final_unit_price');
+        $warningCode = (string) (data_get($snapshot, 'warning_code') ?? '');
+        $resolutionStatus = (string) (data_get($snapshot, 'resolution_status') ?? '');
+        $manualOverride = (bool) ($item->purchase_manual_override ?? data_get($snapshot, 'purchase_manual_override', false));
+        $sourceDisplayCurrency = $sourceCurrency === 'TRY' ? 'TL' : $sourceCurrency;
+        $sourceDisplay = $sourceAmount !== null && $sourceCurrency !== ''
+            ? $this->formatMoney($sourceAmount, 2, $sourceDisplayCurrency)
+            : null;
+        $tryEquivalentDisplay = $tryEquivalent !== null
+            ? $this->formatMoney($tryEquivalent, 2, 'TL')
+            : null;
+        $rateDisplay = null;
 
-        $salesUnitPrice = $this->firstNumericValue([
-            $orderItem?->unit_price,
-            data_get($priceSnapshot, 'unit_price'),
-            data_get($priceSnapshot, 'sales_unit_price'),
-        ]);
-
-        $salesTotal = $this->firstNumericValue([
-            $orderItem?->line_total,
-            data_get($priceSnapshot, 'line_total'),
-            data_get($priceSnapshot, 'sales_total'),
-        ]);
+        if ($sourceCurrency !== '' && $sourceCurrency !== 'TRY' && $fxRate !== null) {
+            $rateDisplay = '1 ' . $sourceCurrency . ' = ' . $this->formatNumber($fxRate, 4) . ' TL';
+        }
 
         return [
-            'sales_unit_price' => $salesUnitPrice,
-            'sales_total' => $salesTotal,
-            'sales_reference_missing' => $salesUnitPrice === null && $salesTotal === null,
-            'warnings' => $this->buildPurchaseSalesWarnings(
-                $item->purchase_list_price !== null ? round((float) $item->purchase_list_price, 2) : null,
-                $item->purchase_unit_price !== null ? round((float) $item->purchase_unit_price, 2) : null,
-                $item->purchase_total !== null ? round((float) $item->purchase_total, 2) : null,
-                $salesUnitPrice,
-                $salesTotal
-            ),
+            'resolution_status' => $resolutionStatus,
+            'warning_code' => $warningCode,
+            'warning_text' => $this->resolvePurchaseWarningText($warningCode, $resolutionStatus),
+            'source_currency' => $sourceCurrency,
+            'source_display' => $sourceDisplay,
+            'try_equivalent_display' => $tryEquivalentDisplay,
+            'rate_display' => $rateDisplay,
+            'rate_date_display' => $this->formatDate($fxRateDate),
+            'discount_display' => $this->formatNumber($item->discount_rate ?? 0, 2),
+            'calculated_unit_value' => $calculatedUnit !== null ? round((float) $calculatedUnit, 6) : null,
+            'calculated_unit_display' => $calculatedUnit !== null ? $this->formatMoney($calculatedUnit, 2, 'TL') : null,
+            'effective_unit_value' => $finalUnit !== null ? round((float) $finalUnit, 6) : null,
+            'final_unit_display' => $finalUnit !== null ? $this->formatMoney($finalUnit, 2, 'TL') : null,
+            'manual_override' => $manualOverride,
+            'purchase_total_display' => $item->purchase_total !== null ? $this->formatMoney($item->purchase_total, 2, 'TL') : null,
         ];
     }
 
-    protected function buildPurchaseSalesWarnings(
-        ?float $purchaseListPrice,
-        ?float $purchaseUnitPrice,
-        ?float $purchaseTotal,
-        ?float $salesUnitPrice,
-        ?float $salesTotal
-    ): array {
-        $warnings = [];
-
-        if (($purchaseListPrice === null || abs($purchaseListPrice) < 0.0001)
-            && ($purchaseUnitPrice === null || abs($purchaseUnitPrice) < 0.0001)) {
-            $warnings[] = 'Liste fiyatı bulunamadı; özel alış fiyatı girin';
-        }
-
-        if ($salesUnitPrice === null && $salesTotal === null) {
-            $warnings[] = 'Satış fiyatı referansı bulunamadı';
-        }
-
-        if ($purchaseUnitPrice !== null && $salesUnitPrice !== null) {
-            if ($purchaseUnitPrice > $salesUnitPrice) {
-                $warnings[] = 'Alış fiyatı satış fiyatını aşıyor';
-            } elseif ($salesUnitPrice > 0
-                && $purchaseUnitPrice >= ($salesUnitPrice * 0.90)
-                && $purchaseUnitPrice <= $salesUnitPrice) {
-                $warnings[] = 'Alış fiyatı satış fiyatına çok yakın';
-            }
-        }
-
-        if ($purchaseTotal !== null && $salesTotal !== null && $purchaseTotal > $salesTotal) {
-            $warnings[] = 'Alış toplamı satış toplamını aşıyor';
-        }
-
-        return array_values(array_unique($warnings));
+    protected function resolvePurchaseWarningText(string $warningCode, string $resolutionStatus): ?string
+    {
+        return match (true) {
+            $warningCode === 'missing_supplier_purchase_source' => 'Tedarikçi liste fiyatı bulunamadı',
+            $warningCode === 'missing_fx_rate' => 'Kur bulunamadı; manuel alış birim fiyatı girin',
+            $warningCode === 'unsupported_source_currency' => 'Desteklenmeyen para birimi; manuel alış birim fiyatı girin',
+            $resolutionStatus === 'legacy_snapshot' => 'Eski procurement satırı; supplier kaynak para birimi geçmiş snapshotta yok',
+            default => null,
+        };
     }
 
-    protected function firstNumericValue(array $candidates): ?float
+    protected function formatMoney(mixed $value, int $precision, string $currency): string
     {
-        foreach ($candidates as $candidate) {
-            if ($candidate === null || $candidate === '') {
-                continue;
-            }
+        return $this->formatNumber($value, $precision) . ' ' . $currency;
+    }
 
-            return round((float) $candidate, 2);
+    protected function formatNumber(mixed $value, int $precision): string
+    {
+        return number_format((float) $value, $precision, ',', '.');
+    }
+
+    protected function formatDate(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
         }
 
-        return null;
+        return Carbon::parse((string) $value)->format('d.m.Y');
     }
 }

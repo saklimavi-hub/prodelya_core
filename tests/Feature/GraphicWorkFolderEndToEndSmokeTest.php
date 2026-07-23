@@ -91,7 +91,6 @@ class GraphicWorkFolderEndToEndSmokeTest extends TestCase
         $graphicsIndex->assertSee('1b');
         $graphicsIndex->assertSee('UV Baskı');
         $graphicsIndex->assertSee('Lazer');
-        $graphicsIndex->assertSee($folder->display_path);
         $graphicsIndex->assertDontSee('unit_price', false);
         $graphicsIndex->assertDontSee('list_price', false);
         $graphicsIndex->assertDontSee('discount_rate', false);

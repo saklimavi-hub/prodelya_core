@@ -16,7 +16,7 @@ class StoreOrderPaymentRequest extends FormRequest
     public function rules(): array
     {
         $order = $this->route('order');
-        $orderCurrency = (string) ($order?->currency ?: 'TL');
+        $orderCurrency = $this->normalizeCurrency($order?->currency ?: 'TRY');
 
         return [
             'payment_type' => ['required', Rule::in([
@@ -27,9 +27,9 @@ class StoreOrderPaymentRequest extends FormRequest
             'amount' => ['required', 'numeric', 'min:0.01'],
             'currency' => [
                 'required',
-                Rule::in(['TL', 'USD', 'EUR']),
+                Rule::in(['TL', 'TRY', 'USD', 'EUR']),
                 function (string $attribute, mixed $value, \Closure $fail) use ($orderCurrency): void {
-                    if (mb_strtoupper((string) $value) !== mb_strtoupper($orderCurrency)) {
+                    if ($this->normalizeCurrency($value) !== $orderCurrency) {
                         $fail('Tahsilat para birimi sipariş para birimi ile aynı olmalıdır.');
                     }
                 },
@@ -65,5 +65,12 @@ class StoreOrderPaymentRequest extends FormRequest
             'payment_reference.max' => 'Referans numarası en fazla 100 karakter olabilir.',
             'payment_note.max' => 'Açıklama en fazla 1000 karakter olabilir.',
         ];
+    }
+
+    private function normalizeCurrency(mixed $currency): string
+    {
+        $value = mb_strtoupper(trim((string) $currency));
+
+        return $value === 'TL' ? 'TRY' : $value;
     }
 }

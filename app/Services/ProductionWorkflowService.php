@@ -40,17 +40,53 @@ class ProductionWorkflowService
         ?User $user = null,
         ?string $note = null
     ): OrderItemPrintProduction {
-        $productionType = $attributes['production_type'] ?? $production->production_type;
-        $actionType = in_array($productionType, [
+        $oldType = $this->resolvedProductionType($production);
+        $productionType = OrderItemPrintProduction::normalizeProductionType($attributes['production_type'] ?? null)
+            ?? $oldType
+            ?? $production->production_type;
+        $routeChanged = $oldType !== $productionType;
+        $assignmentNote = filled($note) ? trim((string) $note) : null;
+        $oldCompanyId = (int) ($production->production_company_id ?? 0);
+        $newCompanyId = (int) ($attributes['production_company_id'] ?? 0);
+
+        $isExternal = in_array($productionType, [
             OrderItemPrintProduction::TYPE_EXTERNAL,
             OrderItemPrintProduction::TYPE_OUTSOURCED,
-        ], true) ? 'production_assigned_external' : 'production_assigned_internal';
+        ], true);
+        $companyWillBeAssigned = $isExternal && $oldCompanyId <= 0 && $newCompanyId > 0;
+        $companyWillChange = $isExternal && $oldCompanyId > 0 && $newCompanyId > 0 && $oldCompanyId !== $newCompanyId;
+        $assignmentWillChange = $companyWillBeAssigned || $companyWillChange;
+
+        if (($routeChanged || $assignmentWillChange) && in_array($production->production_status, [
+            OrderItemPrintProduction::STATUS_COMPLETED,
+            OrderItemPrintProduction::STATUS_CANCELLED,
+        ], true)) {
+            throw new \InvalidArgumentException('Tamamlanan veya iptal edilen üretimin ataması değiştirilemez.');
+        }
+
+        if ($routeChanged && ($production->started_at || (float) $production->completed_quantity > 0.0) && blank($assignmentNote)) {
+            throw new \InvalidArgumentException('Başlamış veya kısmi üretimde rota değişimi için gerekçe zorunludur.');
+        }
+
+        if ($companyWillChange && blank($assignmentNote)) {
+            throw new \InvalidArgumentException('Fason firma değişikliği için gerekçe zorunludur.');
+        }
+
+        $oldTypeLabel = OrderItemPrintProduction::productionTypeLabels()[$oldType]
+            ?? $production->safeProductionTypeLabel();
+        $newTypeLabel = OrderItemPrintProduction::productionTypeLabels()[$productionType] ?? 'Belirlenmedi';
+        $oldCompanyName = $oldCompanyId > 0
+            ? (Company::query()->whereKey($oldCompanyId)->value('legal_name') ?: ('#'.$oldCompanyId))
+            : 'Atanmamış';
+        $newCompanyName = $newCompanyId > 0
+            ? (Company::query()->whereKey($newCompanyId)->value('legal_name') ?: ('#'.$newCompanyId))
+            : 'Atanmamış';
 
         $changes = [
             'production_type' => $productionType,
-            'production_company_id' => $attributes['production_company_id'] ?? null,
-            'production_unit_name' => $attributes['production_unit_name'] ?? null,
-            'assigned_to' => $attributes['assigned_to'] ?? null,
+            'production_company_id' => $isExternal ? ($attributes['production_company_id'] ?? null) : null,
+            'production_unit_name' => $isExternal ? null : ($attributes['production_unit_name'] ?? null),
+            'assigned_to' => $isExternal ? null : ($attributes['assigned_to'] ?? null),
             'cliche_required' => (bool) ($attributes['cliche_required'] ?? false),
             'cliche_status' => $attributes['cliche_status'] ?? $production->cliche_status,
             'production_note' => $attributes['production_note'] ?? $production->production_note,
@@ -61,42 +97,42 @@ class ProductionWorkflowService
             'subcontractor_cost_note' => $attributes['subcontractor_cost_note'] ?? $production->subcontractor_cost_note,
         ];
 
+        if ($routeChanged && $production->started_at && (float) $production->completed_quantity <= 0.0) {
+            $changes['production_status'] = OrderItemPrintProduction::STATUS_PENDING;
+            $changes['started_at'] = null;
+            $changes['sent_to_subcontractor_at'] = null;
+        }
+
+        $actionType = match (true) {
+            $routeChanged => 'production_route_changed',
+            $companyWillChange => 'production_subcontractor_reassigned',
+            default => ($isExternal ? 'production_assigned_external' : 'production_assigned_internal'),
+        };
+        $defaultNote = match (true) {
+            $routeChanged => sprintf('Üretim yolu değiştirildi: %s → %s.%s', $oldTypeLabel, $newTypeLabel, $assignmentNote ? ' Gerekçe: '.$assignmentNote : ''),
+            $companyWillChange => sprintf('Fason firma değiştirildi: %s → %s. Gerekçe: %s', $oldCompanyName, $newCompanyName, $assignmentNote),
+            default => ($isExternal ? 'İş dış baskı / fasona atandı.' : 'İş iç üretime atandı.'),
+        };
+
         return $this->transition(
             $production,
             $changes,
             $actionType,
             $user,
-            $note ?: 'Üretim ataması güncellendi.'
+            $defaultNote
         );
     }
-
     public function assignInternal(
         OrderItemPrintProduction $production,
         ?User $user = null,
         ?string $unitName = null,
         ?string $note = null
     ): OrderItemPrintProduction {
-        $this->assertReadiness($production);
-
-        if ($production->started_at && $production->production_status !== OrderItemPrintProduction::STATUS_PENDING) {
-            throw new \InvalidArgumentException('Bu baskı zaten başlatılmış.');
+        if (filled($unitName)) {
+            $production->forceFill(['production_unit_name' => trim((string) $unitName)]);
         }
 
-        return $this->transition(
-            $production,
-            [
-                'production_type' => OrderItemPrintProduction::TYPE_INTERNAL,
-                'production_status' => OrderItemPrintProduction::STATUS_INTERNAL,
-                'production_company_id' => null,
-                'production_unit_name' => $unitName,
-                'production_note' => $note ?: $production->production_note,
-                'started_at' => $production->started_at ?: now(),
-            ],
-            'production_assigned_internal',
-            $user,
-            $note ?: 'İş iç üretime atandı.',
-            'production_started'
-        );
+        return $this->markStarted($production, $user, $note ?: 'Üretim başlatıldı.');
     }
 
     public function assignExternal(
@@ -134,13 +170,30 @@ class ProductionWorkflowService
             throw new \InvalidArgumentException('Bu baskı zaten başlatılmış.');
         }
 
-        $status = $production->isOutsourced() || $production->isExternal()
+        $productionType = $this->resolvedProductionType($production);
+
+        if ($productionType === OrderItemPrintProduction::TYPE_INTERNAL && !$production->assigned_to) {
+            throw new \InvalidArgumentException('Üretime başlamadan önce operatör seçin.');
+        }
+
+        if (in_array($productionType, [
+            OrderItemPrintProduction::TYPE_EXTERNAL,
+            OrderItemPrintProduction::TYPE_OUTSOURCED,
+        ], true) && !$production->production_company_id) {
+            throw new \InvalidArgumentException('Fasona göndermeden önce fason firma seçin.');
+        }
+
+        $status = in_array($productionType, [
+            OrderItemPrintProduction::TYPE_EXTERNAL,
+            OrderItemPrintProduction::TYPE_OUTSOURCED,
+        ], true)
             ? OrderItemPrintProduction::STATUS_SENT_TO_SUBCONTRACTOR
             : OrderItemPrintProduction::STATUS_INTERNAL;
 
         return $this->transition(
             $production,
             [
+                'production_type' => $productionType ?: $production->production_type,
                 'production_status' => $status,
                 'started_at' => now(),
             ],
@@ -150,7 +203,6 @@ class ProductionWorkflowService
             'production_started'
         );
     }
-
     public function markPartiallyCompleted(
         OrderItemPrintProduction $production,
         float $completedQty,
@@ -198,6 +250,10 @@ class ProductionWorkflowService
 
         if (!$production->isOutsourced() && !$production->isExternal()) {
             throw new \InvalidArgumentException('Production must be external or outsourced before sending to subcontractor.');
+        }
+
+        if (!$production->production_company_id) {
+            throw new \InvalidArgumentException('Fasona göndermeden önce fason firma seçin.');
         }
 
         return $this->transition(
@@ -375,6 +431,13 @@ class ProductionWorkflowService
         return $changes;
     }
 
+    private function resolvedProductionType(OrderItemPrintProduction $production): ?string
+    {
+        $production->loadMissing('orderItemPrint');
+
+        return OrderItemPrintProduction::normalizeProductionType($production->production_type)
+            ?? OrderItemPrintProduction::normalizeProductionType($production->orderItemPrint?->production_type);
+    }
     private function persistWithSnapshot(
         OrderItemPrintProduction $production,
         array $changes,

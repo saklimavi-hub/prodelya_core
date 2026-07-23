@@ -21,7 +21,7 @@ class ProductionExternalAccessoryVisibilityTest extends TestCase
         $this->setUpProductionShowFixtures();
     }
 
-    public function test_external_tab_shows_accessory_production_without_technical_leaks(): void
+    public function test_canonical_external_tracking_hides_accessory_technical_leaks(): void
     {
         $partner = $this->createPartnerCompany('Klişe Partneri');
         $account = app(CurrentAccountSyncService::class)->ensureForCompany($partner);
@@ -43,16 +43,18 @@ class ProductionExternalAccessoryVisibilityTest extends TestCase
 
         $production = $production->fresh(['orderItemPrint.setupRequirements.assignedCompany']);
 
+        $this->actingAs($this->financeUser)
+            ->withServerVariables(['HTTP_HOST' => self::PRODUCTION_SHOW_HOST])
+            ->get(route('admin.productions.show', $production) . '?tab=dis-uretim')
+            ->assertRedirect(route('admin.productions.subcontract-tracking', $production));
+
         $response = $this->actingAs($this->financeUser)
             ->withServerVariables(['HTTP_HOST' => self::PRODUCTION_SHOW_HOST])
-            ->get(route('admin.productions.show', $production) . '?tab=dis-uretim');
+            ->get(route('admin.productions.subcontract-tracking', $production));
 
         $response->assertOk();
-        $response->assertSee('Ara Eleman Üretimi');
-        $response->assertSee('Klişe');
-        $response->assertSee('Klişe Partneri');
-        $response->assertSee('Eşleşme var');
-        $response->assertSee('800,00 TRY');
+        $response->assertDontSee('Ara Eleman Üretimi');
+        $response->assertDontSee('Klişe üretimi başlatıldı');
         $response->assertDontSee('assigned_current_account_id', false);
     }
 }

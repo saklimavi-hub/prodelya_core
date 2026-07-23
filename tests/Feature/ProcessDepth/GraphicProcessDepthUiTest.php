@@ -15,11 +15,13 @@ class GraphicProcessDepthUiTest extends TestCase
 {
     use BuildsGraphicShowFixtures;
     use RefreshDatabase;
+    protected bool $seed = true;
+
+
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->seed();
         $this->setUpGraphicShowFixtures();
     }
 

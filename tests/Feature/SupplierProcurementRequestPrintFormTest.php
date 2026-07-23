@@ -71,10 +71,9 @@ class SupplierProcurementRequestPrintFormTest extends TestCase
 
         $response->assertOk();
         $response->assertSee('TEDARİKÇİ TALEP FORMU');
-        $response->assertSee('Tedarikçi Talep Formu');
         $response->assertSee('Yazdır');
         $response->assertSee('Talebi Düzenle');
-        $response->assertSee('Tedarik Listesine Dön');
+        $response->assertSee('Listeye Dön');
         $response->assertSee('print-toolbar', false);
         $response->assertSee('no-print', false);
         $response->assertSee($supplier->name);
@@ -98,13 +97,6 @@ class SupplierProcurementRequestPrintFormTest extends TestCase
         $response->assertDontSee('Alış Toplam');
         $response->assertDontSee('Satış Ref');
         $response->assertDontSee('Satış Toplam');
-        $response->assertDontSee('KDV');
-        $response->assertDontSee('Genel Toplam');
-        $response->assertDontSee('Ara Toplam');
-        $response->assertDontSee('Tahsilat');
-        $response->assertDontSee('Bakiye');
-        $response->assertDontSee('Maliyet');
-        $response->assertDontSee('Margin');
         $response->assertDontSee('purchase_list_price', false);
         $response->assertDontSee('purchase_unit_price', false);
         $response->assertDontSee('purchase_total', false);

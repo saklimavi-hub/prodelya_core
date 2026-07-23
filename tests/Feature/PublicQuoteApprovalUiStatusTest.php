@@ -54,7 +54,7 @@ class PublicQuoteApprovalUiStatusTest extends TestCase
 
         $showResponse = $this->get(route('public.quotes.approval.show', ['token' => $approvalRequest->token]));
         $showResponse->assertOk();
-        $showResponse->assertSee('Teklifinizi İnceleyin');
+        $showResponse->assertSee('Teklifi İncele');
         $showResponse->assertSee('Teklifi Onayla');
         $showResponse->assertSee('Revize İste');
         $showResponse->assertSee('Teklifi Reddet');

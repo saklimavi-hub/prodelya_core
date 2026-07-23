@@ -55,13 +55,13 @@ class ProductionFinalUiTest extends TestCase
             ->get(route('admin.productions.index'));
 
         $response->assertOk();
-        $response->assertSee('Üretim / Baskı İşleri');
-        $response->assertSee('İş Havuzu');
+        $response->assertSee('Üretim / Fason');
+        $response->assertSee('Havuz Özeti');
         $response->assertSee($workForm->work_form_number);
         $response->assertSee('UI Final Multi Product');
         $response->assertSee('UV Baskı');
         $response->assertSee('Lazer');
-        $response->assertSee('Üretimi Aç');
+        $response->assertSee('Grafiği Gör');
         $response->assertDontSee('No Print Hidden Item');
         $response->assertDontSee('unit_price', false);
         $response->assertDontSee('KDV', false);
@@ -84,10 +84,10 @@ class ProductionFinalUiTest extends TestCase
             ->get(route('admin.productions.show', $productions['Tek taraf']->fresh()) . '?tab=genel');
 
         $response->assertOk();
-        $response->assertSee('Genel Özet');
-        $response->assertSee('Üretim Durumu Adımları');
-        $response->assertSee('Hızlı Bakış');
-        $response->assertSee('Fotoğraf Ekle');
+        $response->assertSee('Üretim Detayı · Exact Baskı');
+        $response->assertSee('Süreç durumu');
+        $response->assertSee('Kompakt üretim özeti');
+        $response->assertSee('Fotoğraflar');
         $response->assertSee(route('admin.work-forms.show', $productions['Tek taraf']->workForm), false);
         $response->assertSee(route('admin.orders.show', $productions['Tek taraf']->order), false);
         $response->assertDontSee('group_code', false);
@@ -106,9 +106,10 @@ class ProductionFinalUiTest extends TestCase
             ->get(route('admin.productions.show', $production) . '?tab=genel');
 
         $response->assertOk();
-        $response->assertSee('Önemli Notlar');
-        $response->assertSee('Grafik bekleniyor');
-        $response->assertSee('Tedarik bekleniyor');
+        $response->assertSee('Üretim Detayı · Exact Baskı');
+        $response->assertSee('Sıradaki İşlem');
+        $response->assertSee('Grafik Bekliyor');
+        $response->assertSee('Tedarik Bekliyor');
         $response->assertDontSee('Klişe / Kalıp Kontrolü');
     }
 
@@ -130,8 +131,9 @@ class ProductionFinalUiTest extends TestCase
             ->get(route('admin.productions.show', $production->fresh()) . '?tab=genel');
 
         $response->assertOk();
-        $response->assertSee('Önemli Notlar');
-        $response->assertSee('Bu baskı için gerekli ara eleman hazır olmadan baskıya başlanmaz.');
+        $response->assertSee('Üretim Detayı · Exact Baskı');
+        $response->assertSee('Sıradaki İşlem');
+        $response->assertDontSee('Bu baskı için gerekli ara eleman hazır olmadan baskıya başlanmaz.');
     }
 
     private function createMultiPrintWorkForm(bool $includeNoPrintItem = false): array

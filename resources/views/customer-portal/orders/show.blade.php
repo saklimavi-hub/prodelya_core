@@ -126,7 +126,7 @@
         @endif
 
         <p class="muted" style="margin:16px 0 0;">{{ $orderDetail['header']['customer_message'] }}</p>
-        <p class="muted" style="margin:8px 0 0;">Sipariş fiyatları ürün satırında baskı dahil gösterilir. Baskı bilgi satırı yalnız açıklama ve görünürse fiyat kırılımını içerir.</p>
+        <p class="muted" style="margin:8px 0 0;">Sipariş fiyatları teklifte seçilen görünüm kuralına göre sunulur. Baskı detayları görünürse ürün ve baskı ayrı, gizliyse baskı dahil birleşik fiyat gösterilir.</p>
     </section>
 
     <section class="section" style="margin-top:16px;">
@@ -142,14 +142,18 @@
                             </p>
                         </div>
                         <div>
-                            <span class="label">Birim Fiyat</span>
+                            <span class="label">{{ $item['unit_price_label'] }}</span>
                             <div class="value">{{ $item['unit_price'] ?: '-' }}</div>
                         </div>
                         <div>
-                            <span class="label">Satır Toplamı</span>
+                            <span class="label">{{ $item['line_total_label'] }}</span>
                             <div class="value">{{ $item['line_total'] ?: '-' }}</div>
                         </div>
                     </div>
+
+                    @if($item['show_commercial_total'])
+                        <p class="muted" style="margin:12px 0 0;">{{ $item['commercial_total_label'] }}: {{ $item['commercial_total_value'] ?: '-' }}</p>
+                    @endif
 
                     @if(! empty($item['prints']))
                         <div class="print-list" style="margin-top:14px;">
@@ -160,8 +164,8 @@
                                         <p class="muted" style="margin:8px 0 0;">
                                             {{ $print['quantity'] }}
                                             @if($print['show_price_details'])
-                                                · Baskı Birim: {{ $print['unit_price'] ?: '-' }}
-                                                · Baskı Toplam: {{ $print['line_total'] ?: '-' }}
+                                                · Baskı Birim Fiyatı: {{ $print['unit_price'] ?: '-' }}
+                                                · Baskı Toplamı: {{ $print['line_total'] ?: '-' }}
                                             @endif
                                         </p>
                                     </div>
@@ -250,7 +254,7 @@
 
     @if($filesEnabled)
         <section class="section" style="margin-top:16px;">
-            <h3 style="margin:0 0 14px;">Müşteri Dosyaları</h3>
+            <h3 style="margin:0 0 14px;">Dosyayı Görüntüle</h3>
             @if(empty($visibleAttachments))
                 <p class="muted" style="margin:0;">Bu sipariş için henüz görüntülenebilir dosya yok.</p>
             @else
@@ -270,7 +274,7 @@
                             </div>
 
                             @if($attachment['show_url'])
-                                <a href="{{ $attachment['show_url'] }}" class="helper-link">Aç</a>
+                                <a href="{{ $attachment['show_url'] }}" class="helper-link">Dosyayı Görüntüle</a>
                             @endif
                         </article>
                     @endforeach

@@ -1,0 +1,471 @@
+# Quote Detail / Send Channel Hunk Staging Prep Raporu — 2026-07-10
+
+## 1. Özet
+- Yeni kod yazıldı mı?: Hayır
+- Staging/commit yapıldı mı?: Hayır
+- Product Hub'a dokunuldu mu?: Hayır
+- Revision A-B-C'ye dokunuldu mu?: Hayır
+- Public approval core'a dokunuldu mu?: Hayır
+- Notification service-core'a dokunuldu mu?: Hayır
+- Quote/order list checkpoint'e dokunuldu mu?: Hayır
+- Order detail checkpoint'e dokunuldu mu?: Hayır
+
+## 2. Kalan Git Durumu
+- modified: 17
+- untracked: 62
+- quote detail dosyaları:
+  - `app/Http/Controllers/Admin/PromotionQuoteController.php`
+  - `resources/views/admin/promotion-quotes/show.blade.php`
+  - ilgili modified/untracked `PromotionQuoteDetail*`, `PromotionQuoteShowDecisionScreenTest.php`, `PromotionQuoteConvertCtaTest.php`, `RevisionAndRepeatOrderSourceReferenceTest.php`
+- send-channel dosyaları:
+  - `app/Http/Controllers/Admin/PromotionQuoteController.php`
+  - `resources/views/admin/promotion-quotes/show.blade.php`
+  - `tests/Feature/PromotionQuoteSendChannelHotfixTest.php`
+  - `tests/Feature/PromotionQuoteSendActionsUxTest.php`
+  - `tests/Feature/PromotionQuoteDetailSendChannelUiTest.php`
+  - `tests/Feature/PromotionQuoteDetailWhatsappUiRuleTest.php`
+  - `tests/Feature/PromotionQuoteDetailPhoneHelperTextTest.php`
+  - `tests/Feature/PromotionQuoteDetailSendHotfixRegressionTest.php`
+- CSS dosyaları:
+  - `public/css/prodelya-admin.css`
+- docs/test dosyaları:
+  - çeşitli untracked docs raporları
+  - `tests/Feature/Concerns/BuildsPromotionQuoteDetailFixture.php`
+  - çok sayıda untracked `PromotionQuoteDetail*` testi
+
+## 3. PromotionQuoteController Hunk Analizi
+- `show()`
+  - grup: quote detail UI view-data
+  - mantıksal fark: görünür bir yeni davranış hunkı yok; `sourceOrderContext` ve `revisionCompareUrl` satırları efektif olarak line-ending churn görünüyor
+  - commit adaylığı: tek başına controller commit adayı değil
+  - güvenli ayrışma: hayır, çünkü gerçek davranış farkı görünmüyor
+  - risk: orta
+  - koruyan testler: `PromotionQuoteShowDecisionScreenTest`, `PromotionQuoteConvertCtaTest`, çok sayıda `PromotionQuoteDetail*`
+  - apply notu: bu method için dosya bazlı staging önerilmez; gerçek davranış hunkı yoksa hiç alınmamalı
+- `sendToCustomer()`
+  - grup: send-channel controller hunkları
+  - mantıksal fark:
+    - `sent_channel` ayrımı
+    - `manual` kanalında e-posta zorunluluğu
+    - `email` kanalında `force_email_preview`
+    - `whatsapp_link` kanalında telefon zorunluluğu
+    - `skip_email_send` ve `skip_whatsapp_dispatch`
+    - `whatsapp_result` session verisi
+  - commit adaylığı: `quotes: wire quote send channel actions`
+  - güvenli ayrışma: evet
+  - risk: çok yüksek
+  - koruyan testler: `PromotionQuoteSendChannelHotfixTest`, `PromotionQuoteSendActionsUxTest`, `PromotionQuoteDetailSendChannelUiTest`, `PromotionQuoteDetailWhatsappUiRuleTest`, `PromotionQuoteDetailPhoneHelperTextTest`, `PromotionQuoteDetailSendHotfixRegressionTest`
+  - apply notu: method patch gerekir
+- `openWhatsappLink()`
+  - grup: send-channel controller hunkları
+  - mantıksal fark:
+    - hata mesajı netleştirildi
+    - `TYPE_GENERAL` yerine `TYPE_QUOTE_LINK`
+    - doğrudan mesaj string'i yerine `public_link`, `quote_number`, `related_type`, `related_id` verileriyle link üretimi
+  - commit adaylığı: send-channel commit'i
+  - güvenli ayrışma: evet
+  - risk: yüksek
+  - koruyan testler: `PromotionQuoteSendActionsUxTest`, `PromotionQuoteSendChannelHotfixTest`
+  - apply notu: method patch gerekir
+- `openCustomerApproval()`
+  - grup: public approval admin UI
+  - mantıksal diff: bu worktree diffinde görünür yeni davranış yok
+  - commit adaylığı: yok
+  - güvenli ayrışma: uygulanmaz
+  - risk: düşük
+  - koruyan testler: `PromotionQuoteDetailCustomerApprovalUxTest`, `PublicQuoteApproval|QuoteApproval`
+  - apply notu: alınmamalı
+- `buildSendSuccessMessage()`
+  - grup: send-channel controller hunkları
+  - mantıksal fark:
+    - kanal bazlı success mesajları
+    - gerçek e-posta gönderimi için `STATUS_SENT` ayrımı
+  - commit adaylığı: send-channel commit'i
+  - güvenli ayrışma: evet
+  - risk: orta-yüksek
+  - koruyan testler: `PromotionQuoteSendChannelHotfixTest`, `PromotionQuoteSendActionsUxTest`
+  - apply notu: method patch gerekir
+- `normalizeSendRecipientData()`
+  - grup: send-channel controller hunkları
+  - mantıksal fark:
+    - primary contact fallback
+    - e-posta/telefon/ad çözümleme tek yerde birleştirildi
+  - commit adaylığı: send-channel commit'i
+  - güvenli ayrışma: evet
+  - risk: yüksek
+  - koruyan testler: `PromotionQuoteSendChannelHotfixTest`, `PromotionQuoteDetailPhoneHelperTextTest`
+  - apply notu: method patch gerekir
+- `buildSourceOrderContext()`
+  - grup: revision/repeat UI helper
+  - mantıksal diff: görünür davranış farkı yok; line-ending churn
+  - commit adaylığı: yok veya yalnız blade/admin UI commitinde gerekirse dışarıdan referans
+  - güvenli ayrışma: hayır, çünkü gerçek delta yok
+  - risk: düşük
+  - koruyan testler: `RevisionAndRepeatOrderSourceReferenceTest`
+  - apply notu: alınmamalı
+- `canAccessRevisionCompare()`
+  - grup: revision/repeat UI helper
+  - mantıksal diff: görünür davranış farkı yok; line-ending churn
+  - commit adaylığı: yok
+  - güvenli ayrışma: hayır
+  - risk: düşük
+  - koruyan testler: `RevisionAndRepeatOrderSourceReferenceTest`, `OrderRevision|RepeatOrder`
+  - apply notu: alınmamalı
+- `edit()`
+  - grup: revision/repeat UI context
+  - mantıksal diff: görünür yeni davranış yok; `sourceOrderContext` / `revisionCompareUrl` satırları efektif churn
+  - commit adaylığı: bu prep'te dışarıda
+  - güvenli ayrışma: hayır
+  - risk: düşük-orta
+  - koruyan testler: revision/repeat edit alanları için dolaylı koruma
+  - apply notu: alınmamalı
+- `revisionCompare()`
+  - grup: kesin dışarıda kalacaklar
+  - commit adaylığı: yok
+  - güvenli ayrışma: bu faz dışında
+  - risk: çok yüksek
+  - koruyan testler: `OrderRevision|RepeatOrder`
+  - apply notu: alınmamalı
+- `applyRevision()`
+  - grup: kesin dışarıda kalacaklar
+  - commit adaylığı: yok
+  - güvenli ayrışma: bu faz dışında
+  - risk: çok yüksek
+  - koruyan testler: `OrderRevision|RepeatOrder`
+  - apply notu: alınmamalı
+- `buildRevisionApplySummary()`
+  - grup: kesin dışarıda kalacaklar
+  - commit adaylığı: yok
+  - güvenli ayrışma: bu faz dışında
+  - risk: yüksek
+  - koruyan testler: `OrderRevision|RepeatOrder`
+  - apply notu: alınmamalı
+- `revisionApplyInfrastructureReady()`
+  - grup: kesin dışarıda kalacaklar
+  - commit adaylığı: yok
+  - güvenli ayrışma: bu faz dışında
+  - risk: orta
+  - koruyan testler: `OrderRevision|RepeatOrder`
+  - apply notu: alınmamalı
+- `buildWarningPayload()`
+  - grup: Product Hub warning/metin hunkları
+  - mantıksal fark:
+    - kategori uyarı metni ve bozuk karakter düzeltmesi
+  - commit adaylığı: Product Hub tarafına ait
+  - güvenli ayrışma: evet ama bu prep kapsamı dışında
+  - risk: orta
+  - koruyan testler: `ProductHubLiveProductInfoEndpointTest`, `PromotionQuoteLiveProductInfoUiTest`, `TenantProductCatalogMenuSimplificationTest`
+  - apply notu: alınmamalı
+- `index()`
+  - grup: quote/order list checkpoint
+  - mantıksal diff: bu diffte aktif hedef hunk yok
+  - commit adaylığı: yok
+  - güvenli ayrışma: uygulanmaz
+  - risk: düşük
+  - koruyan testler: `PromotionQuoteAndOrderIndex*`, quote/order list testleri
+  - apply notu: alınmamalı
+- dışarıda kalacaklar:
+  - BOM/line-ending churn
+  - `revisionCompare()`
+  - `applyRevision()`
+  - `buildRevisionApplySummary()`
+  - `revisionApplyInfrastructureReady()`
+  - `buildWarningPayload()`
+  - `index()` liste hunkları
+
+## 4. promotion-quotes/show.blade.php Hunk Analizi
+- quote detail layout
+  - kapsadığı bloklar:
+    - `page_topbar_hidden`
+    - `quote-page-head`
+    - `quote-strip`
+    - üst metrikler
+    - ürün/baskı kompakt satır yapısı
+    - sağ özet panelleri
+    - sekmeler
+    - `quote-bottom-bar`
+  - commit adaylığı: `quotes: refine quote detail decision layout`
+  - güvenli patch staging: evet, ama büyük blade olduğu için blok bazlı patch gerekir
+  - CSS bağımlılığı: yüksek
+  - koruyan testler: `PromotionQuoteShowDecisionScreenTest`, `PromotionQuoteConvertCtaTest`, çok sayıda `PromotionQuoteDetail*`, `PromotionQuoteDetailCssNamespaceSmokeTest`
+- send modal
+  - kapsadığı bloklar:
+    - `quoteSendModal`
+    - kanal pill'leri
+    - hidden `sent_channel`
+    - alıcı alanları
+    - telefon helper text
+    - readonly preview textarea
+    - `data-send-pill-index`
+    - modal open/close/escape/backdrop JS
+    - `channelValues`, preview builder, helper text JS
+  - commit adaylığı: `quotes: wire quote send channel actions`
+  - güvenli patch staging: evet, controller send-channel methodleriyle birlikte alınmalı
+  - CSS bağımlılığı: çok yüksek
+  - koruyan testler: `PromotionQuoteDetailSendChannelUiTest`, `PromotionQuoteDetailWhatsappUiRuleTest`, `PromotionQuoteDetailPhoneHelperTextTest`, `PromotionQuoteDetailSendHotfixRegressionTest`, `PromotionQuoteSendActionsUxTest`
+- public approval admin UI
+  - kapsadığı bloklar:
+    - approval tab/panel
+    - approval status alanları
+    - `Public Onay Linkini Aç`
+    - approval request summary
+  - commit adaylığı: `quotes: add quote admin approval and revision links`
+  - güvenli patch staging: evet, ama quote detail layout ile iç içe
+  - CSS bağımlılığı: orta-yüksek
+  - koruyan testler: `PromotionQuoteDetailCustomerApprovalUxTest`, `PublicQuoteApproval|QuoteApproval`
+- revision/repeat UI
+  - kapsadığı bloklar:
+    - `sourceOrderContext` banner
+    - `revisionCompareUrl` butonu
+    - kaynak sipariş uyarı alanları
+  - commit adaylığı: `quotes: add quote admin approval and revision links`
+  - güvenli patch staging: evet
+  - CSS bağımlılığı: orta
+  - koruyan testler: `RevisionAndRepeatOrderSourceReferenceTest`, `OrderRevision|RepeatOrder`
+- dışarıda kalacaklar
+  - Product Hub canlı ürün bilgisi ile ilgili ayrı hunklar
+  - public approval guest page
+  - quote list hunkları
+  - order detail hunkları
+  - tam dosya staging önerisi
+
+## 5. CSS Hunk Analizi
+- Quote detail CSS
+  - bloklar:
+    - `.promotion-quote-detail.quote-detail-compact`
+    - `quote-page-head`
+    - `quote-strip`
+    - `quote-top-metrics`
+    - `quote-layout`
+    - `promotion-quote-lines*`
+    - `quote-right-summary`
+    - `quote-tabs`
+    - `quote-bottom-bar`
+  - quote detail apply'de alınmalı mı?: evet, ama blade/controller commitinden ayrı CSS commitinde
+  - send-channel apply'de alınmalı mı?: send modal kısmı hariç hayır
+  - ayrı CSS commitine mi kalmalı?: evet
+  - blok sınırı net mi?: büyük ölçüde net
+  - global risk var mı?: orta
+  - patch staging gerekir mi?: evet
+- Send modal CSS
+  - bloklar:
+    - `.quote-send-modal`
+    - `.quote-send-modal-panel`
+    - `.quote-send-modal-head`
+    - `.quote-send-modal-grid`
+    - `.quote-send-modal-actions`
+    - `.quote-channel-pill`
+  - quote detail apply'de alınmalı mı?: mümkünse hayır
+  - send-channel apply'de alınmalı mı?: evet
+  - ayrı CSS commitine mi kalmalı?: evet
+  - blok sınırı net mi?: evet
+  - global risk var mı?: düşük-orta
+  - patch staging gerekir mi?: evet
+- Public approval admin UI CSS
+  - bloklar:
+    - approval tab/panel ile aynı namespacede duran özet ve action stilleri
+  - quote detail apply'de alınmalı mı?: admin approval commitine bırakılmalı
+  - send-channel apply'de alınmalı mı?: hayır
+  - ayrı CSS commitine mi kalmalı?: evet
+  - blok sınırı net mi?: kısmen
+  - global risk var mı?: orta
+  - patch staging gerekir mi?: evet
+- Revision/repeat UI CSS
+  - bloklar:
+    - source order banner
+    - revision compare link/button görünümü
+  - quote detail apply'de alınmalı mı?: hayır
+  - send-channel apply'de alınmalı mı?: hayır
+  - ayrı CSS commitine mi kalmalı?: evet
+  - blok sınırı net mi?: kısmen
+  - global risk var mı?: orta
+  - patch staging gerekir mi?: evet
+- Dışarıda kalacaklar
+  - `.pd-product-hub*`
+  - `.order-revision-compare*`
+  - `.pd-order-*`
+  - public graphic approval guest stilleri
+  - genel reset/token/button/card/modal/tab değişiklikleri, quote detail için zorunlu olmadıkça
+
+## 6. routes/web.php / config/admin_menu.php Analizi
+- `routes/web.php`
+  - quote detail/send-channel için zorunlu route diffi yok
+  - görünen farklar:
+    - revision compare/apply route satırlarında line-ending churn
+    - `catalog.search` Product Hub route hunkı
+    - order revision/repeat route satırlarında churn
+  - karar: bu faza alınmamalı
+- `config/admin_menu.php`
+  - finans menü etiketi/izinleri ve Product Hub başlık encoding düzeltmeleri var
+  - quote detail/send-channel ile ilgili değil
+  - karar: bu faza alınmamalı
+- `resources/views/public/graphics/approval/show.blade.php`
+  - guest approval form route düzeltmesi var
+  - quote detail/send-channel prep ile ilgili değil
+  - karar: bu faza alınmamalı
+
+## 7. Net Commit Planı
+- Commit A
+  - mesaj: `quotes: refine quote detail decision layout`
+  - dosyalar:
+    - `resources/views/admin/promotion-quotes/show.blade.php`
+    - ilgili `PromotionQuoteDetail*`, `PromotionQuoteShowDecisionScreenTest.php`, `PromotionQuoteConvertCtaTest.php`
+    - muhtemelen `tests/Feature/Concerns/BuildsPromotionQuoteDetailFixture.php`
+  - hunk notu:
+    - page head, quote strip, quote metrics, ürün/baskı kompakt layout, right summary, tabs, sticky bottom bar
+    - convert modal görsel/layout tarafı bu committe kalabilir
+    - controller tarafında gerçek davranış değişikliği görünmediği için controller almadan ilerlemek daha güvenli
+  - dışarıda bırakılacaklar:
+    - send modal
+    - send modal JS
+    - sendToCustomer/openWhatsappLink
+    - Product Hub warning metni
+    - revision apply/compare core
+    - CSS
+  - risk: yüksek
+  - test önerisi:
+    - `PromotionQuoteDetail|PromotionQuoteShowDecisionScreen|PromotionQuoteConvertCta`
+    - `PromotionQuote`
+- Commit B
+  - mesaj: `quotes: wire quote send channel actions`
+  - dosyalar:
+    - `app/Http/Controllers/Admin/PromotionQuoteController.php`
+      - yalnız `sendToCustomer()`
+      - yalnız `openWhatsappLink()`
+      - yalnız `buildSendSuccessMessage()`
+      - yalnız `normalizeSendRecipientData()`
+    - `resources/views/admin/promotion-quotes/show.blade.php`
+      - yalnız `quoteSendModal`
+      - channel pills
+      - helper text
+      - preview textarea
+      - send modal JS
+    - send-channel testleri
+  - hunk notu:
+    - controller methods method patch ile alınmalı
+    - blade içinde modal+JS birlikte alınmalı
+  - dışarıda bırakılacaklar:
+    - approval tab/panel
+    - source order banner
+    - revision compare link
+    - Product Hub
+    - CSS
+  - risk: çok yüksek
+  - test önerisi:
+    - `PromotionQuoteSendChannelHotfix|PromotionQuoteSendActionsUx|PromotionQuoteDetailSend|PromotionQuoteDetailWhatsapp|PromotionQuoteDetailPhone`
+    - `NotificationPublicApprovalTokenSanitization|QuoteNotificationIntegration|WhatsappLinkUsesNormalizedPhone`
+- Commit C
+  - mesaj: `quotes: add quote admin approval and revision links`
+  - dosyalar:
+    - `resources/views/admin/promotion-quotes/show.blade.php`
+      - approval tab/panel
+      - `Public Onay Linkini Aç`
+      - `sourceOrderContext` banner
+      - `revisionCompareUrl` butonu
+    - gerekirse controller'dan gerçek mantıksal diff çıkarsa yalnız ilgili context hunkları; mevcut diffte controller tarafında anlamlı delta görünmüyor
+    - ilgili approval/revision testleri
+  - hunk notu:
+    - blade bazlı patch staging daha güvenli
+  - dışarıda bırakılacaklar:
+    - public approval guest core
+    - revision apply/compare core
+    - send-channel runtime logic
+    - Product Hub
+    - CSS
+  - risk: yüksek
+  - test önerisi:
+    - `PromotionQuoteDetailCustomerApprovalUx|PublicQuoteApproval|QuoteApproval`
+    - `RevisionAndRepeatOrderSourceReference|OrderRevision|RepeatOrder`
+- Commit D
+  - mesaj: `ui: add quote detail and send modal styles`
+  - dosyalar:
+    - `public/css/prodelya-admin.css`
+  - hunk notu:
+    - yalnız quote detail namespace + send modal namespace blokları
+    - order detail / product hub / revision compare CSS hariç
+  - dışarıda bırakılacaklar:
+    - `.pd-order-*`
+    - `.pd-product-hub*`
+    - `.order-revision-compare*`
+    - global reset/token/button/card/modal/tab churn
+  - risk: çok yüksek
+  - test önerisi:
+    - `PromotionQuoteDetail*`
+    - `PromotionQuoteSendChannelHotfix|PromotionQuoteSendActionsUx|PromotionQuoteDetailSend|PromotionQuoteDetailWhatsapp|PromotionQuoteDetailPhone`
+    - `AdminSmokeTest|FullOperationalFlowSmokeTest`
+- Commit E
+  - mesaj: `docs: add quote detail send channel hunk prep report`
+  - dosyalar:
+    - bu rapor
+  - hunk notu: apply sonrası ayrı docs commit
+  - dışarıda bırakılacaklar: ilgisiz docs
+  - risk: düşük
+  - test önerisi: gerekmez
+
+## 8. Commit'e Alınmayacaklar
+- Product Hub core
+- Revision A-B-C core
+- Public approval page/mail/template core
+- Notification service-core
+- Quote/order list checkpoint
+- Order detail checkpoint
+- `routes/web.php`
+- `config/admin_menu.php`
+- `resources/views/public/graphics/approval/show.blade.php`
+- bu prep fazında `public/css/prodelya-admin.css`
+- `database.sqlite`
+- `.env`
+- `storage`
+- `vendor`
+- `node_modules`
+- log/screenshot/debug/temp dosyaları
+
+## 9. Test Sonuçları
+- `PromotionQuoteDetail|PromotionQuoteShowDecisionScreen|PromotionQuoteConvertCta`: geçti, 42 test, 335 assertion
+- `PromotionQuoteSendChannelHotfix|PromotionQuoteSendActionsUx|PromotionQuoteDetailSend|PromotionQuoteDetailWhatsapp|PromotionQuoteDetailPhone`: geçti, 20 test, 113 assertion
+- `PromotionQuoteDetailCustomerApprovalUx|PublicQuoteApproval|QuoteApproval`: geçti, 38 test, 379 assertion
+- `RevisionAndRepeatOrderSourceReference|OrderRevision|RepeatOrder`: geçti, 51 test, 314 assertion
+- `PromotionQuote`: geçti, 126 test, 1190 assertion
+- `Order`: geçti, 212 test, 1771 assertion
+- `NotificationPublicApprovalTokenSanitization|QuoteNotificationIntegration|WhatsappLinkUsesNormalizedPhone`: geçti, 7 test, 67 assertion
+- `ProductHubLiveProductInfoEndpointTest|PromotionQuoteLiveProductInfoUiTest`: geçti, 14 test, 111 assertion
+- `AdminSmokeTest|FullOperationalFlowSmokeTest`: geçti, 60 test, 644 assertion
+
+## 10. Smoke Planı
+- `/admin/promotion-quotes/{id}`
+- quote detail üst özet
+- ürün/baskı kompakt görünüm
+- gönderim modalı
+- manual gönderim
+- e-posta preview
+- WhatsApp link
+- WhatsApp link e-posta olmadan telefonla çalışıyor mu
+- müşteri onayı linki
+- public approval admin panel
+- revizyon karşılaştırma bağlantısı
+- kaynak sipariş bannerı
+- repeat/revision draft bağlantıları
+- public approval guest link etkilenmemiş mi
+- Product Hub canlı ürün bilgisi etkilenmemiş mi
+- Order detail checkpoint etkilenmemiş mi
+
+## 11. Kalan Riskler
+- quote detail karmaşıklığı: `promotion-quotes/show.blade.php` çok büyük ve layout/send/approval/revision blokları aynı dosyada iç içe
+- send-channel runtime riski: controller akışı gerçek gönderim, preview, WhatsApp link ve public link üretimini aynı method çevresinde taşıyor
+- public approval admin UI karışması: approval panel ile send tabı aynı blade ve aynı aksiyon yüzeyinde
+- revision/repeat UI karışması: `sourceOrderContext` ve `revisionCompareUrl` görsel olarak blade'de net, ama controller diffinde anlamlı delta görünmüyor
+- CSS global risk: `public/css/prodelya-admin.css` içinde quote detail blokları net olsa da ortak button/card/modal/tab selector'larıyla temas ediyor
+- full suite durumu: full suite çalıştırılmadı, ama istenen hedef regresyon matrisinin tamamı geçti
+
+## 12. Net Karar
+- Önce CSS ayrı bırakılarak blade/controller apply yapılmalı
+- Daha dar ve güvenli sıralama:
+  - önce yalnız quote detail layout commit'i
+  - sonra send-channel controller + modal commit'i
+  - sonra admin approval / revision link UI commit'i
+- Tek parça `QUOTE-DETAIL-SEND-CHANNEL-CHECKPOINT-COMMIT-APPLY` teorik olarak mümkün olsa da risk gereksiz yüksek
+
+## 13. Sonraki Adım
+- `QUOTE-DETAIL-CHECKPOINT-COMMIT-APPLY`
+- sonra `SEND-CHANNEL-CHECKPOINT-COMMIT-APPLY`
+- sonra `CSS/TEMPLATE-HUNK-STAGING-PREP`

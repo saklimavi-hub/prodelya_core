@@ -6,6 +6,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\OrderItemWorkForm;
 use App\Models\User;
+use App\Services\PromotionIntermediateElementPolicy;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Str;
 
@@ -20,6 +21,7 @@ class WorkFormCreationService
         protected ProductionCreationService $productionCreationService,
         protected DeliveryCreationService $deliveryCreationService,
         protected OrderItemPrintGraphicCreationService $orderItemPrintGraphicCreationService,
+        protected PromotionIntermediateElementPolicy $promotionIntermediateElementPolicy,
         protected OrderItemPrintSetupRequirementService $setupRequirementService
     ) {}
 
@@ -53,8 +55,10 @@ class WorkFormCreationService
             ->first();
 
         if ($existing) {
-            foreach ($item->prints as $print) {
-                $this->setupRequirementService->syncForPrint($print);
+            if ($this->promotionIntermediateElementPolicy->shouldGenerateRequirements()) {
+                foreach ($item->prints as $print) {
+                    $this->setupRequirementService->syncForPrint($print);
+                }
             }
 
             $this->procurementCreationService->createForOrderItem($item, $existing, $user);
@@ -91,8 +95,10 @@ class WorkFormCreationService
         $this->workFormAttachmentService->createInitialActivityLog($workForm, $user);
         $this->workFolderCreationService->createSystemFolderForWorkForm($workForm, $user);
         $this->procurementCreationService->createForOrderItem($item, $workForm, $user);
-        foreach ($item->prints as $print) {
-            $this->setupRequirementService->createForPrint($print);
+        if ($this->promotionIntermediateElementPolicy->shouldGenerateRequirements()) {
+            foreach ($item->prints as $print) {
+                $this->setupRequirementService->createForPrint($print);
+            }
         }
         $this->productionCreationService->createForWorkForm($workForm, $user);
         $this->deliveryCreationService->createForWorkForm($workForm, $user);

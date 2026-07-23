@@ -523,7 +523,7 @@ class ProductionController extends Controller
             throw ValidationException::withMessages(['production_note' => $exception->getMessage()]);
         }
 
-        $returnTo = $validated['return_to'] ?? 'show';
+        $returnTo = $validated['return_to'] ?? null;
         $freshProduction = $production->fresh() ?? $production;
         $returnRoute = $this->productionReturnRouteName($freshProduction, $returnTo);
         $message = match (true) {
@@ -605,7 +605,7 @@ class ProductionController extends Controller
             throw ValidationException::withMessages([$field => $exception->getMessage()]);
         }
 
-        $returnTo = $validated['return_to'] ?? 'show';
+        $returnTo = $validated['return_to'] ?? null;
         $freshProduction = $production->fresh() ?? $production;
         $returnRoute = $this->productionReturnRouteName($freshProduction, $returnTo);
         $message = match (true) {
@@ -1157,11 +1157,11 @@ class ProductionController extends Controller
 
     private function productionReturnRouteName(OrderItemPrintProduction $production, ?string $returnTo): string
     {
-        if ($returnTo === 'index') {
-            return 'admin.productions.index';
-        }
-
-        return $this->canonicalProductionRouteName($production);
+        return match ($returnTo) {
+            'index' => 'admin.productions.index',
+            'show' => 'admin.productions.show',
+            default => $this->canonicalProductionRouteName($production),
+        };
     }
     private function resolvedProductionTypeFor(OrderItemPrintProduction $production): ?string
     {

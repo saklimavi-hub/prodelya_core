@@ -55,19 +55,20 @@ class ProcurementQuickActionsUxTest extends TestCase
         $response->assertSee('Sipariş Verildi');
         $response->assertSee('Kısmi Geldi');
         $response->assertSee('Tamamı Geldi');
-        $response->assertSee('Talep Aç');
-        $response->assertSee('Seçili Tedarik Özeti');
+        $response->assertSee('Talebi Aç');
+        $response->assertSee('Talep Hazırlanacak Tedarikçiler');
         $response->assertSee('Sıradaki İş');
-        $response->assertSee('Birincil Aksiyonlar');
-        $response->assertSee('Diğer Aksiyonlar');
-        $response->assertSee('Tedarikçi Değiştir');
+        $response->assertSee('Liste Özeti');
+        $response->assertSee('Filtrele');
+        $response->assertDontSee('Birincil Aksiyonlar');
+        $response->assertDontSee('Diğer Aksiyonlar');
+        $response->assertDontSee('Tedarikçi Değiştir');
         $response->assertSee($procurement->order->document_number);
         $response->assertDontSee('Aktif Tenant');
         $response->assertDontSee('Sistem Notu');
         $response->assertDontSee('KDV');
         $response->assertDontSee('Alış Liste Fiyatı');
-        $response->assertSee('data-procurement-row', false);
-        $response->assertSee('data-selected-field="product_name"', false);
+        $response->assertSee('data-testid="procurement-request-table"', false);
         $response->assertDontSee('group_code', false);
         $response->assertDontSee('raw_mapping', false);
     }

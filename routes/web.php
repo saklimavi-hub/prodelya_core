@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\TenantRootController;
@@ -51,6 +51,7 @@ use App\Http\Controllers\Admin\WorkFormController;
 use App\Http\Controllers\Admin\WorkFormAttachmentController;
 use App\Http\Controllers\Admin\ProductDataHubController;
 use App\Http\Controllers\Admin\TenantCatalogController;
+use App\Http\Controllers\Admin\StockPurchaseController;
 use App\Http\Controllers\Admin\StandardProductBuildController;
 use App\Http\Controllers\Admin\SupplierFieldMappingController;
 use App\Http\Controllers\Admin\SupplierSourceController;
@@ -366,6 +367,12 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:web', 'resolve.tenant'
             ->name('quick-customer.store');
         Route::post('/{quote}/mark-approved', [PromotionQuoteController::class, 'markApproved'])->name('mark-approved')->whereNumber('quote');
         Route::post('/{quote}/send-to-customer', [PromotionQuoteController::class, 'sendToCustomer'])->middleware('feature.enabled:quote_customer_approval,public_quote_approval')->name('send-to-customer')->whereNumber('quote');
+        Route::post('/{quote}/currency/refresh', [PromotionQuoteController::class, 'refreshCurrencySnapshot'])
+            ->name('currency.refresh')
+            ->whereNumber('quote');
+        Route::post('/{quote}/currency/acknowledge', [PromotionQuoteController::class, 'acknowledgeCurrencySnapshot'])
+            ->name('currency.acknowledge')
+            ->whereNumber('quote');
         Route::get('/{quote}/customer-approval/open', [PromotionQuoteController::class, 'openCustomerApproval'])
             ->middleware('feature.enabled:quote_customer_approval,public_quote_approval')
             ->name('customer-approval.open')
@@ -393,15 +400,28 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:web', 'resolve.tenant'
     Route::get('/catalog', [TenantCatalogController::class, 'index'])->name('catalog.index');
     Route::get('/catalog/product-panel', [TenantCatalogController::class, 'productPanel'])->name('catalog.product-panel');
     Route::get('/catalog/supplier-products', [TenantCatalogController::class, 'supplierProducts'])->name('catalog.supplier-products');
-    Route::get('/catalog/local-products', [TenantCatalogController::class, 'localProducts'])->name('catalog.local-products');
-    Route::get('/catalog/local-products/import', [TenantCatalogController::class, 'localProductsImport'])->name('catalog.local-products.import');
-    Route::get('/catalog/local-products/import/template', [TenantCatalogController::class, 'localProductsImportTemplate'])->name('catalog.local-products.import.template');
-    Route::post('/catalog/local-products/import/preview', [TenantCatalogController::class, 'previewLocalProductsImport'])->name('catalog.local-products.import.preview');
-    Route::post('/catalog/local-products/import', [TenantCatalogController::class, 'storeLocalProductsImport'])->name('catalog.local-products.import.store');
-    Route::post('/catalog/local-products', [TenantCatalogController::class, 'storeLocalProduct'])->name('catalog.local-products.store');
-    Route::put('/catalog/local-products/{product}', [TenantCatalogController::class, 'updateLocalProduct'])->name('catalog.local-products.update')->whereNumber('product');
-    Route::post('/catalog/local-products/{product}/deactivate', [TenantCatalogController::class, 'deactivateLocalProduct'])->name('catalog.local-products.deactivate')->whereNumber('product');
-    Route::delete('/catalog/local-products/{product}', [TenantCatalogController::class, 'destroyLocalProduct'])->name('catalog.local-products.destroy')->whereNumber('product');
+    Route::get('/catalog/local-products', [\App\Http\Controllers\Admin\LocalProductController::class, 'index'])->name('catalog.local-products');
+    Route::get('/catalog/local-products/supplier-stock', [TenantCatalogController::class, 'localProductsSupplierStock'])->name('catalog.local-products.supplier-stock');
+    Route::get('/catalog/local-products/create', [\App\Http\Controllers\Admin\LocalProductController::class, 'create'])->name('catalog.local-products.create');
+    Route::get('/catalog/local-products/import', [\App\Http\Controllers\Admin\LocalProductImportController::class, 'create'])->name('catalog.local-products.import');
+    Route::get('/catalog/local-products/import/template', [\App\Http\Controllers\Admin\LocalProductImportController::class, 'template'])->name('catalog.local-products.import.template');
+    Route::get('/catalog/local-products/{product}', [\App\Http\Controllers\Admin\LocalProductController::class, 'show'])->name('catalog.local-products.show')->whereNumber('product');
+    Route::get('/catalog/local-products/{product}/edit', [\App\Http\Controllers\Admin\LocalProductController::class, 'edit'])->name('catalog.local-products.edit')->whereNumber('product');
+    Route::prefix('stock/purchases')->name('stock-purchases.')->group(function () {
+        Route::get('/', [StockPurchaseController::class, 'index'])->name('index');
+        Route::get('/create', [StockPurchaseController::class, 'create'])->name('create');
+        Route::get('/search', [StockPurchaseController::class, 'search'])->name('search');
+        Route::post('/', [StockPurchaseController::class, 'store'])->name('store');
+        Route::get('/{entry}', [StockPurchaseController::class, 'show'])->name('show')->whereNumber('entry');
+        Route::post('/{entry}/cancel', [StockPurchaseController::class, 'cancel'])->name('cancel')->whereNumber('entry');
+    });
+    Route::get('/catalog/{product}/variants/{variant}', [TenantCatalogController::class, 'showVariant'])->name('catalog.variants.show')->whereNumber('product')->whereNumber('variant');
+    Route::post('/catalog/local-products/import/preview', [\App\Http\Controllers\Admin\LocalProductImportController::class, 'preview'])->name('catalog.local-products.import.preview');
+    Route::post('/catalog/local-products/import', [\App\Http\Controllers\Admin\LocalProductImportController::class, 'apply'])->name('catalog.local-products.import.apply');
+    Route::post('/catalog/local-products', [\App\Http\Controllers\Admin\LocalProductController::class, 'store'])->name('catalog.local-products.store');
+    Route::put('/catalog/local-products/{product}', [\App\Http\Controllers\Admin\LocalProductController::class, 'update'])->name('catalog.local-products.update')->whereNumber('product');
+    Route::post('/catalog/local-products/{product}/deactivate', [\App\Http\Controllers\Admin\LocalProductController::class, 'deactivate'])->name('catalog.local-products.deactivate')->whereNumber('product');
+    Route::delete('/catalog/local-products/{product}', [\App\Http\Controllers\Admin\LocalProductController::class, 'destroy'])->name('catalog.local-products.destroy')->whereNumber('product');
     Route::get('/catalog/visibility', [TenantCatalogController::class, 'visibility'])->name('catalog.visibility');
     Route::post('/catalog/visibility/bulk-update', [TenantCatalogController::class, 'bulkUpdateVisibility'])->name('catalog.visibility.bulk-update');
     Route::get('/catalog/warnings', [TenantCatalogController::class, 'warnings'])->name('catalog.warnings');
@@ -411,6 +431,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:web', 'resolve.tenant'
     Route::post('/catalog/{product}/toggle-quote-visibility', [TenantCatalogController::class, 'toggleQuoteVisibility'])->name('catalog.toggle-quote-visibility')->whereNumber('product');
     Route::post('/catalog/{product}/local-stock', [TenantCatalogController::class, 'updateLocalStock'])->name('catalog.local-stock')->whereNumber('product');
     Route::post('/catalog/{product}/local-stock-entry', [TenantCatalogController::class, 'storeLocalStockEntry'])->name('catalog.local-stock-entry')->whereNumber('product');
+    Route::post('/catalog/stock-entries/{entry}/cancel', [TenantCatalogController::class, 'cancelLocalStockEntry'])->name('catalog.stock-entries.cancel')->whereNumber('entry');
     Route::post('/catalog/{product}/warnings/review', [TenantCatalogController::class, 'markWarningReviewed'])->name('catalog.warnings.review')->whereNumber('product');
     Route::post('/catalog/{product}/warnings/action', [TenantCatalogController::class, 'quickWarningAction'])->name('catalog.warnings.action')->whereNumber('product');
     Route::get('/catalog/{product}', [TenantCatalogController::class, 'show'])->name('catalog.show')->whereNumber('product');
@@ -439,13 +460,13 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:web', 'resolve.tenant'
         Route::get('/', [CurrentAccountTransactionController::class, 'index'])->name('index');
         Route::post('/{transaction}/cancel', [CurrentAccountTransactionController::class, 'cancel'])->name('cancel')->whereNumber('transaction');
     });
-    
+
     // Company Import Routes - Must come before dynamic routes
     Route::get('/companies/import', [CompanyImportController::class, 'index'])->middleware('module.enabled:current_accounts')->name('companies.import.index');
     Route::post('/companies/import/preview', [CompanyImportController::class, 'preview'])->middleware('module.enabled:current_accounts')->name('companies.import.preview');
     Route::post('/companies/import', [CompanyImportController::class, 'store'])->middleware('module.enabled:current_accounts')->name('companies.import.store');
     Route::get('/companies/import/template', [CompanyImportController::class, 'template'])->middleware('module.enabled:current_accounts')->name('companies.import.template');
-    
+
     // Dynamic company routes - Must come after specific routes
     Route::get('/companies/{company}', [CompanyController::class, 'show'])->middleware('module.enabled:current_accounts')->name('companies.show')->whereNumber('company');
     Route::post('/companies/{company}/contacts', [CompanyContactController::class, 'store'])
@@ -477,7 +498,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:web', 'resolve.tenant'
     Route::get('/companies/{company}/edit', [CompanyController::class, 'edit'])->middleware('module.enabled:current_accounts')->name('companies.edit')->whereNumber('company');
     Route::put('/companies/{company}', [CompanyController::class, 'update'])->middleware('module.enabled:current_accounts')->name('companies.update')->whereNumber('company');
     Route::delete('/companies/{company}', [CompanyController::class, 'destroy'])->middleware('module.enabled:current_accounts')->name('companies.destroy')->whereNumber('company');
-    
+
     // Product Data Hub Routes
     Route::prefix('product-data-hub')->name('product-data-hub.')->middleware('module.enabled:product_data_hub')->group(function () {
         Route::get('/', [ProductDataHubController::class, 'index'])->name('index');
@@ -490,7 +511,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:web', 'resolve.tenant'
         Route::get('/sources/{source}/preview', [SupplierSourceController::class, 'preview'])->name('sources.preview')->whereNumber('source');
         Route::post('/sources/{source}/stage-preview', [SupplierSourceController::class, 'stagePreview'])->name('sources.stage-preview')->whereNumber('source');
         Route::post('/sources/{source}/test', [SupplierSourceController::class, 'testConnection'])->name('sources.test')->whereNumber('source');
-        
+
         Route::get('/field-mappings', [SupplierFieldMappingController::class, 'index'])->name('field-mappings');
         Route::get('/field-mappings/source/{source}', [SupplierFieldMappingController::class, 'show'])->name('field-mappings.source')->whereNumber('source');
         Route::post('/field-mappings/source/{source}', [SupplierFieldMappingController::class, 'storeOrUpdate'])->name('field-mappings.source.update')->whereNumber('source');
@@ -570,6 +591,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:web', 'resolve.tenant'
         Route::post('/supplier-requests', [SupplierProcurementRequestController::class, 'store'])->name('supplier-requests.store');
         Route::get('/supplier-requests/{supplierRequest}/edit', [SupplierProcurementRequestController::class, 'edit'])->name('supplier-requests.edit')->whereNumber('supplierRequest');
         Route::patch('/supplier-requests/{supplierRequest}', [SupplierProcurementRequestController::class, 'update'])->name('supplier-requests.update')->whereNumber('supplierRequest');
+        Route::post('/supplier-requests/{supplierRequest}/refresh-prices', [SupplierProcurementRequestController::class, 'refreshPrices'])->name('supplier-requests.refresh-prices')->whereNumber('supplierRequest');
         Route::post('/supplier-requests/{supplierRequest}/mark-requested', [SupplierProcurementRequestController::class, 'markRequested'])->name('supplier-requests.mark-requested')->whereNumber('supplierRequest');
         Route::post('/supplier-requests/{supplierRequest}/mark-supplier-ordered', [SupplierProcurementRequestController::class, 'markSupplierOrdered'])->name('supplier-requests.mark-supplier-ordered')->whereNumber('supplierRequest');
         Route::post('/supplier-requests/{supplierRequest}/mark-partially-received', [SupplierProcurementRequestController::class, 'markPartiallyReceived'])->name('supplier-requests.mark-partially-received')->whereNumber('supplierRequest');
@@ -702,4 +724,3 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:web', 'resolve.tenant'
         });
     });
 });
-

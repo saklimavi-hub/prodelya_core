@@ -42,6 +42,7 @@ class PrintSetupRequirementProductionReadinessTest extends TestCase
     {
         parent::setUp();
 
+        config()->set('prodelya.features.promotion_intermediate_element_enabled', true);
         Storage::fake('public');
 
         $this->adminUser = User::query()->where('email', 'admin@prodelya.local')->firstOrFail();
@@ -119,11 +120,11 @@ class PrintSetupRequirementProductionReadinessTest extends TestCase
             ]));
 
         $response->assertOk();
-        $response->assertSee('Hazırlık bekliyor');
-        $response->assertSee('Fotoğraf Ekle');
-        $response->assertSee('Hazırlık / Ara Eleman');
-        $response->assertSee('Klişe');
-        $response->assertSee('Film');
+        $response->assertSee('Hazırlık bekleniyor: Klişe, Film');
+        $response->assertSee('Sıradaki İşlem');
+        $response->assertDontSee('Hazırlık / Ara Eleman');
+        $response->assertDontSee('Operatör Ekranını Aç');
+
         $response->assertDontSee('group_code', false);
         $response->assertDontSee('file_path', false);
         $response->assertDontSee('physical_path', false);
@@ -170,11 +171,20 @@ class PrintSetupRequirementProductionReadinessTest extends TestCase
 
         $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
+            ->patch(route('admin.productions.update-assignment', $setupProduction), [
+                'production_type' => OrderItemPrintProduction::TYPE_INTERNAL,
+                'production_unit_name' => 'UV Hattı 2',
+                'assigned_to' => $this->adminUser->id,
+            ])
+            ->assertRedirect(route('admin.productions.operator', $setupProduction));
+
+        $this->actingAs($this->adminUser)
+            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->patch(route('admin.productions.update-status', $setupProduction), [
                 'action' => 'assign_internal',
                 'production_unit_name' => 'UV Hattı 2',
             ])
-            ->assertRedirect(route('admin.productions.show', $setupProduction));
+            ->assertRedirect(route('admin.productions.operator', $setupProduction));
 
         $this->assertSame(
             OrderItemPrintProduction::STATUS_INTERNAL,
@@ -292,8 +302,9 @@ class PrintSetupRequirementProductionReadinessTest extends TestCase
                 'tab' => 'genel',
             ]))
             ->assertOk()
-            ->assertSee('Hazırlık / Ara Eleman')
-            ->assertSee('Bekliyor')
+            ->assertSee('Hazırlık bekleniyor: Klişe')
+            ->assertSee('Sıradaki İşlem')
+            ->assertDontSee('Hazırlık / Ara Eleman')
             ->assertDontSee('777.77')
             ->assertDontSee('TRY');
 

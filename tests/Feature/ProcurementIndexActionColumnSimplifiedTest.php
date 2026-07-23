@@ -31,12 +31,12 @@ class ProcurementIndexActionColumnSimplifiedTest extends TestCase
 
         $response->assertOk();
         $response->assertSee('Sıradaki İş');
-        $response->assertSee('Seçili Tedarik Özeti');
-        $response->assertSee('Birincil Aksiyonlar');
-        $response->assertSee('Detay');
+        $response->assertSee('Talep Hazırlanacak Tedarikçiler');
+        $response->assertSee('Liste Özeti');
+        $response->assertSee('Talebi Aç');
         $response->assertDontSee('Formu Aç</a></td>', false);
         $response->assertDontSee('⋯', false);
-        $response->assertSee('Talep Aç');
+        $response->assertDontSee('Seçili Tedarik Özeti');
 
         $procurement->update(['procurement_status' => OrderItemProcurement::STATUS_SUPPLIER_ORDERED]);
 

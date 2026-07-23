@@ -180,7 +180,7 @@
         </div>
     </section>
 
-    @if($setupItems->isNotEmpty())
+    @if(app(\App\Services\PromotionIntermediateElementPolicy::class)->shouldRender() && $setupItems->isNotEmpty())
         <section class="prd-card">
             <h2 class="prd-section-title">Hazırlık / Ara Eleman</h2>
             <div class="prd-grid-4">

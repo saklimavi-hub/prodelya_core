@@ -19,7 +19,7 @@ class ProductionPhotoTabTest extends TestCase
         $this->setUpProductionShowFixtures();
     }
 
-    public function test_photo_tab_renders_upload_area_and_recent_gallery(): void
+    public function test_photo_tab_renders_read_only_recent_gallery(): void
     {
         $production = $this->createInternalProductionForShow();
         $this->uploadProductionPhoto($production);
@@ -29,7 +29,8 @@ class ProductionPhotoTabTest extends TestCase
             ->get(route('admin.productions.show', $production) . '?tab=fotograflar');
 
         $response->assertOk();
-        $response->assertSee('Fotoğraf Yükle');
+        $response->assertSee('Fotoğraflar');
+        $response->assertSee('salt okunur');
         $response->assertSee('Son Yüklenen Fotoğraflar');
         $response->assertSee('Görüntüle');
         $response->assertSee('İndir');

@@ -85,7 +85,7 @@ class CompanyContactAddressActionsTest extends TestCase
             ->assertSee('Detay Yetkilisi')
             ->assertSee('Merkez Ofis')
             ->assertSee('Yetkili ve Adresler')
-            ->assertDontSee('placeholder')
+            ->assertDontSeeText('placeholder')
             ->assertDontSee('invite_token')
             ->assertDontSee('password_reset_token')
             ->assertDontSee('hashed')
@@ -102,7 +102,7 @@ class CompanyContactAddressActionsTest extends TestCase
             ->assertSee($portalUser->email)
             ->assertDontSee('Yeni yetkili ve adres aksiyonlari hazir')
             ->assertDontSee('TODO')
-            ->assertDontSee('placeholder');
+            ->assertDontSeeText('placeholder');
     }
 
     public function test_contact_and_address_empty_states_are_user_friendly(): void
@@ -112,10 +112,10 @@ class CompanyContactAddressActionsTest extends TestCase
             ->get(route('admin.companies.show', ['company' => $this->company, 'tab' => 'yetkililer']));
 
         $response->assertOk()
-            ->assertSee('Henüz yetkili kişi eklenmemiş.')
+            ->assertSee('Henüz yetkili eklenmemiş.')
             ->assertSee('Henüz adres eklenmemiş.')
             ->assertDontSee('hazir')
-            ->assertDontSee('placeholder');
+            ->assertDontSeeText('placeholder');
     }
 
     public function test_valid_contact_submission_creates_company_contact_without_creating_portal_user(): void

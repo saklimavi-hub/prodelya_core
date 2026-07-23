@@ -55,14 +55,14 @@ class SupplierProcurementRequestUiTest extends TestCase
             ->get(route('admin.procurements.index'));
 
         $response->assertOk();
-        $response->assertSee('Tedarik Yönetimi');
-        $response->assertSee('Tedarikçi kartları, açık tedarik ihtiyacı olan siparişlerden otomatik oluşur.');
+        $response->assertSee('Tedarik Talepleri');
+        $response->assertSee('Talep Hazırlanacak Tedarikçiler');
         $response->assertSee($supplierA->name);
         $response->assertSee($supplierB->name);
         $response->assertSee(route('admin.procurements.supplier-requests.create', ['supplier_id' => $supplierA->id]), false);
         $response->assertSee(route('admin.procurements.supplier-requests.create', ['supplier_id' => $supplierB->id]), false);
         $response->assertDontSee(route('admin.procurements.supplier-requests.create', ['supplier_id' => $supplierNoOpen->id]), false);
-        $response->assertSee('Talep Hazırla');
+        $response->assertSee('Talebi Aç');
         $response->assertDontSee('grand_total', false);
         $response->assertDontSee('group_code', false);
         $response->assertDontSee('raw_mapping', false);
@@ -78,7 +78,8 @@ class SupplierProcurementRequestUiTest extends TestCase
             ->get(route('admin.procurements.supplier-requests.create', ['supplier_id' => $supplier->id]));
 
         $create->assertOk();
-        $create->assertSee('Tedarikçi Talebi Hazırla');
+        $create->assertSee('Tedarik Talebi Hazırla');
+        $create->assertSee('Talep Hazırlığı');
         $create->assertSee('Dahil');
         $create->assertSee($procurement->order->document_number);
         $create->assertSee($procurement->workForm->work_form_number);
@@ -115,12 +116,12 @@ class SupplierProcurementRequestUiTest extends TestCase
             ->get(route('admin.procurements.supplier-requests.edit', $requestRecord));
 
         $edit->assertOk();
-        $edit->assertSee('Tedarikçi Talebi Düzenle');
-        $edit->assertSee('Alış Liste Fiyatı');
-        $edit->assertSee('İskonto %');
+        $edit->assertSee('Tedarikçi Talebi ve Gelen Ürün Kaydı');
+        $edit->assertSee('Süreç Penceresi');
+        $edit->assertSee('Tedarikçi Liste');
         $edit->assertSee('Alış Birim Fiyatı');
-        $edit->assertSee('Alış Toplam');
-        $edit->assertSee('Fiyatsız Talep Formunu Aç');
+        $edit->assertSee('Alış Toplamı');
+        $edit->assertSee('Fiyatsız Talep Formu');
 
         $item = $requestRecord->items->first();
 
@@ -167,9 +168,9 @@ class SupplierProcurementRequestUiTest extends TestCase
             ->get(route('admin.procurements.supplier-requests.edit', $requestRecord));
 
         $response->assertOk();
-        $response->assertDontSee('Alış Liste Fiyatı');
+        $response->assertDontSee('Tedarikçi Liste');
         $response->assertDontSee('Alış Birim Fiyatı');
-        $response->assertDontSee('Alış Toplam');
+        $response->assertDontSee('Alış Toplamı');
 
         $otherTenant = TenantAccount::query()->create([
             'name' => 'Other Tenant',
@@ -222,7 +223,7 @@ class SupplierProcurementRequestUiTest extends TestCase
         $print->assertSee($procurement->order->document_number);
         $print->assertSee((string) data_get($procurement->snapshot, 'product_code'));
         $print->assertSee((string) data_get($procurement->snapshot, 'product_name'));
-        $print->assertDontSee('Alış Liste Fiyatı');
+        $print->assertDontSee('Tedarikçi Liste');
         $print->assertDontSee('İskonto');
         $print->assertDontSee('group_code', false);
         $print->assertDontSee('raw_mapping', false);

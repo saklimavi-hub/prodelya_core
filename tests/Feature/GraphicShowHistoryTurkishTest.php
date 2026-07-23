@@ -49,7 +49,8 @@ class GraphicShowHistoryTurkishTest extends TestCase
             ->get(route('admin.graphics.show', $workForm->fresh()));
 
         $response->assertOk();
-        $response->assertSee('Tedarik kaydı oluşturuldu');
+        $response->assertSee('Tedarik ihtiyacı oluşturuldu');
+        $response->assertSee('Tedarik kaydı oluşturuldu.');
         $response->assertSee('Üretim operasyonu oluşturuldu');
         $response->assertDontSee('Procurement needed');
         $response->assertDontSee('Production operation created');

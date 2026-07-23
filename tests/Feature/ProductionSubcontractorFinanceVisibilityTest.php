@@ -19,28 +19,34 @@ class ProductionSubcontractorFinanceVisibilityTest extends TestCase
         $this->setUpProductionShowFixtures();
     }
 
-    public function test_external_finance_block_respects_permission_visibility(): void
+    public function test_external_canonical_tracking_never_renders_finance_block(): void
     {
         $production = $this->createExternalProductionForShow(null, [
             'subcontractor_cost' => 1250,
             'subcontractor_cost_currency' => 'TRY',
         ]);
 
-        $financeResponse = $this->actingAs($this->financeUser)
+        $legacyResponse = $this->actingAs($this->financeUser)
             ->withServerVariables(['HTTP_HOST' => self::PRODUCTION_SHOW_HOST])
             ->get(route('admin.productions.show', $production) . '?tab=dis-uretim');
+        $legacyResponse->assertRedirect(route('admin.productions.subcontract-tracking', $production));
+
+        $financeResponse = $this->actingAs($this->financeUser)
+            ->withServerVariables(['HTTP_HOST' => self::PRODUCTION_SHOW_HOST])
+            ->get(route('admin.productions.subcontract-tracking', $production));
 
         $financeResponse->assertOk();
-        $financeResponse->assertSee('Fason Maliyeti');
-        $financeResponse->assertSee('1.250,00');
+        $financeResponse->assertDontSee('Fason Maliyeti');
+        $financeResponse->assertDontSee('1.250,00');
+
 
         $limitedResponse = $this->actingAs($this->limitedUser)
             ->withServerVariables(['HTTP_HOST' => self::PRODUCTION_SHOW_HOST])
-            ->get(route('admin.productions.show', $production) . '?tab=dis-uretim');
+            ->get(route('admin.productions.subcontract-tracking', $production));
 
         $limitedResponse->assertOk();
-        $limitedResponse->assertSee('Fason maliyeti ve cari işlemleri yalnız yetkili kullanıcıya gösterilir.');
+        $limitedResponse->assertDontSee('Fason Maliyeti');
         $limitedResponse->assertDontSee('1.250,00');
+
     }
 }
-

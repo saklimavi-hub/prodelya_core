@@ -20,26 +20,28 @@ class ProductionInternalStepCardsTest extends TestCase
         $this->setUpProductionShowFixtures();
     }
 
-    public function test_internal_tab_shows_operator_focused_step_cards(): void
+    public function test_operator_screen_shows_operator_focused_action_surface(): void
     {
-        $production = $this->createInternalProductionForShow([
+        $production = $this->prepareProductionForReadyState($this->createInternalProductionForShow([
             'production_status' => OrderItemPrintProduction::STATUS_INTERNAL,
             'completed_quantity' => 20,
             'remaining_quantity' => 80,
-        ]);
+        ]));
+
+        $this->actingAs($this->adminUser)
+            ->withServerVariables(['HTTP_HOST' => self::PRODUCTION_SHOW_HOST])
+            ->get(route('admin.productions.show', $production) . '?tab=ic-uretim')
+            ->assertRedirect(route('admin.productions.operator', $production));
 
         $response = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::PRODUCTION_SHOW_HOST])
-            ->get(route('admin.productions.show', $production) . '?tab=ic-uretim');
+            ->get(route('admin.productions.operator', $production));
 
         $response->assertOk();
-        $response->assertSee('Üretim Akış Adımları');
-        $response->assertSee('Üretime Başla');
-        $response->assertSee('Kısmi Üretildi');
+        $response->assertSee('Kısmi Kaydet');
         $response->assertSee('Tamamlandı');
         $response->assertSee('Sorun Bildir');
-        $response->assertSee('Fotoğraf Yükle');
-        $response->assertSee('prd-step-grid', false);
+        $response->assertSee('Fotoğraf Ekle');
+        $response->assertSee('pd-ui-v1-internal-operator', false);
     }
 }
-

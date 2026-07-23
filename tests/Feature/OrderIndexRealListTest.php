@@ -84,8 +84,8 @@ class OrderIndexRealListTest extends TestCase
         $response->assertSee($this->customer->legal_name);
         $response->assertSee('TK-REAL-1001');
         $response->assertSee('Açık Sipariş');
-        $response->assertSee('Tedarik Bekliyor');
-        $response->assertSee('Tedarik bekliyor');
+        $response->assertSee('Grafik Bekliyor');
+        $response->assertSee('Tedarik: Talep Hazırlanacak');
         $response->assertSee('Siparişi Aç');
         $response->assertSee('İş Formu');
         $response->assertSee('Grafik');

@@ -59,8 +59,8 @@ class OrderListSummaryServiceRefinementTest extends TestCase
             'payments',
         ]), true);
 
-        $this->assertSame('Tedarik Bekliyor', $row['operation_status_label']);
-        $this->assertSame('Tedarik bekliyor', $row['next_action_label']);
+        $this->assertSame('Talep Hazırlanacak', $row['operation_status_label']);
+        $this->assertSame('Tedarik talebini hazırla', $row['next_action_label']);
         $this->assertSame('procurement_pending', $row['workflow_focus_key']);
     }
 

@@ -98,12 +98,56 @@
                                         <div class="pd-sidebar-section-items">
                                             @foreach($children as $link)
                                                 @php
-                                                    $linkHref = $link['href'] ?? '#';
-                                                    $isActive = !empty($link['active']);
+                                                    $isAccordion = ($link['type'] ?? null) === 'accordion' && !empty($link['children']);
                                                 @endphp
-                                                <a href="{{ $linkHref }}" class="pd-sidebar-submenu-item {{ $isActive ? 'active' : '' }} {{ $linkHref === '#' ? 'pd-sidebar-item-muted' : '' }}">
-                                                    {{ $link['label'] }}
-                                                </a>
+                                                @if($isAccordion)
+                                                    @php
+                                                        $accordionChildren = $link['children'];
+                                                        $accordionHref = $link['href'] ?? '#';
+                                                        $accordionIsOpen = !empty($link['active']);
+                                                    @endphp
+                                                    <details class="pd-sidebar-group{{ $accordionIsOpen ? ' is-open' : '' }}" @if($accordionIsOpen) open @endif>
+                                                        <summary class="pd-sidebar-group-toggle">
+                                                            @if($accordionHref !== '#')
+                                                                <a href="{{ $accordionHref }}" class="pd-sidebar-group-title" onclick="event.stopPropagation();">
+                                                                    <svg class="pd-icon" width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                                                    </svg>
+                                                                    {{ $link['label'] }}
+                                                                </a>
+                                                            @else
+                                                                <span class="pd-sidebar-group-title">
+                                                                    <svg class="pd-icon" width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                                                    </svg>
+                                                                    {{ $link['label'] }}
+                                                                </span>
+                                                            @endif
+                                                            <svg class="pd-sidebar-group-chevron" width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 6l6 6-6 6"></path>
+                                                            </svg>
+                                                        </summary>
+                                                        <div class="pd-sidebar-submenu">
+                                                            @foreach($accordionChildren as $child)
+                                                                @php
+                                                                    $childHref = $child['href'] ?? '#';
+                                                                    $childIsActive = !empty($child['active']);
+                                                                @endphp
+                                                                <a href="{{ $childHref }}" class="pd-sidebar-submenu-item {{ $childIsActive ? 'active' : '' }} {{ $childHref === '#' ? 'pd-sidebar-item-muted' : '' }}">
+                                                                    {{ $child['label'] }}
+                                                                </a>
+                                                            @endforeach
+                                                        </div>
+                                                    </details>
+                                                @else
+                                                    @php
+                                                        $linkHref = $link['href'] ?? '#';
+                                                        $isActive = !empty($link['active']);
+                                                    @endphp
+                                                    <a href="{{ $linkHref }}" class="pd-sidebar-submenu-item {{ $isActive ? 'active' : '' }} {{ $linkHref === '#' ? 'pd-sidebar-item-muted' : '' }}">
+                                                        {{ $link['label'] }}
+                                                    </a>
+                                                @endif
                                             @endforeach
                                         </div>
                                     </details>
@@ -131,13 +175,25 @@
                                                                 $accordionIsOpen = !empty($link['active']);
                                                             @endphp
                                                             <details class="{{ $accordionClass }}" @if($accordionGroupSlug) data-sidebar-group="{{ $accordionGroupSlug }}" @endif @if($accordionIsOpen) open @endif>
+                                                                @php
+                                                                    $accordionHref = $link['href'] ?? '#';
+                                                                @endphp
                                                                 <summary class="pd-sidebar-group-toggle">
-                                                                    <span class="pd-sidebar-group-title">
-                                                                        <svg class="pd-icon" width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                                                                        </svg>
-                                                                        {{ $link['label'] }}
-                                                                    </span>
+                                                                    @if($accordionHref !== '#')
+                                                                        <a href="{{ $accordionHref }}" class="pd-sidebar-group-title" onclick="event.stopPropagation();">
+                                                                            <svg class="pd-icon" width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                                                            </svg>
+                                                                            {{ $link['label'] }}
+                                                                        </a>
+                                                                    @else
+                                                                        <span class="pd-sidebar-group-title">
+                                                                            <svg class="pd-icon" width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                                                            </svg>
+                                                                            {{ $link['label'] }}
+                                                                        </span>
+                                                                    @endif
                                                                     <svg class="pd-sidebar-group-chevron" width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 6l6 6-6 6"></path>
                                                                     </svg>

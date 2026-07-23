@@ -25,7 +25,7 @@ class PublicQuoteApprovalTemplateLayoutTest extends TestCase
 
         $this->get($this->quoteApprovalShowUrl($context['request']))
             ->assertOk()
-            ->assertSee('Teklifinizi İnceleyin')
+            ->assertSee('Teklifi İncele')
             ->assertSee('Teklif Kalemleri')
             ->assertSee('Fiyat Özeti')
             ->assertSee('Kararınızı Bildirin');

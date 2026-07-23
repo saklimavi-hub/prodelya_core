@@ -553,7 +553,7 @@
         <div class="quote-approval-top-row">
             <div>
                 <div class="quote-approval-brand">{{ $tenantName }}</div>
-                <h1 class="quote-approval-title">Teklifinizi İnceleyin</h1>
+                <h1 class="quote-approval-title">Teklifi İncele</h1>
                 <p class="quote-approval-subtitle">Uygunsa teklifi onaylayabilir, değişiklik isterseniz revize talebi iletebilirsiniz. Onay alındığında firma yetkilileri sipariş sürecini başlatacaktır.</p>
             </div>
             <span class="quote-approval-status-badge {{ $statusClass }}">{{ $pageStatusLabel }}</span>
@@ -638,12 +638,16 @@
                                     </div>
                                     <div class="quote-approval-amount-box">
                                         @if($item['unit_price'])
-                                            <div class="quote-approval-amount-label">Birim Fiyat</div>
+                                            <div class="quote-approval-amount-label">{{ $item['unit_price_label'] }}</div>
                                             <div class="quote-approval-amount">{{ $item['unit_price'] }}</div>
                                         @endif
                                         @if($item['line_total'])
-                                            <div class="quote-approval-amount-label" style="margin-top:8px;">Kalem Toplamı</div>
+                                            <div class="quote-approval-amount-label" style="margin-top:8px;">{{ $item['line_total_label'] }}</div>
                                             <div class="quote-approval-amount">{{ $item['line_total'] }}</div>
+                                        @endif
+                                        @if($item['show_commercial_total'])
+                                            <div class="quote-approval-amount-label" style="margin-top:8px;">{{ $item['commercial_total_label'] }}</div>
+                                            <div class="quote-approval-amount">{{ $item['commercial_total_value'] ?: '-' }}</div>
                                         @endif
                                     </div>
                                 </div>
@@ -657,7 +661,7 @@
                                             <div class="quote-approval-muted quote-approval-small">{{ $print['print_quantity'] }}</div>
                                             @if($print['show_price_details'])
                                                 <div class="quote-approval-muted quote-approval-small" style="margin-top:4px;">
-                                                    Baskı Birim: {{ $print['print_unit_price'] ?: '-' }}
+                                                    Baskı Birim Fiyatı: {{ $print['print_unit_price'] ?: '-' }}
                                                 </div>
                                             @endif
                                             @if($print['print_note'])

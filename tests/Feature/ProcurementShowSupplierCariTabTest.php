@@ -2,8 +2,9 @@
 
 namespace Tests\Feature;
 
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use App\Models\TenantSetting;
 use App\Services\TenantSupplierCurrentAccountSyncService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Feature\Concerns\InteractsWithProcurementFixtures;
 use Tests\TestCase;
 
@@ -20,22 +21,26 @@ class ProcurementShowSupplierCariTabTest extends TestCase
         $this->setUpProcurementFixtures();
     }
 
-    public function test_supplier_cari_tab_shows_plain_matching_language_without_technical_fields(): void
+    public function test_controlled_procurement_detail_shows_plain_supplier_cari_language_without_technical_fields(): void
     {
         [$supplier, $source] = $this->createSupplierWithAccess('PROC-CARI');
         $procurement = $this->createProcurement($supplier, $source, 'SP-PROC-CARI-001');
         $company = app(TenantSupplierCurrentAccountSyncService::class)
             ->syncForTenantSupplierAccess($this->tenant, $supplier)['company'];
 
+        TenantSetting::setValue($this->tenant->id, 'process_depth', 'controlled', 'string');
+
         $response = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.procurements.show', ['procurement' => $procurement, 'tab' => 'tedarikci']));
+            ->get(route('admin.procurements.show', $procurement));
 
         $response->assertOk();
-        $response->assertSee('Tedarikçi ve Cari');
+        $response->assertSee('Tedarikçi Cari Bağlantısı');
         $response->assertSee('Eşleşen Cari');
         $response->assertSee($company->legal_name);
-        $response->assertSee('Güvenli eşleşme var');
+        $response->assertSee('Cari Kartı Aç');
+        $response->assertDontSee('link_type', false);
+        $response->assertDontSee('current_account_id', false);
     }
 
     public function test_procurement_show_hides_sensitive_technical_fields(): void
@@ -53,7 +58,7 @@ class ProcurementShowSupplierCariTabTest extends TestCase
 
         $response = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.procurements.show', ['procurement' => $procurement, 'tab' => 'urun']));
+            ->get(route('admin.procurements.show', $procurement));
 
         $response->assertOk();
         $response->assertDontSee('group_code', false);

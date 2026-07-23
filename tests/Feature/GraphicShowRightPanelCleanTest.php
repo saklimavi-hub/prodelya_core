@@ -29,7 +29,7 @@ class GraphicShowRightPanelCleanTest extends TestCase
 
         $response->assertOk();
         $response->assertSee('İş Özeti');
-        $response->assertSee('Kısayollar');
+        $response->assertSee('Hızlı İşlemler');
         $response->assertSee('Çalışma Klasörü');
         $response->assertDontSee('Display Path');
         $response->assertDontSee('file_path', false);

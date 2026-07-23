@@ -26,7 +26,7 @@ class GraphicIndexSimplifiedActionsTest extends TestCase
         $this->adminUser = User::query()->where('email', 'admin@prodelya.local')->firstOrFail();
     }
 
-    public function test_graphics_index_shows_only_edit_as_primary_action_and_hides_no_print_work(): void
+    public function test_graphics_index_shows_only_exact_print_rows_and_hides_no_print_work(): void
     {
         $printedWorkForm = $this->createConvertedWorkForm(withPrint: true);
         $noPrintWorkForm = $this->createConvertedWorkForm(withPrint: false);
@@ -36,13 +36,16 @@ class GraphicIndexSimplifiedActionsTest extends TestCase
             ->get(route('admin.graphics.index'));
 
         $response->assertOk();
-        $response->assertSee('Grafik Yönetimi');
+        $response->assertSee('Grafik İşleri');
         $response->assertSee($printedWorkForm->work_form_number);
         $response->assertSee((string) data_get($printedWorkForm->order_snapshot, 'document_number'));
-        $response->assertSee('Düzenle');
-        $response->assertDontSee('>Görsel Ekle<', false);
+        $response->assertSee('1a');
+        $response->assertSee('1b');
+        $response->assertSee('UV Baskı');
+        $response->assertSee('Lazer');
+        $response->assertSee('Görsel Yükle');
+        $response->assertDontSee('Düzenle');
         $response->assertDontSee('>Üretime Hazır İşaretle<', false);
-        $response->assertDontSee(route('admin.work-forms.show', $printedWorkForm), false);
         $response->assertDontSee($noPrintWorkForm->work_form_number);
         $response->assertDontSee((string) data_get($noPrintWorkForm->order_snapshot, 'document_number'));
         $response->assertDontSee('grand_total', false);

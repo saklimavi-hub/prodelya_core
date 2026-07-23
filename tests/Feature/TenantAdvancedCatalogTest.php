@@ -10,6 +10,7 @@ use App\Models\Supplier;
 use App\Models\TenantAccount;
 use App\Models\TenantCatalogProduct;
 use App\Models\TenantCatalogProductVariant;
+use App\Models\TenantLocalStock;
 use App\Models\TenantSupplierPurchaseEntry;
 use App\Models\TenantSupplierAccess;
 use App\Models\User;
@@ -400,7 +401,8 @@ class TenantAdvancedCatalogTest extends TestCase
         $this->assertDatabaseHas('tenant_catalog_products', [
             'id' => $product->id,
             'product_name' => 'Guncel Local Urun',
-            'stock_quantity' => 15,
+            'stock_quantity' => 50,
+            'local_stock_quantity' => 0,
         ]);
 
         $deactivateResponse = $this->actingAs($this->adminUser)
@@ -413,6 +415,7 @@ class TenantAdvancedCatalogTest extends TestCase
             'is_active' => false,
             'visible_in_catalog' => false,
             'visible_in_quote' => false,
+            'stock_quantity' => 50,
         ]);
     }
 
@@ -532,6 +535,19 @@ class TenantAdvancedCatalogTest extends TestCase
     public function test_supplier_purchase_adds_local_stock_and_creates_payable_entry(): void
     {
         $supplier = Supplier::query()->create(['name' => 'Borclu Tedarikci', 'code' => 'PAY-SUP', 'status' => 'active']);
+        TenantSupplierAccess::query()->create([
+            'tenant_account_id' => $this->tenant->id,
+            'supplier_id' => $supplier->id,
+            'is_active' => true,
+            'can_view_products' => true,
+            'visible_in_catalog' => true,
+            'can_use_in_quotes' => true,
+            'can_request_purchase' => true,
+            'price_multiplier' => 1,
+            'safe_stock_quantity' => 0,
+            'export_allowed' => false,
+        ]);
+
         $product = $this->makeCatalogProduct([
             'product_code' => 'PAY-001',
             'product_name' => 'Borclu Urun',
@@ -539,6 +555,22 @@ class TenantAdvancedCatalogTest extends TestCase
             'local_stock_quantity' => 2,
             'supplier_stock_quantity' => 10,
             'total_stock_quantity' => 12,
+        ]);
+
+        TenantLocalStock::query()->create([
+            'tenant_account_id' => $this->tenant->id,
+            'tenant_catalog_product_id' => $product->id,
+            'tenant_catalog_product_variant_id' => null,
+            'stock_scope' => 'product',
+            'warehouse_code' => 'LOCAL-MAIN',
+            'location_code' => null,
+            'quantity_on_hand' => 2,
+            'quantity_reserved' => 0,
+            'quantity_available' => 2,
+            'reorder_level' => 0,
+            'max_stock' => null,
+            'last_counted_at' => now(),
+            'notes' => 'fixture',
         ]);
 
         $response = $this->actingAs($this->adminUser)
@@ -608,12 +640,16 @@ class TenantAdvancedCatalogTest extends TestCase
 
         $localPage = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get('/admin/catalog/local-products');
+            ->get('/admin/catalog/local-products/supplier-stock');
 
-        $localPage->assertOk();
-        $localPage->assertSeeText('Tedarikçiden Local Stoğa Alınan Ürünler');
-        $localPage->assertSeeText('LOCAL-STOCK-001');
-        $localPage->assertSeeText('Tedarikçiden Local Stok');
+        $localPage->assertRedirect('/admin/catalog?source_type=supplier&stock_state=local_stock');
+
+        $catalogPage = $this->actingAs($this->adminUser)
+            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
+            ->get('/admin/catalog?source_type=supplier&stock_state=local_stock');
+
+        $catalogPage->assertOk();
+        $catalogPage->assertSeeText('LOCAL-STOCK-001');
 
         $search = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
@@ -632,6 +668,22 @@ class TenantAdvancedCatalogTest extends TestCase
             'product_code' => 'EXIST-001',
             'product_name' => 'Eldeki Urun',
             'local_stock_quantity' => 1,
+        ]);
+
+        TenantLocalStock::query()->create([
+            'tenant_account_id' => $this->tenant->id,
+            'tenant_catalog_product_id' => $product->id,
+            'tenant_catalog_product_variant_id' => null,
+            'stock_scope' => 'product',
+            'warehouse_code' => 'LOCAL-MAIN',
+            'location_code' => null,
+            'quantity_on_hand' => 1,
+            'quantity_reserved' => 0,
+            'quantity_available' => 1,
+            'reorder_level' => 0,
+            'max_stock' => null,
+            'last_counted_at' => now(),
+            'notes' => 'fixture',
         ]);
 
         $response = $this->actingAs($this->adminUser)
@@ -713,10 +765,29 @@ class TenantAdvancedCatalogTest extends TestCase
 
     public function test_supplier_purchase_uses_discount_calculation_and_manual_purchase_price(): void
     {
+        $supplier = Supplier::query()->create(['name' => 'Manuel Alis Tedarikci', 'code' => 'MANUAL-PURCHASE-SUP', 'status' => 'active']);
+        TenantSupplierAccess::query()->create([
+            'tenant_account_id' => $this->tenant->id,
+            'supplier_id' => $supplier->id,
+            'is_active' => true,
+            'can_view_products' => true,
+            'visible_in_catalog' => true,
+            'can_use_in_quotes' => true,
+            'can_request_purchase' => true,
+            'price_multiplier' => 1,
+            'safe_stock_quantity' => 0,
+            'export_allowed' => false,
+        ]);
+
         $product = $this->makeCatalogProduct([
             'product_code' => 'MANUAL-PURCHASE',
             'product_name' => 'Manuel Alis Urunu',
             'display_price' => 100,
+            'source_summary' => [[
+                'supplier_id' => $supplier->id,
+                'supplier_name' => $supplier->name,
+                'supplier_product_code' => 'MANUAL-PURCHASE',
+            ]],
             'meta' => [
                 'price_snapshot' => ['list_price' => 100, 'discount_rate' => 45, 'vat_rate' => 20],
                 'warning_snapshot' => [],
@@ -746,6 +817,19 @@ class TenantAdvancedCatalogTest extends TestCase
             'unit_purchase_price' => 54.5,
             'manual_purchase_unit_price' => true,
             'payable_amount' => 109,
+        ]);
+        $this->assertDatabaseHas('stock_movements', [
+            'tenant_account_id' => $this->tenant->id,
+            'tenant_catalog_product_id' => $product->id,
+            'movement_type' => 'in',
+            'reason' => 'purchase',
+            'quantity' => 2,
+        ]);
+        $this->assertDatabaseHas('tenant_catalog_products', [
+            'id' => $product->id,
+            'display_price' => 100,
+            'local_stock_quantity' => 2,
+            'stock_quantity' => 52,
         ]);
     }
 

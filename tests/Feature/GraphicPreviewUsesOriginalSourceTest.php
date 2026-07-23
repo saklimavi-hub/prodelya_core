@@ -41,7 +41,9 @@ class GraphicPreviewUsesOriginalSourceTest extends TestCase
         $response->assertOk();
         $this->assertNotNull($attachment);
         $this->assertSame($attachment['original_url'], $attachment['open_url']);
-        $response->assertSee('data-lightbox-src="' . e($attachment['original_url']) . '"', false);
+        $response->assertSee('data-full-src="' . e($attachment['original_url']) . '"', false);
         $response->assertSee('src="' . e($attachment['preview_url']) . '"', false);
+        $response->assertSee('class="gg-lightbox-image pd-graphic-lightbox__image"', false);
+        $response->assertSee('data-lightbox-status', false);
     }
 }

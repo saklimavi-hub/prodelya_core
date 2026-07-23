@@ -10,15 +10,18 @@
 @php
     $metricCards = [
         ['label' => 'Aktif Hazır Tedarikçi Kaynağı', 'value' => $platformStats['global_sources'], 'note' => 'Merkezden yönetilen aktif kaynak sayısı', 'class' => 'pd-metric-card-soft-blue'],
-        ['label' => 'Kontrol Bekleyen Ürün', 'value' => $platformStats['pending_standard_product_categories'], 'note' => 'Ürün havuzunda kategori kararı bekleyen kayıtlar', 'class' => 'pd-metric-card-soft-purple'],
-        ['label' => 'Kategori Bekleyen', 'value' => $platformStats['pending_category_mappings'], 'note' => 'Kategori eşleme kuyruğundaki tedarikçi kayıtları', 'class' => 'pd-metric-card-soft-amber'],
-        ['label' => 'Abone Katalog Yayını Bekleyen', 'value' => $platformStats['pending_tenant_catalog_categories'], 'note' => 'Abone Firma kataloğunda kategori kararı bekleyen ürünler', 'class' => 'pd-metric-card-soft-slate'],
+        ['label' => 'İnceleme Bekleyen', 'value' => $platformStats['pending_standard_product_categories'], 'note' => 'Ürün havuzunda kategori kararı bekleyen kayıtlar', 'class' => 'pd-metric-card-soft-purple'],
+        ['label' => 'Eşleşen', 'value' => max(0, ($platformStats['permanent_categories'] ?? 0) - ($platformStats['pending_category_mappings'] ?? 0)), 'note' => 'Kalıcı aktif kategori omurgasında temiz görünen kayıtlar', 'class' => 'pd-metric-card-soft-green'],
+        ['label' => 'Eşleşmeyen', 'value' => $platformStats['pending_category_mappings'], 'note' => 'Kategori eşleme kuyruğundaki tedarikçi kayıtları', 'class' => 'pd-metric-card-soft-amber'],
+        ['label' => 'Arşivli / Pasif', 'value' => $platformStats['archived_categories'], 'note' => 'Seçim ve eşleme yüzeylerinden dışlanan kategori kayıtları', 'class' => 'pd-metric-card-soft-red'],
+        ['label' => 'Kategori Temizliği Gereken', 'value' => $platformStats['pending_tenant_catalog_categories'], 'note' => 'Abone Firma kataloğunda kategori kararı bekleyen ürünler', 'class' => 'pd-metric-card-soft-slate'],
         ['label' => 'Abone Firma Erişimi', 'value' => $platformStats['total_access'], 'note' => 'Açık tedarikçi erişim kaydı', 'class' => 'pd-metric-card-soft-green'],
     ];
 
     $primaryLinks = [
         ['title' => 'Ürünleri Senkronize Et', 'copy' => 'Normalde günlük güncelleme için senkronizasyon yeterlidir; uygun ürünler satış listesine otomatik yansır.', 'href' => route('admin.super.product-data-hub.sources.index')],
         ['title' => 'Bekleyen Kontrolleri Aç', 'copy' => 'Sadece kategori, kimlik, fiyat anomali ve pasif ürün gibi karar gereken işleri görün.', 'href' => route('admin.super.product-data-hub.product-panel', ['flow_mode' => 'review_queue'])],
+        ['title' => 'Toplu Kategori Uygula', 'copy' => 'Güvenli kategori kararlarını toplu uygulama ekranında gözden geçirin.', 'href' => route('admin.super.product-data-hub.category-mappings.index', ['queue' => 'safe_candidate', 'view_mode' => 'quick'])],
         ['title' => 'Yeni Kaynak Ekle', 'copy' => 'Yeni tedarikçi kaynağını bağlayın, ön kontrol yapın ve senkronizasyona hazır hale getirin.', 'href' => route('admin.super.product-data-hub.sources.create')],
         ['title' => 'Güncelleme Ayarı', 'copy' => 'Saatlik/günlük otomatik akışın teknik çalışma mantığını ve bakım adımlarını kontrol edin.', 'href' => route('admin.super.product-data-hub.pipeline')],
     ];
@@ -26,9 +29,9 @@
     $detailLinks = [
         ['title' => 'Durum Merkezi', 'href' => route('admin.super.product-data-hub.index')],
         ['title' => 'Ürün Paneli', 'href' => route('admin.super.product-data-hub.product-panel')],
-        ['title' => 'Standart Ürünler', 'href' => route('admin.super.product-data-hub.standard-products.index')],
-        ['title' => 'Standart Kategori Ağacı', 'href' => route('admin.super.standard-categories.index')],
-        ['title' => 'Kategori Temizlik', 'href' => route('admin.super.product-data-hub.category-cleanup.index')],
+        ['title' => 'Ürün Havuzu', 'href' => route('admin.super.product-data-hub.standard-products.index')],
+        ['title' => 'Kalıcı Kategori Ağacı', 'href' => route('admin.super.standard-categories.index')],
+        ['title' => 'Kategori Temizliği', 'href' => route('admin.super.product-data-hub.category-cleanup.index')],
         ['title' => 'Özellik Şablonları', 'href' => route('admin.super.product-data-hub.category-feature-templates.index')],
         ['title' => 'Akış Kontrol', 'href' => route('admin.super.product-data-hub.pipeline')],
         ['title' => 'Abone Firma Erişimleri', 'href' => route('admin.super.tenant-supplier-access.index')],
@@ -122,7 +125,7 @@
             <div class="pd-section-header">
                 <div>
                     <h3 class="pd-section-title">Kısa Operasyon Özeti</h3>
-                    <p class="pd-section-subtitle">Raw, standard, projection ve tenant çıkışı zincirinin bugün hangi noktada temiz aktığını veya istisna ürettiğini özetler.</p>
+                    <p class="pd-section-subtitle">Kaynak, ürün havuzu, otomatik yansıma ve Abone Firma kataloğu zincirinin bugün hangi noktada temiz aktığını veya istisna ürettiğini özetler.</p>
                 </div>
                 <a href="{{ route('admin.super.product-data-hub.sources.index') }}" class="pd-btn pd-btn-primary pd-btn-sm">Kaynakları Aç</a>
             </div>
@@ -168,7 +171,7 @@
                             <div class="pd-source-meta-line">Abone Firma erişimi: <span class="pd-source-meta-chip">{{ $source['tenant_count'] }}</span></div>
                         </div>
                         <div class="pd-source-actions">
-                            <a href="{{ route('admin.super.product-data-hub.sources.preview', $source['id']) }}" class="pd-btn pd-btn-primary pd-btn-sm">Önizle</a>
+                            <a href="{{ route('admin.super.product-data-hub.sources.preview', $source['id']) }}" class="pd-btn pd-btn-primary pd-btn-sm">Ön Kontrol</a>
                         </div>
                     </div>
                 @endforeach
@@ -201,9 +204,9 @@
 
         <div class="pd-status-list">
             <div class="pd-status-row"><span>Aktif kaynak</span><strong>{{ $platformStats['global_sources'] }}</strong></div>
-            <div class="pd-status-row"><span>Kategori bekleyen</span><strong>{{ $platformStats['pending_category_mappings'] }}</strong></div>
-            <div class="pd-status-row"><span>Ürün kontrol kuyruğu</span><strong>{{ $platformStats['pending_standard_product_categories'] }}</strong></div>
-            <div class="pd-status-row"><span>Abone katalog yayını bekleyen</span><strong>{{ $platformStats['pending_tenant_catalog_categories'] }}</strong></div>
+            <div class="pd-status-row"><span>Kategori temizliği gereken</span><strong>{{ $platformStats['pending_category_mappings'] }}</strong></div>
+            <div class="pd-status-row"><span>İnceleme bekleyen</span><strong>{{ $platformStats['pending_standard_product_categories'] }}</strong></div>
+            <div class="pd-status-row"><span>Kategori temizliği gereken</span><strong>{{ $platformStats['pending_tenant_catalog_categories'] }}</strong></div>
             <div class="pd-status-row"><span>Abone Firma erişimi</span><strong>{{ $platformStats['total_access'] }}</strong></div>
         </div>
 
@@ -230,7 +233,7 @@
 <div class="pd-bottom-action-buttons">
     <a href="{{ route('admin.super.product-data-hub.sources.index') }}" class="pd-btn pd-btn-primary">Tedarikçi Akışları</a>
     <a href="{{ route('admin.super.product-data-hub.pipeline') }}" class="pd-btn pd-btn-light">Akış Kontrol</a>
-    <a href="{{ route('admin.super.product-data-hub.category-mappings.index', ['queue' => 'pending']) }}" class="pd-btn pd-btn-warning">Kategori Bekleyenler</a>
+    <a href="{{ route('admin.super.product-data-hub.category-mappings.index', ['queue' => 'pending']) }}" class="pd-btn pd-btn-warning">Eşleşmeleri Gözden Geçir</a>
     <a href="{{ route('admin.super.product-data-hub.catalog-output') }}" class="pd-btn pd-btn-light">Abone Katalog Yayını</a>
 </div>
 @endsection

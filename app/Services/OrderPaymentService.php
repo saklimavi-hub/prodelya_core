@@ -26,7 +26,7 @@ class OrderPaymentService
         $order->loadMissing(['payments', 'deliveries.workForm.attachments', 'customer']);
 
         $paymentType = $this->normalizePaymentType($data['payment_type'] ?? OrderPayment::TYPE_COLLECTION);
-        $currency = (string) ($data['currency'] ?? $order->currency ?? 'TL');
+        $currency = $this->normalizeCurrency($data['currency'] ?? $order->currency ?? 'TRY');
         $amount = $this->normalizeAmount($data['amount'] ?? 0, $paymentType);
 
         $this->validateCurrency($order, $currency);
@@ -104,7 +104,7 @@ class OrderPaymentService
 
     public function validateCurrency(Order $order, string $currency): void
     {
-        if (mb_strtoupper(trim($currency)) !== mb_strtoupper(trim((string) $order->currency))) {
+        if ($this->normalizeCurrency($currency) !== $this->normalizeCurrency((string) $order->currency)) {
             throw new \InvalidArgumentException('Payment currency must match order currency.');
         }
     }
@@ -130,7 +130,7 @@ class OrderPaymentService
         return $this->createPayment($order, [
             'payment_type' => OrderPayment::TYPE_COLLECTION,
             'amount' => $balanceDue,
-            'currency' => $order->currency ?: 'TL',
+            'currency' => $this->normalizeCurrency($order->currency ?: 'TRY'),
             'payment_method' => $paymentMethod ?: OrderPayment::METHOD_OTHER,
             'payment_note' => $this->normalizeText($note) ?: 'Ödendi işaretle işlemi ile oluşturuldu.',
             'paid_at' => now(),
@@ -227,6 +227,13 @@ class OrderPaymentService
         }
 
         return $amount;
+    }
+
+    private function normalizeCurrency(mixed $currency): string
+    {
+        $value = mb_strtoupper(trim((string) $currency));
+
+        return $value === 'TL' ? 'TRY' : $value;
     }
 
     private function normalizeDateTime(mixed $value): ?Carbon

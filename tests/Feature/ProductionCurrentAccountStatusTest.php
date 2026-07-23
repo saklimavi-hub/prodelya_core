@@ -19,19 +19,14 @@ class ProductionCurrentAccountStatusTest extends TestCase
         $this->setUpProductionShowFixtures();
     }
 
-    public function test_external_tab_shows_current_account_processing_status_when_transaction_exists(): void
+    public function test_legacy_external_tab_redirects_to_canonical_tracking_even_when_transaction_exists(): void
     {
         $production = $this->createExternalProductionForShow();
         $this->createExternalTransactionStatus($production);
 
-        $response = $this->actingAs($this->financeUser)
+        $this->actingAs($this->financeUser)
             ->withServerVariables(['HTTP_HOST' => self::PRODUCTION_SHOW_HOST])
-            ->get(route('admin.productions.show', $production->fresh()) . '?tab=dis-uretim');
-
-        $response->assertOk();
-        $response->assertSee('Eşleşen Cari');
-        $response->assertSee('Cari Hareketi');
-        $response->assertSee('İşlendi');
+            ->get(route('admin.productions.show', $production->fresh()) . '?tab=dis-uretim')
+            ->assertRedirect(route('admin.productions.subcontract-tracking', $production->fresh()));
     }
 }
-

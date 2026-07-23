@@ -999,7 +999,7 @@
             $workFormSetupItems = collect(data_get($productionSnapshot, 'setup_summary.items', []))->values();
         @endphp
 
-        @if($workFormSetupItems->isNotEmpty())
+        @if(app(\App\Services\PromotionIntermediateElementPolicy::class)->shouldRender() && $workFormSetupItems->isNotEmpty())
             <div class="wf-section">
                 <div class="wf-section-title">3A. Hazırlık / Ara Eleman</div>
                 <div class="wf-table-wrap">
@@ -1133,11 +1133,13 @@
                                 <span class="wf-field-label">Tamamlanan / Kalan</span>
                                 <div class="wf-field-value">{{ data_get($productionSnapshot, 'completed_quantity', 0) }} / {{ data_get($productionSnapshot, 'remaining_quantity', 0) }}</div>
                             </div>
-                            <div>
-                                <span class="wf-field-label">Klişe / Kalıp Durumu</span>
-                                <div class="wf-field-value">{{ data_get($productionSnapshot, 'cliche_status_label', '-') }}</div>
-                            </div>
-                            @if(data_get($productionSnapshot, 'setup_required'))
+                            @if(app(\App\Services\PromotionIntermediateElementPolicy::class)->shouldRender())
+                                <div>
+                                    <span class="wf-field-label">Klişe / Kalıp Durumu</span>
+                                    <div class="wf-field-value">{{ data_get($productionSnapshot, 'cliche_status_label', '-') }}</div>
+                                </div>
+                            @endif
+                            @if(app(\App\Services\PromotionIntermediateElementPolicy::class)->shouldRender() && data_get($productionSnapshot, 'setup_required'))
                                 <div>
                                     <span class="wf-field-label">Hazırlık / Ara Eleman</span>
                                     <div class="wf-field-value">{{ data_get($productionSnapshot, 'setup_summary_label', 'Hazırlık planlandı') }}</div>

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 namespace App\Http\Controllers\Admin;
 
@@ -20,16 +20,19 @@ use App\Models\Supplier;
 use App\Models\SupplierSource;
 use App\Models\TenantCatalogProduct;
 use App\Models\TenantCatalogProductVariant;
+use App\Models\TenantSupplierAccess;
 use App\Services\ModuleFeatureCatalogService;
 use App\Services\CurrentAccountSyncService;
 use App\Services\OrderRevisionApplyService;
 use App\Services\OrderRevisionComparisonService;
 use App\Services\OrderRevisionRecordService;
 use App\Services\ProductDataHub\ProductHubSellableTruthService;
+use App\Services\ProductDataHub\ProductHubFreshnessDiagnosticService;
 use App\Services\PromotionQuote\QuoteCurrencyAccessService;
 use App\Services\PromotionQuote\QuoteCurrencyPricingService;
 use App\Services\ProductDataHub\SupplierWarningLabelService;
 use App\Services\PromotionQuotePdfService;
+use App\Services\PromotionIntermediateElementPolicy;
 use App\Services\Notifications\TenantNotificationSettingsService;
 use App\Services\Notifications\TenantWhatsappLinkService;
 use App\Services\TenantAccessService;
@@ -44,11 +47,11 @@ use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use App\Services\UsageLimitGuardService;
 use DomainException;
@@ -69,11 +72,13 @@ class PromotionQuoteController extends Controller
         protected TenantDeliveryTypeService $tenantDeliveryTypeService,
         protected SupplierWarningLabelService $supplierWarningLabelService,
         protected ProductHubSellableTruthService $sellableTruthService,
+        protected ProductHubFreshnessDiagnosticService $productHubFreshnessDiagnosticService,
         protected QuoteCurrencyAccessService $quoteCurrencyAccessService,
         protected QuoteCurrencyPricingService $quoteCurrencyPricingService,
         protected OrderRevisionComparisonService $orderRevisionComparisonService,
         protected PrintSetupUnitDistributionService $printSetupUnitDistributionService,
         protected TenantPrintOptionService $tenantPrintOptionService,
+        protected PromotionIntermediateElementPolicy $promotionIntermediateElementPolicy,
     ) {}
 
     /**
@@ -140,6 +145,28 @@ class PromotionQuoteController extends Controller
         return $quote?->shouldShowPrintPriceDetailsToCustomer() ?? true;
     }
 
+    private function intermediateElementEnabled(): bool
+    {
+        return $this->promotionIntermediateElementPolicy->enabled();
+    }
+
+    private function sanitizePrintSetupPayload(array $printData): array
+    {
+        if ($this->promotionIntermediateElementPolicy->shouldPersist()) {
+            return $printData;
+        }
+
+        $printData['cliche_status'] = null;
+        $printData['setup_pricing_enabled'] = false;
+        $printData['setup_type'] = null;
+        $printData['setup_status'] = null;
+        $printData['setup_total_amount'] = null;
+        $printData['setup_distribution_quantity'] = null;
+        $printData['setup_unit_amount'] = null;
+
+        return $printData;
+    }
+
     private function quoteCurrencyAccess(TenantAccount $tenant, Request $request): array
     {
         return $this->quoteCurrencyAccessService->build($tenant, $request->user());
@@ -182,11 +209,18 @@ class PromotionQuoteController extends Controller
             ];
         }
 
-        return [
-            ['value' => 'TRY', 'label' => 'TL'],
-            ['value' => 'USD', 'label' => 'USD'],
-            ['value' => 'EUR', 'label' => 'EUR'],
-        ];
+        $enabledCurrencies = $access['enabled_quote_currencies'] ?? ['TRY'];
+        $options = [];
+
+        foreach ($enabledCurrencies as $currency) {
+            $label = match ($currency) {
+                'TRY' => 'TL',
+                default => $currency,
+            };
+            $options[] = ['value' => $currency, 'label' => $label];
+        }
+
+        return $options;
     }
 
     private function quoteCurrencyViewPayload(TenantAccount $tenant, array $access, ?Order $quote = null): array
@@ -1061,6 +1095,19 @@ class PromotionQuoteController extends Controller
         ]);
     }
 
+    private function printValidationMessageKey(int $itemIndex, int $printIndex, string $field): string
+    {
+        return sprintf('items.%d.prints.%d.%s', $itemIndex, $printIndex, $field);
+    }
+
+    private function throwPrintValidation(int $itemIndex, int $printIndex, string $field, string $message): never
+    {
+        throw ValidationException::withMessages([
+            'error' => 'Teklif kaydedilemedi. Hatalı satırları kontrol edip tekrar deneyin.',
+            $this->printValidationMessageKey($itemIndex, $printIndex, $field) => $message,
+        ]);
+    }
+
     private function resolveUnitPricePayload(array $itemData): array
     {
         $listPrice = $this->normalizeDecimal($itemData['list_price'] ?? 0);
@@ -1316,6 +1363,22 @@ class PromotionQuoteController extends Controller
             : null;
     }
 
+    private function printSetupSelectionProvided(array $printData): bool
+    {
+        $setupStatus = trim((string) ($printData['setup_status'] ?? $printData['cliche_status'] ?? ''));
+
+        if ($setupStatus !== '') {
+            return true;
+        }
+
+        if (filter_var($printData['setup_pricing_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            return true;
+        }
+
+        return $this->normalizeDecimal($printData['setup_total_amount'] ?? 0) > 0
+            || $this->normalizeDecimal($printData['setup_unit_amount'] ?? 0) > 0;
+    }
+
     private function normalizePrintSetupPricing(
         array $printData,
         ?TenantPrintSetting $selectedSetting,
@@ -1550,8 +1613,9 @@ class PromotionQuoteController extends Controller
     {
         $tenant = $this->tenantResolver->getCurrentTenant(request());
         $canViewFinancialData = Auth::user()?->canViewFinancialData($tenant->id) ?? false;
+        $quoteCurrencyAccess = $this->quoteCurrencyAccess($tenant, request());
         $deliveryTypeState = $this->tenantDeliveryTypeService->selectionState($tenant->id);
-        
+
         // Get active customers
         $customers = Company::where('tenant_account_id', $tenant->id)
             ->where('status', 'active')
@@ -1581,6 +1645,7 @@ class PromotionQuoteController extends Controller
             'customerLookup' => $this->buildQuoteCustomerLookup($customers),
             'selectedCustomer' => $selectedCustomer ? $this->formatQuoteCustomerSummary($selectedCustomer) : null,
             'canViewFinancialData' => $canViewFinancialData,
+            'quoteCurrency' => $this->quoteCurrencyViewPayload($tenant, $quoteCurrencyAccess),
             'tenantPrintSettings' => $this->buildTenantPrintSettingsPayload($tenant->id, $canViewFinancialData),
             'deliveryTypeOptions' => $deliveryTypeState['types'],
             'selectedDeliveryTypeId' => old('delivery_type_id', $deliveryTypeState['selected_id']),
@@ -1914,6 +1979,9 @@ class PromotionQuoteController extends Controller
             'delivery_type' => 'nullable|string|max:100',
             'show_print_price_details_to_customer' => 'nullable|boolean',
             'notes' => 'nullable|string',
+        ], [
+            'items.required' => 'En az bir ürün kalemi ekleyin.',
+            'items.min' => 'En az bir ürün kalemi ekleyin.',
         ]);
         $selectedCustomer = $this->resolveSelectedQuoteCustomer($tenant->id, (int) $validated['customer_company_id']);
 
@@ -1971,7 +2039,9 @@ class PromotionQuoteController extends Controller
                 $itemData['unit_price'] = $unitPricePayload['unit_price'];
                 $unitPrice = $unitPricePayload['unit_price'];
 
-                $catalogPayload = $this->resolveCatalogItemPayload($tenant->id, $itemData, $itemIndex);
+                $itemData['document_currency'] = $validated['currency'] ?? 'TRY';
+                $itemData['quote_date'] = $validated['quote_date'] ?? now()->toDateString();
+                $catalogPayload = $this->resolveCatalogItemPayload($tenant, $itemData, $itemIndex);
                 $pricingSnapshot = $this->quoteCurrencyPricingService->buildItemPricing(
                     $tenant,
                     $documentCurrency,
@@ -2017,7 +2087,7 @@ class PromotionQuoteController extends Controller
 
                 // Create print details if provided
                 if (($itemData['has_print'] ?? false) && isset($itemData['prints'])) {
-                    foreach ($itemData['prints'] as $printData) {
+                    foreach ($itemData['prints'] as $printIndex => $printData) {
                         $selectedSetting = $this->findTenantPrintSettingForSave(
                             $tenant->id,
                             !empty($printData['tenant_print_setting_id']) ? (int) $printData['tenant_print_setting_id'] : null
@@ -2028,6 +2098,12 @@ class PromotionQuoteController extends Controller
                             !empty($printData['tenant_print_option_id']) ? (int) $printData['tenant_print_option_id'] : null,
                             $printData['print_option'] ?? null
                         );
+                        $printData = $this->sanitizePrintSetupPayload($printData);
+                        $requiresSetup = $this->promotionIntermediateElementPolicy->shouldValidate()
+                            && (bool) ($selectedOption?->requires_setup ?? $selectedSetting?->requires_setup ?? false);
+                        if ($requiresSetup && ! $this->printSetupSelectionProvided($printData)) {
+                            $this->throwPrintValidation($itemIndex, $printIndex, 'setup_requirement', 'Bu baskı için ara eleman ayarı gereklidir.');
+                        }
                         $resolvedSubcontractorId = $printData['subcontractor_company_id'] ?? null;
 
                         if ($selectedSetting && blank($resolvedSubcontractorId) && filled($selectedSetting->default_subcontractor_company_id)) {
@@ -2064,13 +2140,13 @@ class PromotionQuoteController extends Controller
                             'subcontractor_company_id' => $resolvedSubcontractorId,
                             'print_color' => $printData['print_color'] ?? null,
                             'print_size' => $printData['print_size'] ?? null,
-                            'cliche_status' => $printPricing['cliche_status'],
-                            'setup_pricing_enabled' => $printPricing['setup_pricing_enabled'],
-                            'setup_type' => $printPricing['setup_type'],
-                            'setup_status' => $printPricing['setup_status'],
-                            'setup_total_amount' => $printPricing['setup_total_amount'],
-                            'setup_distribution_quantity' => $printPricing['setup_distribution_quantity'],
-                            'setup_unit_amount' => $printPricing['setup_unit_amount'],
+                            'cliche_status' => $this->promotionIntermediateElementPolicy->shouldPersist() ? $printPricing['cliche_status'] : null,
+                            'setup_pricing_enabled' => $this->promotionIntermediateElementPolicy->shouldPersist() ? $printPricing['setup_pricing_enabled'] : false,
+                            'setup_type' => $this->promotionIntermediateElementPolicy->shouldPersist() ? $printPricing['setup_type'] : null,
+                            'setup_status' => $this->promotionIntermediateElementPolicy->shouldPersist() ? $printPricing['setup_status'] : null,
+                            'setup_total_amount' => $this->promotionIntermediateElementPolicy->shouldPersist() ? $printPricing['setup_total_amount'] : null,
+                            'setup_distribution_quantity' => $this->promotionIntermediateElementPolicy->shouldPersist() ? $printPricing['setup_distribution_quantity'] : null,
+                            'setup_unit_amount' => $this->promotionIntermediateElementPolicy->shouldPersist() ? $printPricing['setup_unit_amount'] : null,
                             'base_print_unit_price' => $printPricing['base_print_unit_price'],
                             'print_quantity' => $printPricing['print_quantity'] ?? null,
                             'print_unit_price' => $printPricing['print_unit_price'] ?? null,
@@ -2151,14 +2227,14 @@ class PromotionQuoteController extends Controller
             throw $e;
         } catch (\Exception $e) {
             DB::rollback();
-            
+
             // Log the error for debugging
             \Log::error('Quote creation failed: ' . $e->getMessage(), [
                 'request_data' => $request->all(),
                 'validated_data' => $validated ?? null,
                 'exception' => $e
             ]);
-            
+
             return back()
                 ->withInput()
                 ->withErrors(['error' => $this->humanizeQuoteException($e)]);
@@ -2173,7 +2249,8 @@ class PromotionQuoteController extends Controller
         $tenant = $this->tenantResolver->getCurrentTenant($request);
         $moduleEnabled = $this->customerQuoteApprovalModuleEnabled($tenant->id);
         $canApproveQuotes = $this->canManageQuoteApprovals($tenant->id);
-        
+        $quoteCurrencyAccess = $this->quoteCurrencyAccess($tenant, $request);
+
         // Tenant isolation check
         if ($quote->tenant_account_id !== $tenant->id) {
             abort(403, 'Bu teklife erişim yetkiniz yok.');
@@ -2274,6 +2351,7 @@ class PromotionQuoteController extends Controller
             'quotePdfAvailable' => $quotePdfAvailable,
             'sourceOrderContext' => $sourceOrderContext,
             'revisionCompareUrl' => $revisionCompareUrl,
+            'quoteCurrency' => $this->quoteCurrencyViewPayload($tenant, $quoteCurrencyAccess, $quote),
         ]);
     }
 
@@ -2766,7 +2844,7 @@ class PromotionQuoteController extends Controller
     public function edit(Request $request, Order $quote)
     {
         $tenant = $this->tenantResolver->getCurrentTenant($request);
-        
+
         // Tenant isolation check
         if ($quote->tenant_account_id !== $tenant->id) {
             abort(403, 'Bu teklife erişim yetkiniz yok.');
@@ -2795,6 +2873,7 @@ class PromotionQuoteController extends Controller
             ->get(['id', 'legal_name']);
 
         $canViewFinancialData = Auth::user()?->canViewFinancialData($tenant->id) ?? false;
+        $quoteCurrencyAccess = $this->quoteCurrencyAccess($tenant, $request);
         $linkedSettingIds = $quote->items
             ->flatMap(fn ($item) => $item->prints->pluck('tenant_print_setting_id'))
             ->filter()
@@ -2827,6 +2906,7 @@ class PromotionQuoteController extends Controller
             'customerLookup' => $this->buildQuoteCustomerLookup($customers),
             'selectedCustomer' => $quote->customer ? $this->formatQuoteCustomerSummary($quote->customer) : null,
             'canViewFinancialData' => $canViewFinancialData,
+            'quoteCurrency' => $this->quoteCurrencyViewPayload($tenant, $quoteCurrencyAccess, $quote),
             'tenantPrintSettings' => $this->buildTenantPrintSettingsPayload($tenant->id, $canViewFinancialData, $linkedSettingIds, $linkedOptionIds),
             'deliveryTypeOptions' => $deliveryTypeState['types'],
             'selectedDeliveryTypeId' => old('delivery_type_id', $deliveryTypeState['selected_id']),
@@ -2843,7 +2923,7 @@ class PromotionQuoteController extends Controller
     {
         $tenant = $this->tenantResolver->getCurrentTenant($request);
         $quoteCurrencyAccess = $this->quoteCurrencyAccess($tenant, $request);
-        
+
         // Tenant isolation check
         if ($quote->tenant_account_id !== $tenant->id) {
             abort(403, 'Bu teklife erişim yetkiniz yok.');
@@ -2928,6 +3008,9 @@ class PromotionQuoteController extends Controller
             'delivery_type' => 'nullable|string|max:100',
             'show_print_price_details_to_customer' => 'nullable|boolean',
             'notes' => 'nullable|string',
+        ], [
+            'items.required' => 'En az bir ürün kalemi ekleyin.',
+            'items.min' => 'En az bir ürün kalemi ekleyin.',
         ]);
         $selectedCustomer = $this->resolveSelectedQuoteCustomer($tenant->id, (int) $validated['customer_company_id']);
 
@@ -2983,7 +3066,9 @@ class PromotionQuoteController extends Controller
                 $itemData['unit_price'] = $unitPricePayload['unit_price'];
                 $unitPrice = $unitPricePayload['unit_price'];
 
-                $catalogPayload = $this->resolveCatalogItemPayload($tenant->id, $itemData, $itemIndex);
+                $itemData['document_currency'] = $validated['currency'] ?? 'TRY';
+                $itemData['quote_date'] = $validated['quote_date'] ?? now()->toDateString();
+                $catalogPayload = $this->resolveCatalogItemPayload($tenant, $itemData, $itemIndex);
                 $pricingSnapshot = $this->quoteCurrencyPricingService->buildItemPricing(
                     $tenant,
                     $documentCurrency,
@@ -3029,7 +3114,7 @@ class PromotionQuoteController extends Controller
 
                 // Create print details if provided
                 if (($itemData['has_print'] ?? false) && isset($itemData['prints'])) {
-                    foreach ($itemData['prints'] as $printData) {
+                    foreach ($itemData['prints'] as $printIndex => $printData) {
                         $selectedSetting = $this->findTenantPrintSettingForSave(
                             $tenant->id,
                             !empty($printData['tenant_print_setting_id']) ? (int) $printData['tenant_print_setting_id'] : null,
@@ -3042,6 +3127,12 @@ class PromotionQuoteController extends Controller
                             $printData['print_option'] ?? null,
                             $allowedInactiveOptionIds
                         );
+                        $printData = $this->sanitizePrintSetupPayload($printData);
+                        $requiresSetup = $this->promotionIntermediateElementPolicy->shouldValidate()
+                            && (bool) ($selectedOption?->requires_setup ?? $selectedSetting?->requires_setup ?? false);
+                        if ($requiresSetup && ! $this->printSetupSelectionProvided($printData)) {
+                            $this->throwPrintValidation($itemIndex, $printIndex, 'setup_requirement', 'Bu baskı için ara eleman ayarı gereklidir.');
+                        }
                         $resolvedSubcontractorId = $printData['subcontractor_company_id'] ?? null;
 
                         if ($selectedSetting && blank($resolvedSubcontractorId) && filled($selectedSetting->default_subcontractor_company_id)) {
@@ -3078,13 +3169,13 @@ class PromotionQuoteController extends Controller
                             'subcontractor_company_id' => $resolvedSubcontractorId,
                             'print_color' => $printData['print_color'] ?? null,
                             'print_size' => $printData['print_size'] ?? null,
-                            'cliche_status' => $printPricing['cliche_status'],
-                            'setup_pricing_enabled' => $printPricing['setup_pricing_enabled'],
-                            'setup_type' => $printPricing['setup_type'],
-                            'setup_status' => $printPricing['setup_status'],
-                            'setup_total_amount' => $printPricing['setup_total_amount'],
-                            'setup_distribution_quantity' => $printPricing['setup_distribution_quantity'],
-                            'setup_unit_amount' => $printPricing['setup_unit_amount'],
+                            'cliche_status' => $this->promotionIntermediateElementPolicy->shouldPersist() ? $printPricing['cliche_status'] : null,
+                            'setup_pricing_enabled' => $this->promotionIntermediateElementPolicy->shouldPersist() ? $printPricing['setup_pricing_enabled'] : false,
+                            'setup_type' => $this->promotionIntermediateElementPolicy->shouldPersist() ? $printPricing['setup_type'] : null,
+                            'setup_status' => $this->promotionIntermediateElementPolicy->shouldPersist() ? $printPricing['setup_status'] : null,
+                            'setup_total_amount' => $this->promotionIntermediateElementPolicy->shouldPersist() ? $printPricing['setup_total_amount'] : null,
+                            'setup_distribution_quantity' => $this->promotionIntermediateElementPolicy->shouldPersist() ? $printPricing['setup_distribution_quantity'] : null,
+                            'setup_unit_amount' => $this->promotionIntermediateElementPolicy->shouldPersist() ? $printPricing['setup_unit_amount'] : null,
                             'base_print_unit_price' => $printPricing['base_print_unit_price'],
                             'print_quantity' => $printPricing['print_quantity'] ?? null,
                             'print_unit_price' => $printPricing['print_unit_price'] ?? null,
@@ -3165,7 +3256,7 @@ class PromotionQuoteController extends Controller
             throw $e;
         } catch (\Exception $e) {
             DB::rollback();
-            
+
             return back()
                 ->withInput()
                 ->withErrors(['error' => $this->humanizeQuoteException($e)]);
@@ -3178,7 +3269,7 @@ class PromotionQuoteController extends Controller
     public function destroy(Request $request, Order $quote)
     {
         $tenant = $this->tenantResolver->getCurrentTenant($request);
-        
+
         // Tenant isolation check
         if ($quote->tenant_account_id !== $tenant->id) {
             abort(403, 'Bu teklife erişim yetkiniz yok.');
@@ -3204,10 +3295,11 @@ class PromotionQuoteController extends Controller
         }
     }
 
-    private function resolveCatalogItemPayload(int $tenantId, array $itemData, ?int $itemIndex = null): array
+    private function resolveCatalogItemPayload(TenantAccount $tenant, array $itemData, ?int $itemIndex = null): array
     {
         $catalogProduct = null;
         $catalogVariant = null;
+        $tenantId = (int) $tenant->id;
         $selectedCatalogIdentity = $this->selectedCatalogIdentity($itemData);
         $productSnapshot = $this->decodeJsonField($itemData['product_snapshot'] ?? null);
         $priceSnapshot = $this->decodeJsonField($itemData['price_snapshot'] ?? null) ?? [];
@@ -3290,7 +3382,12 @@ class PromotionQuoteController extends Controller
         $primarySource = $sourceSummary->first() ?? [];
         $supplierSourceId = $catalogVariant?->source_summary['supplier_source_id'] ?? data_get($primarySource, 'supplier_source_id');
         $supplierId = $catalogVariant?->source_summary['supplier_id'] ?? data_get($primarySource, 'supplier_id');
-        $sellableTruth = $this->sellableTruthService->resolve($catalogProduct, $catalogVariant);
+        $sellableTruth = $this->sellableTruthService->resolve($catalogProduct, $catalogVariant, $tenantId);
+        $quoteVisibilityError = 'Bu ürün artık teklif için kullanılamıyor. Lütfen yeniden ürün seçin.';
+
+        if (!(bool) ($sellableTruth['save_allowed'] ?? false)) {
+            $this->throwItemValidation($itemIndex, 'product_snapshot', $quoteVisibilityError);
+        }
 
         if ($supplierSourceId && !SupplierSource::query()->whereKey($supplierSourceId)->exists()) {
             $supplierSourceId = null;
@@ -3358,6 +3455,56 @@ class PromotionQuoteController extends Controller
             $this->throwItemValidation($itemIndex, 'price_snapshot', 'Ürün fiyat özeti okunamadı. Satırı yeniden seçip tekrar deneyin.');
         }
 
+        $freshnessSummary = $this->productHubFreshnessDiagnosticService->buildQuoteFreshnessPayload($catalogProduct, $catalogVariant);
+        $documentCurrency = strtoupper((string) ($itemData['document_currency'] ?? 'TRY'));
+        $documentCurrency = $documentCurrency === 'TL' ? 'TRY' : $documentCurrency;
+        $requestedDate = (string) ($itemData['quote_date'] ?? now()->format('Y-m-d'));
+        $canonicalQuotePayload = $this->quoteCurrencyPricingService->buildQuoteDisplayPayload(
+            $tenant,
+            $documentCurrency,
+            (array) data_get($priceSnapshot, 'currency_snapshot', $priceSnapshot),
+            ['manual_unit_price' => false],
+            $requestedDate
+        );
+        $priceSnapshot['quote_price_snapshot'] = array_merge((array) data_get($priceSnapshot, 'quote_price_snapshot', []), [
+            ...($canonicalQuotePayload['quote_price_snapshot'] ?? []),
+            'freshness' => $freshnessSummary,
+        ]);
+        $priceSnapshot['quote_price_value'] = $canonicalQuotePayload['quote_price_value'];
+        $priceSnapshot['quote_currency'] = $canonicalQuotePayload['quote_currency'];
+        $priceSnapshot['quote_price_status'] = $canonicalQuotePayload['quote_price_status'];
+        $priceSnapshot['quote_price_reason_code'] = $canonicalQuotePayload['quote_price_reason_code'];
+        $priceSnapshot['quote_price_message'] = $canonicalQuotePayload['quote_price_message'];
+        $priceSnapshot['freshness_summary'] = [
+            'status' => $freshnessSummary['status'] ?? null,
+            'projection_outdated' => (bool) ($freshnessSummary['projection_outdated'] ?? false),
+            'stale_price' => (bool) ($freshnessSummary['stale_price'] ?? false),
+            'stale_stock' => (bool) ($freshnessSummary['stale_stock'] ?? false),
+            'warning_codes' => (array) ($freshnessSummary['warning_codes'] ?? []),
+            'checked_at' => $freshnessSummary['checked_at'] ?? null,
+        ];
+
+        if (($freshnessSummary['stale_price'] ?? false) === true) {
+            $this->throwItemValidation($itemIndex, 'tenant_catalog_product_id', 'Ürün fiyatı güncel katalog yayınıyla eşleşmiyor. Ürünü yenileyin veya katalog güncellemesini tamamlayın.');
+        }
+
+        $canonicalListPrice = (float) ($canonicalQuotePayload['quote_price_value'] ?? 0);
+        $submittedListPrice = $this->normalizeDecimal($itemData['list_price'] ?? null) ?? 0.0;
+        $submittedUnitPrice = $this->normalizeDecimal($itemData['unit_price'] ?? null) ?? 0.0;
+        $manualUnitPrice = filter_var($itemData['manual_unit_price'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $hasValidManualOverride = $manualUnitPrice && $submittedUnitPrice > 0;
+
+        if (($canonicalQuotePayload['quote_price_status'] ?? null) === 'unavailable') {
+            $this->throwItemValidation(
+                $itemIndex,
+                'price_snapshot',
+                (string) ($canonicalQuotePayload['quote_price_message'] ?? 'Ürün satış fiyatı teklif için hazırlanamadı.')
+            );
+        }
+
+        if ($canonicalListPrice > 0 && !$hasValidManualOverride && ($submittedListPrice <= 0 || $submittedUnitPrice <= 0)) {
+            $this->throwItemValidation($itemIndex, 'price_snapshot', 'Ürün fiyatı ekranda doğrulanamadı. Ürünü yenileyip tekrar deneyin.');
+        }
         return [
             'product_source' => 'tenant_catalog',
             'catalog_source' => $itemData['catalog_source'] ?? 'tenant_catalog',
@@ -3457,9 +3604,9 @@ class PromotionQuoteController extends Controller
         if (blank($catalogProduct->standard_category_id)
             || (bool) data_get($productMeta, 'category_missing_warning', false)
             || data_get($productMeta, 'fallback_category_code') === 'PROMO-ESLENMEMIS-KATEGORI-BEKLEYEN') {
-            $badges[] = 'Kategori eÅŸleÅŸmemiÅŸ';
-            $badges[] = 'Kategori uyarÄ±sÄ±';
-            $messages[] = 'Bu ürünün standart kategori eşlemesi bekliyor; ürün yine teklif aramasında kullanılabilir.';
+            $badges[] = 'Kategori eşleşmemiş';
+            $badges[] = 'Kategori uyarısı';
+            $messages[] = 'Genel kategori henüz bağlanmadı; ürün yine teklif aramasında kullanılabilir.';
         }
 
         if ($effectiveStock <= 0) {
@@ -3509,4 +3656,3 @@ class PromotionQuoteController extends Controller
             : 'Tedarikçi Ürünü';
     }
 }
-

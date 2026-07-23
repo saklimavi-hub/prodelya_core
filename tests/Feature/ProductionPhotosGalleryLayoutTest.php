@@ -19,7 +19,7 @@ class ProductionPhotosGalleryLayoutTest extends TestCase
         $this->setUpProductionShowFixtures();
     }
 
-    public function test_photos_tab_shows_upload_panel_and_recent_gallery(): void
+    public function test_photos_tab_shows_read_only_recent_gallery(): void
     {
         $production = $this->createInternalProductionForShow();
         $this->uploadProductionPhoto($production, 'uretim-fotografi.jpg', 'İlk üretim kaydı');
@@ -29,11 +29,11 @@ class ProductionPhotosGalleryLayoutTest extends TestCase
             ->get(route('admin.productions.show', $production) . '?tab=fotograflar');
 
         $response->assertOk();
-        $response->assertSee('Fotoğraf Yükle');
+        $response->assertSee('Fotoğraflar');
+        $response->assertSee('salt okunur');
         $response->assertSee('Son Yüklenen Fotoğraflar');
         $response->assertSee('İlk üretim kaydı');
         $response->assertSee('Görüntüle');
         $response->assertSee('İndir');
     }
 }
-

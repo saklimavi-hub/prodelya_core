@@ -53,6 +53,8 @@ class ProductHubLiveProductInfoEndpointTest extends TestCase
                 'current_stock' => 13600.0,
                 'current_price_value' => 6.5,
                 'currency' => 'TL',
+                'quote_currency' => 'TRY',
+                'quote_price_status' => 'not_required',
                 'supplier_access_active' => true,
                 'tenant_catalog_active' => true,
                 'quote_visible' => true,
@@ -80,6 +82,7 @@ class ProductHubLiveProductInfoEndpointTest extends TestCase
                 'current_stock' => 13600.0,
                 'current_price_value' => 6.5,
                 'stock_label' => '13.600',
+                'quote_currency' => 'TRY',
             ]);
     }
 
@@ -186,6 +189,78 @@ class ProductHubLiveProductInfoEndpointTest extends TestCase
                 'stock_changed_since_snapshot' => true,
             ])
             ->assertJsonFragment(['Stok bilgisi değişmiş olabilir.']);
+    }
+
+    public function test_document_currency_snapshot_match_does_not_flag_price_difference_for_foreign_source_price(): void
+    {
+        $fixture = $this->makeFixture('usd-source', [
+            'product_currency' => 'USD',
+            'variant_currency' => 'USD',
+            'product_display_price' => 12.5,
+            'variant_display_price' => 12.5,
+            'product_price_snapshot' => [
+                'list_price' => 12.5,
+                'source_price' => 12.5,
+                'source_currency' => 'USD',
+                'currency' => 'USD',
+                'base_price' => 437.5,
+                'base_currency' => 'TRY',
+                'conversion_status' => 'converted',
+                'purchase_price' => 4.1,
+                'supplier_warning_flag' => false,
+                'currency_snapshot' => [
+                    'source_price' => 12.5,
+                    'source_currency' => 'USD',
+                    'base_price' => 437.5,
+                    'base_currency' => 'TRY',
+                    'conversion_status' => 'converted',
+                    'rate_date' => '2026-07-10',
+                ],
+            ],
+            'variant_price_snapshot' => [
+                'list_price' => 12.5,
+                'source_price' => 12.5,
+                'source_currency' => 'USD',
+                'currency' => 'USD',
+                'base_price' => 437.5,
+                'base_currency' => 'TRY',
+                'conversion_status' => 'converted',
+                'purchase_price' => 4.1,
+                'currency_snapshot' => [
+                    'source_price' => 12.5,
+                    'source_currency' => 'USD',
+                    'base_price' => 437.5,
+                    'base_currency' => 'TRY',
+                    'conversion_status' => 'converted',
+                    'rate_date' => '2026-07-10',
+                ],
+            ],
+        ]);
+
+        $baseUrl = $this->tenantUrl($fixture['tenant'], '/admin/product-hub/live-product-info?tenant_catalog_product_variant_id=' . $fixture['variant']->id . '&currency=TRY');
+        $initial = $this->actingAs($fixture['user'], 'web')->getJson($baseUrl);
+
+        $initial->assertOk()
+            ->assertJson([
+                'current_price_value' => 12.5,
+                'currency' => 'USD',
+                'quote_currency' => 'TRY',
+            ]);
+
+        $quotePriceValue = data_get($initial->json(), 'quote_price_value');
+
+        $this->assertNotNull($quotePriceValue);
+        $this->assertNotSame(12.5, (float) $quotePriceValue);
+
+        $followUp = $this->actingAs($fixture['user'], 'web')
+            ->getJson($baseUrl . '&snapshot_price=' . $quotePriceValue);
+
+        $followUp->assertOk()
+            ->assertJson([
+                'price_changed_since_snapshot' => false,
+                'currency' => 'USD',
+                'quote_currency' => 'TRY',
+            ]);
     }
 
     public function test_quote_item_snapshot_comparison_uses_same_tenant_item_only(): void
@@ -413,9 +488,9 @@ class ProductHubLiveProductInfoEndpointTest extends TestCase
             'slug' => 'tenant-pen-' . uniqid(),
             'standard_category_id' => $this->category->id,
             'product_family' => 'promotion',
-            'display_price' => 6.5,
-            'sale_price' => 6.5,
-            'currency' => 'TL',
+            'display_price' => $overrides['product_display_price'] ?? 6.5,
+            'sale_price' => $overrides['product_display_price'] ?? 6.5,
+            'currency' => $overrides['product_currency'] ?? 'TL',
             'total_stock_quantity' => 13600,
             'local_stock_quantity' => 0,
             'supplier_stock_quantity' => 13600,
@@ -435,9 +510,10 @@ class ProductHubLiveProductInfoEndpointTest extends TestCase
             'last_synced_at' => now(),
             'meta' => [
                 'price_snapshot' => [
-                    'list_price' => 6.5,
-                    'purchase_price' => 4.1,
-                    'supplier_warning_flag' => false,
+                    ...($overrides['product_price_snapshot'] ?? []),
+                    'list_price' => data_get($overrides, 'product_price_snapshot.list_price', $overrides['product_display_price'] ?? 6.5),
+                    'purchase_price' => data_get($overrides, 'product_price_snapshot.purchase_price', 4.1),
+                    'supplier_warning_flag' => data_get($overrides, 'product_price_snapshot.supplier_warning_flag', false),
                 ],
                 'is_parent' => false,
                 'is_sellable' => true,
@@ -456,8 +532,8 @@ class ProductHubLiveProductInfoEndpointTest extends TestCase
             'variant_code' => 'ET-0506-MV',
             'variant_name' => 'Mavi',
             'variant_color' => 'Mavi',
-            'display_price' => 6.5,
-            'currency' => 'TL',
+            'display_price' => $overrides['variant_display_price'] ?? 6.5,
+            'currency' => $overrides['variant_currency'] ?? 'TL',
             'stock_quantity' => 13600,
             'local_stock_quantity' => 0,
             'supplier_stock_quantity' => 13600,
@@ -474,8 +550,9 @@ class ProductHubLiveProductInfoEndpointTest extends TestCase
             'meta' => [
                 'quote_search_visible' => $overrides['variant_quote_visible'] ?? true,
                 'price_snapshot' => [
-                    'list_price' => 6.5,
-                    'purchase_price' => 4.1,
+                    ...($overrides['variant_price_snapshot'] ?? []),
+                    'list_price' => data_get($overrides, 'variant_price_snapshot.list_price', $overrides['variant_display_price'] ?? 6.5),
+                    'purchase_price' => data_get($overrides, 'variant_price_snapshot.purchase_price', 4.1),
                 ],
                 'raw_payload' => ['secret' => 'must-not-leak'],
             ],

@@ -171,6 +171,19 @@ class NotificationV1EndToEndSmokeTest extends TestCase
 
         $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
+            ->patch(route('admin.productions.update-assignment', $production), [
+                'production_type' => OrderItemPrintProduction::TYPE_INTERNAL,
+                'production_unit_name' => 'UV Hattı 1',
+                'assigned_to' => $this->adminUser->id,
+                'cliche_required' => '0',
+                'return_to' => 'show',
+            ])
+            ->assertRedirect(route('admin.productions.show', $production));
+
+        $production = $production->fresh();
+
+        $this->actingAs($this->adminUser)
+            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->patch(route('admin.productions.update-status', $production), [
                 'action' => 'assign_internal',
                 'production_unit_name' => 'UV Hattı 1',

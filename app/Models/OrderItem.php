@@ -332,7 +332,7 @@ class OrderItem extends Model
         if ($this->list_price && $this->discount_rate) {
             return $this->list_price * (1 - ($this->discount_rate / 100));
         }
-        
+
         return $this->unit_price ?? 0;
     }
 

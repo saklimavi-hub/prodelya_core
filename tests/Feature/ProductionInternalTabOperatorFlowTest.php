@@ -43,24 +43,28 @@ class ProductionInternalTabOperatorFlowTest extends TestCase
         $this->productionUser = $this->createUserWithRoles('internal-flow-production@example.test', ['production']);
     }
 
-    public function test_internal_tab_shows_operator_actions_on_start_and_active_flow(): void
+    public function test_legacy_internal_tab_redirects_and_operator_screen_shows_actions_on_start_and_active_flow(): void
     {
         $production = $this->createProductionRecord([
             'production_status' => OrderItemPrintProduction::STATUS_PENDING,
         ]);
 
+        $this->actingAs($this->productionUser, 'web')
+            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
+            ->get(route('admin.productions.show', $production) . '?tab=ic-uretim')
+            ->assertRedirect(route('admin.productions.operator', $production));
+
         $pendingResponse = $this->actingAs($this->productionUser, 'web')
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.productions.show', $production) . '?tab=ic-uretim');
+            ->get(route('admin.productions.operator', $production));
 
         $pendingResponse->assertOk();
         $pendingResponse->assertSee('İç Üretim');
         $pendingResponse->assertSee('Başla');
-        $pendingResponse->assertSee('Sorun Bildir');
-        $pendingResponse->assertSee('Fotoğraf Yükle');
-        $pendingResponse->assertSee('Üretim Akış Adımları');
-        $pendingResponse->assertSee('Kısmi Üretildi');
-        $pendingResponse->assertSee('Tamamlandı');
+        $pendingResponse->assertSee('pd-ui-v1-internal-operator', false);
+        $pendingResponse->assertSee('Üretime Başla');
+        $pendingResponse->assertDontSee('Kısmi Kaydet');
+        $pendingResponse->assertDontSee('Sorun Bildir');
 
         $production->forceFill([
             'production_status' => OrderItemPrintProduction::STATUS_INTERNAL,
@@ -68,15 +72,20 @@ class ProductionInternalTabOperatorFlowTest extends TestCase
             'remaining_quantity' => $production->planned_quantity,
         ])->save();
 
+        $this->actingAs($this->productionUser, 'web')
+            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
+            ->get(route('admin.productions.show', $production) . '?tab=ic-uretim')
+            ->assertRedirect(route('admin.productions.operator', $production));
+
         $activeResponse = $this->actingAs($this->productionUser, 'web')
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.productions.show', $production) . '?tab=ic-uretim');
+            ->get(route('admin.productions.operator', $production));
 
         $activeResponse->assertOk();
-        $activeResponse->assertSee('Kısmi Üretildi');
+        $activeResponse->assertSee('Kısmi Kaydet');
         $activeResponse->assertSee('Tamamlandı');
-        $activeResponse->assertSee('Fotoğraf Yükle');
-        $activeResponse->assertSee('Üretime Başla');
+        $activeResponse->assertSee('Fotoğraf Ekle');
+        $activeResponse->assertDontSee('Üretime Başla');
     }
 
     private function createProductionRecord(array $productionOverrides = []): OrderItemPrintProduction

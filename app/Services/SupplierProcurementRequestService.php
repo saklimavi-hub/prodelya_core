@@ -2,12 +2,15 @@
 
 namespace App\Services;
 
+use App\Models\AuditLog;
+use App\Models\CurrentAccountTransaction;
 use App\Models\OrderItemProcurement;
 use App\Models\SupplierProcurementRequest;
 use App\Models\SupplierProcurementRequestItem;
 use App\Models\TenantAccount;
 use App\Models\User;
 use App\Services\Notifications\NotificationEventService;
+use App\Services\Procurement\ProcurementPurchasePricingService;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
@@ -17,6 +20,7 @@ class SupplierProcurementRequestService
         protected NumberGenerationService $numberGenerationService,
         protected ProcurementWorkflowService $procurementWorkflowService,
         protected SupplierProcurementRequestDataBuilder $dataBuilder,
+        protected ProcurementPurchasePricingService $purchasePricingService,
         protected SupplierProcurementCurrentAccountSyncService $currentAccountSyncService,
         protected NotificationEventService $notificationEventService,
     ) {
@@ -52,13 +56,12 @@ class SupplierProcurementRequestService
                     'unit' => (string) data_get($procurement->snapshot, 'unit', $procurement->orderItem?->unit ?: 'Adet'),
                     'received_quantity' => 0,
                     'remaining_quantity' => round((float) $procurement->remaining_quantity, 2),
-                    'purchase_list_price' => $this->dataBuilder->suggestPurchaseListPrice($procurement),
                     'discount_rate' => 0,
                     'created_by' => $user?->id,
                     'updated_by' => $user?->id,
                 ]);
 
-                $requestItem->recalculatePurchaseTotals();
+                $requestItem->forceFill($this->purchasePricingService->buildDraftAttributes($procurement, $requestItem));
                 $requestItem->save();
             }
 
@@ -77,9 +80,13 @@ class SupplierProcurementRequestService
         });
     }
 
-    public function updateRequestItems(SupplierProcurementRequest $request, array $itemsData, ?User $user = null): SupplierProcurementRequest
-    {
-        return DB::transaction(function () use ($request, $itemsData, $user): SupplierProcurementRequest {
+    public function updateRequestItems(
+        SupplierProcurementRequest $request,
+        array $itemsData,
+        ?User $user = null,
+        ?string $requestNote = null
+    ): SupplierProcurementRequest {
+        return DB::transaction(function () use ($request, $itemsData, $user, $requestNote): SupplierProcurementRequest {
             $request->loadMissing('items');
             $itemsById = $request->items->keyBy('id');
             $includedItemIds = collect($itemsData)
@@ -118,12 +125,13 @@ class SupplierProcurementRequestService
                     'updated_by' => $user?->id,
                 ]);
 
-                $manualUnitPrice = array_key_exists('purchase_unit_price', $row) && $row['purchase_unit_price'] !== null && $row['purchase_unit_price'] !== ''
+                $useCalculatedPrice = (bool) ($row['use_calculated_price'] ?? false);
+                $manualUnitPrice = !$useCalculatedPrice && array_key_exists('purchase_unit_price', $row) && $row['purchase_unit_price'] !== null && $row['purchase_unit_price'] !== ''
                     ? round((float) $row['purchase_unit_price'], 2)
                     : null;
 
-                $item->recalculatePurchaseTotals($manualUnitPrice)
-                    ->save();
+                $this->applyCanonicalPurchasePricing($item, $manualUnitPrice);
+                $item->save();
             }
 
             $removedItems = $itemsById
@@ -135,12 +143,192 @@ class SupplierProcurementRequestService
                 $removedItem->delete();
             }
 
-            $request->forceFill(['updated_by' => $user?->id])->save();
+            $request->forceFill([
+                'note' => $requestNote ?? $request->note,
+                'updated_by' => $user?->id,
+            ])->save();
             $this->recalculateHeaderStatus($request->fresh('items'));
             $request = $request->fresh(['supplier', 'items.procurement', 'items.request.supplier']);
             $this->currentAccountSyncService->syncRequest($request);
 
             return $request;
+        });
+    }
+
+    public function updateCompletedRequestPurchasePrices(
+        SupplierProcurementRequest $request,
+        array $itemsData,
+        ?User $user = null,
+        ?string $requestNote = null
+    ): SupplierProcurementRequest {
+        return DB::transaction(function () use ($request, $itemsData, $user, $requestNote): SupplierProcurementRequest {
+            $request->loadMissing('items.procurement.workForm');
+            $itemsById = $request->items->keyBy('id');
+            $originalRequestNote = $request->note;
+
+            foreach ($itemsData as $row) {
+                $itemId = (int) ($row['id'] ?? 0);
+                /** @var SupplierProcurementRequestItem|null $item */
+                $item = $itemsById->get($itemId);
+
+                if (!$item) {
+                    throw new InvalidArgumentException('Talep kalemi bulunamadı.');
+                }
+
+                $before = [
+                    'purchase_list_price' => $item->purchase_list_price !== null ? round((float) $item->purchase_list_price, 2) : null,
+                    'discount_rate' => $item->discount_rate !== null ? round((float) $item->discount_rate, 2) : null,
+                    'purchase_unit_price' => $item->purchase_unit_price !== null ? round((float) $item->purchase_unit_price, 2) : null,
+                    'purchase_total' => $item->purchase_total !== null ? round((float) $item->purchase_total, 2) : null,
+                    'note' => $item->note,
+                ];
+
+                $item->fill([
+                    'purchase_list_price' => array_key_exists('purchase_list_price', $row) && $row['purchase_list_price'] !== null && $row['purchase_list_price'] !== ''
+                        ? round((float) $row['purchase_list_price'], 2)
+                        : null,
+                    'discount_rate' => array_key_exists('discount_rate', $row) && $row['discount_rate'] !== null && $row['discount_rate'] !== ''
+                        ? round((float) $row['discount_rate'], 2)
+                        : 0.0,
+                    'note' => $row['note'] ?? $item->note,
+                    'updated_by' => $user?->id,
+                ]);
+
+                $useCalculatedPrice = (bool) ($row['use_calculated_price'] ?? false);
+                $manualUnitPrice = !$useCalculatedPrice && array_key_exists('purchase_unit_price', $row) && $row['purchase_unit_price'] !== null && $row['purchase_unit_price'] !== ''
+                    ? round((float) $row['purchase_unit_price'], 2)
+                    : null;
+
+                $this->applyCanonicalPurchasePricing($item, $manualUnitPrice, (float) $item->received_quantity);
+                $item->save();
+
+                $after = [
+                    'purchase_list_price' => $item->purchase_list_price !== null ? round((float) $item->purchase_list_price, 2) : null,
+                    'discount_rate' => $item->discount_rate !== null ? round((float) $item->discount_rate, 2) : null,
+                    'purchase_unit_price' => $item->purchase_unit_price !== null ? round((float) $item->purchase_unit_price, 2) : null,
+                    'purchase_total' => $item->purchase_total !== null ? round((float) $item->purchase_total, 2) : null,
+                    'note' => $item->note,
+                ];
+
+                if ($before !== $after) {
+                    AuditLog::log([
+                        'tenant_account_id' => $request->tenant_account_id,
+                        'user_id' => $user?->id,
+                        'action' => 'supplier_procurement_purchase_prices_updated',
+                        'entity_type' => 'supplier_procurement_request_item',
+                        'entity_id' => $item->id,
+                        'old_values' => $before,
+                        'new_values' => $after,
+                        'notes' => 'Alis Fiyatlari Guncellendi',
+                    ]);
+                }
+            }
+
+            $request->forceFill([
+                'note' => $requestNote ?? $request->note,
+                'status' => SupplierProcurementRequest::STATUS_COMPLETED,
+                'updated_by' => $user?->id,
+            ])->save();
+
+            if (($requestNote ?? $request->note) !== $originalRequestNote) {
+                AuditLog::log([
+                    'tenant_account_id' => $request->tenant_account_id,
+                    'user_id' => $user?->id,
+                    'action' => 'supplier_procurement_purchase_prices_updated',
+                    'entity_type' => 'supplier_procurement_request',
+                    'entity_id' => $request->id,
+                    'old_values' => ['note' => $originalRequestNote],
+                    'new_values' => ['note' => $request->note],
+                    'notes' => 'Alis Fiyatlari Guncellendi',
+                ]);
+            }
+
+            $request = $request->fresh(['supplier', 'items.procurement', 'items.request.supplier']);
+            $this->currentAccountSyncService->syncRequest($request);
+
+            return $request;
+        });
+    }
+
+    public function refreshLegacyDraftPurchaseTruth(SupplierProcurementRequest $request, ?User $user = null): array
+    {
+        return DB::transaction(function () use ($request, $user): array {
+            $request->loadMissing('items.procurement.orderItem');
+
+            if (!$request->isDraft()) {
+                throw new InvalidArgumentException('Tedarikçi fiyatı yenileme yalnız taslak taleplerde kullanılabilir.');
+            }
+
+            $report = [
+                'refreshed' => 0,
+                'unchanged' => 0,
+            ];
+            $refreshedItemIds = [];
+
+            foreach ($request->items as $item) {
+                $item->loadMissing('procurement');
+
+                if ($item->hasCanonicalPurchaseSnapshot()) {
+                    $report['unchanged']++;
+                    continue;
+                }
+
+                $this->ensureLegacyPriceRefreshEligible($request, $item);
+
+                $before = $this->buildPurchaseTruthAuditPayload($item);
+                $manualUnitPrice = $item->isPurchasePriceManualOverride()
+                    ? ($item->purchase_manual_unit_price ?? $item->purchase_unit_price)
+                    : null;
+
+                $item->forceFill(
+                    $this->purchasePricingService->buildRefreshedAttributes($item, $manualUnitPrice, $item->requested_quantity)
+                );
+
+                $resolutionStatus = (string) data_get($item->purchase_price_snapshot, 'resolution_status');
+
+                if ($resolutionStatus !== 'resolved') {
+                    throw new InvalidArgumentException(sprintf(
+                        '%s için tedarikçi fiyatı yenilenemedi: %s',
+                        $item->product_name ?: ('Kalem #' . $item->id),
+                        $this->resolvePurchaseRefreshFailureMessage($item)
+                    ));
+                }
+
+                $item->updated_by = $user?->id;
+                $after = $this->buildPurchaseTruthAuditPayload($item);
+
+                if ($before === $after) {
+                    $report['unchanged']++;
+                    continue;
+                }
+
+                $item->save();
+                $refreshedItemIds[] = (int) $item->id;
+
+                AuditLog::log([
+                    'tenant_account_id' => $request->tenant_account_id,
+                    'user_id' => $user?->id,
+                    'action' => 'supplier_procurement_price_truth_refreshed',
+                    'entity_type' => 'supplier_procurement_request_item',
+                    'entity_id' => $item->id,
+                    'old_values' => $before,
+                    'new_values' => $after,
+                    'notes' => 'Tedarikçi fiyatı supplier source üzerinden yenilendi.',
+                ]);
+
+                $report['refreshed']++;
+            }
+
+            if ($report['refreshed'] > 0) {
+                SupplierProcurementRequestItem::query()
+                    ->where('tenant_account_id', $request->tenant_account_id)
+                    ->whereIn('id', $refreshedItemIds)
+                    ->with(['request.supplier.tenants', 'procurement', 'order'])
+                    ->get()
+                    ->each(fn (SupplierProcurementRequestItem $item) => $this->currentAccountSyncService->syncRequestItem($item));
+            }
+
+            return $report;
         });
     }
 
@@ -329,13 +517,12 @@ class SupplierProcurementRequestService
                 'updated_at' => now(),
             ]);
 
-            if ($item->purchase_unit_price !== null) {
-                $item->purchase_total = round((float) $item->purchase_unit_price * (float) $item->requested_quantity, 2);
-                $item->save();
-            } else {
-                $item->recalculatePurchaseTotals()
-                    ->save();
-            }
+            $this->applyCanonicalPurchasePricing(
+                $item,
+                $item->purchase_manual_override ? ($item->purchase_manual_unit_price ?? $item->purchase_unit_price) : null,
+                $item->requested_quantity
+            );
+            $item->save();
         }
     }
 
@@ -385,6 +572,71 @@ class SupplierProcurementRequestService
             'status' => $status,
             'updated_at' => now(),
         ])->save();
+    }
+
+    private function ensureLegacyPriceRefreshEligible(SupplierProcurementRequest $request, SupplierProcurementRequestItem $item): void
+    {
+        if (!$request->isDraft()) {
+            throw new InvalidArgumentException('Tedarikçi fiyatı yenileme yalnız taslak taleplerde kullanılabilir.');
+        }
+
+        if (!$item->procurement) {
+            throw new InvalidArgumentException(($item->product_name ?: ('Kalem #' . $item->id)) . ' için procurement kaydı bulunamadı.');
+        }
+
+        if ((float) $item->received_quantity > 0 || (float) ($item->procurement->received_quantity ?? 0) > 0) {
+            throw new InvalidArgumentException(($item->product_name ?: ('Kalem #' . $item->id)) . ' için teslim alınan miktar bulunduğundan fiyat yenileme kilitlidir.');
+        }
+
+        $transaction = $this->currentAccountSyncService->findExistingTransactionForItem($item);
+
+        if ($transaction && in_array($transaction->status, [
+            CurrentAccountTransaction::STATUS_PAID,
+            CurrentAccountTransaction::STATUS_PARTIALLY_PAID,
+            CurrentAccountTransaction::STATUS_CLOSED,
+        ], true)) {
+            throw new InvalidArgumentException(($item->product_name ?: ('Kalem #' . $item->id)) . ' için kapanmış cari hareket bulunduğundan fiyat yenileme yapılamaz.');
+        }
+    }
+
+    private function buildPurchaseTruthAuditPayload(SupplierProcurementRequestItem $item): array
+    {
+        return [
+            'purchase_source_amount' => $item->purchase_source_amount !== null ? round((float) $item->purchase_source_amount, 6) : null,
+            'purchase_source_currency' => $item->purchase_source_currency,
+            'purchase_fx_rate' => $item->purchase_fx_rate !== null ? round((float) $item->purchase_fx_rate, 8) : null,
+            'purchase_fx_rate_date' => $item->purchase_fx_rate_date ? (string) $item->purchase_fx_rate_date : null,
+            'purchase_list_price_try' => $item->purchase_list_price_try !== null ? round((float) $item->purchase_list_price_try, 6) : null,
+            'purchase_calculated_unit_price' => $item->purchase_calculated_unit_price !== null ? round((float) $item->purchase_calculated_unit_price, 6) : null,
+            'purchase_manual_unit_price' => $item->purchase_manual_unit_price !== null ? round((float) $item->purchase_manual_unit_price, 6) : null,
+            'purchase_manual_override' => (bool) $item->purchase_manual_override,
+            'purchase_unit_price' => $item->purchase_unit_price !== null ? round((float) $item->purchase_unit_price, 2) : null,
+            'purchase_total' => $item->purchase_total !== null ? round((float) $item->purchase_total, 2) : null,
+            'purchase_price_snapshot' => is_array($item->purchase_price_snapshot) ? $item->purchase_price_snapshot : null,
+        ];
+    }
+
+    private function resolvePurchaseRefreshFailureMessage(SupplierProcurementRequestItem $item): string
+    {
+        $snapshot = is_array($item->purchase_price_snapshot) ? $item->purchase_price_snapshot : [];
+        $warningCode = (string) data_get($snapshot, 'warning_code', '');
+
+        return match ($warningCode) {
+            'missing_supplier_purchase_source' => 'exact tedarikçi varyant fiyatı bulunamadı.',
+            'missing_fx_rate' => 'kaynak para birimi için kur bulunamadı.',
+            'unsupported_source_currency' => 'desteklenmeyen kaynak para birimi bulundu.',
+            default => 'canonical tedarikçi fiyat snapshotı oluşturulamadı.',
+        };
+    }
+
+    protected function applyCanonicalPurchasePricing(
+        SupplierProcurementRequestItem $item,
+        mixed $manualUnitPrice = null,
+        mixed $quantityOverride = null
+    ): void {
+        $item->forceFill(
+            $this->purchasePricingService->buildUpdatedAttributes($item, $manualUnitPrice, $quantityOverride)
+        );
     }
 
     protected function validatedProcurementsForSupplier(TenantAccount $tenant, int $supplierId, array $procurementIds)

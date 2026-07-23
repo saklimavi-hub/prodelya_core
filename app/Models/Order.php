@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Stock\TenantStockReservationService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -74,6 +75,21 @@ class Order extends Model
         'revision_requested_at',
     ];
 
+    protected static function booted(): void
+    {
+        static::saved(function (self $order): void {
+            if ($order->document_type !== 'order' || !$order->wasChanged('status')) {
+                return;
+            }
+
+            if (!in_array((string) $order->status, ['cancelled', 'iptal'], true)) {
+                return;
+            }
+
+            app(TenantStockReservationService::class)->releaseForOrder($order, $order->creator);
+        });
+    }
+
     protected $casts = [
         'order_family' => 'string',
         'order_mode' => 'string',
@@ -114,7 +130,7 @@ class Order extends Model
     // TODO: Add scope methods for different order types and statuses
     // TODO: Add validation for order families and modes
     // TODO: Add financial visibility policies
-    
+
     /**
      * Get the tenant that owns this order
      */

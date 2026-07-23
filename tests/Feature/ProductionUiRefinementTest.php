@@ -60,11 +60,12 @@ class ProductionUiRefinementTest extends TestCase
         $response->assertDontSee('Grafik Hazır, Tedarik Bekliyor');
         $response->assertSee('Üretime Hazır');
         $response->assertSee('Tedarik Bekliyor');
-        $response->assertSee('Tedarik bekliyor');
-        $response->assertSee('pp-row-team', false);
-        $response->assertSee('data-order-team=', false);
-        $response->assertSee('pp-badge-green', false);
-        $response->assertSee('pp-badge-red', false);
+        $response->assertSee('pd-production-method-group', false);
+        $response->assertSee('pd-production-job-row', false);
+        $response->assertSee('data-production-id=', false);
+        $response->assertSee('data-print-row-id=', false);
+        $response->assertSee('pd-production-badge--green', false);
+        $response->assertSee('pd-production-badge--amber', false);
     }
 
     public function test_show_hides_qc_actions_and_empty_print_meta_and_keeps_large_preview_links(): void
@@ -83,14 +84,14 @@ class ProductionUiRefinementTest extends TestCase
 
         $response->assertOk();
         $response->assertDontSee('QC Uygun');
-        $response->assertSee('Kalite Kontrol');
+        $response->assertSee('Kalite kontrol gerekli değil');
         $response->assertSee('İş Formu');
         $response->assertSee('Siparişi Aç');
         $response->assertDontSee('Baskı Yeri');
         $response->assertDontSee('Baskı Ölçüsü');
     }
 
-    public function test_show_only_renders_preparation_panel_when_required(): void
+    public function test_show_hides_preparation_panel_when_intermediate_elements_are_disabled(): void
     {
         ['productions' => $productions, 'graphics' => $graphics] = $this->createMultiPrintWorkForm();
 
@@ -107,8 +108,7 @@ class ProductionUiRefinementTest extends TestCase
             ->get(route('admin.productions.show', $withPreparation->fresh()) . '?tab=genel');
 
         $withPreparationResponse->assertOk();
-        $withPreparationResponse->assertSee('Önemli Notlar');
-        $withPreparationResponse->assertSee('Bu baskı için gerekli ara eleman hazır olmadan baskıya başlanmaz.');
+        $withPreparationResponse->assertDontSee('Bu baskı için gerekli ara eleman hazır olmadan baskıya başlanmaz.');
 
         $withoutPreparationResponse = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])

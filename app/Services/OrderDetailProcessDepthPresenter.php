@@ -64,10 +64,10 @@ class OrderDetailProcessDepthPresenter
             ],
             'procurement_pending' => [
                 'key' => $focusKey,
-                'current_label' => 'Tedarik bekliyor',
-                'next_label' => 'Tedarik bilgilerini tamamla',
+                'current_label' => (string) ($overview['operation_status_label'] ?? 'Talep Hazırlanacak'),
+                'next_label' => (string) ($overview['next_action_label'] ?? 'Tedarik talebini hazırla'),
                 'blocker_label' => null,
-                'primary_label' => 'Tedariğe Git',
+                'primary_label' => 'Tedarik Ekranını Aç',
                 'primary_url' => (string) ($links['procurement'] ?? $links['show'] ?? '#'),
             ],
             'delivery_pending' => [

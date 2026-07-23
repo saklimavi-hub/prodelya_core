@@ -18,7 +18,7 @@ class CustomerFacingPriceWithSetupDistributionTest extends TestCase
 
     protected bool $seed = true;
 
-    public function test_public_customer_price_includes_setup_distributed_print_price_without_showing_setup_total(): void
+    public function test_public_customer_price_keeps_setup_distributed_print_price_separate_when_breakdown_is_visible(): void
     {
         $tenant = TenantAccount::query()->firstOrFail();
         $adminUser = User::query()->where('email', 'admin@prodelya.local')->firstOrFail();
@@ -110,9 +110,12 @@ class CustomerFacingPriceWithSetupDistributionTest extends TestCase
 
         $this->get(route('public.quotes.approval.show', ['token' => $request->token]))
             ->assertOk()
-            ->assertSee('23,00 TL')
+            ->assertSee('5,00 TL')
+            ->assertSee('500,00 TL')
+            ->assertSee('Ürün + Baskı Toplamı')
             ->assertSee('2.300,00 TL')
-            ->assertSee('Baskı Birim: 18,00 TL')
+            ->assertSee('Baskı Birim Fiyatı: 18,00 TL')
+            ->assertSee('1.800,00 TL')
             ->assertDontSee('Ara eleman toplam tutarı')
             ->assertDontSee('Ara eleman toplamı')
             ->assertDontSee('Klişe maliyeti')

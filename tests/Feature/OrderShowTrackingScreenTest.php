@@ -50,9 +50,9 @@ class OrderShowTrackingScreenTest extends TestCase
         $response->assertSee('Finans');
         $response->assertSee(route('admin.work-forms.show', $order->workForms->first()), false);
         $response->assertSee(route('admin.graphics.show', $order->workForms->first()), false);
-        $response->assertSee(route('admin.procurements.show', $order->procurements->first()), false);
-        $response->assertSee(route('admin.productions.show', $order->printProductions->first()), false);
-        $response->assertSee(route('admin.deliveries.show', $order->deliveries->first()), false);
+        $response->assertSee(route('admin.orders.show', ['order' => $order, 'tab' => 'tedarik']), false);
+        $response->assertSee(route('admin.orders.show', ['order' => $order, 'tab' => 'uretim']), false);
+        $response->assertSee(route('admin.orders.show', ['order' => $order, 'tab' => 'teslimat']), false);
         $response->assertSee(route('admin.finance.show', $order), false);
         $response->assertDontSee('group_code', false);
         $response->assertDontSee('file_path', false);

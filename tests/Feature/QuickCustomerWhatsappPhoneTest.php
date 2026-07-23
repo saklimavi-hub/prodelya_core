@@ -34,8 +34,8 @@ class QuickCustomerWhatsappPhoneTest extends TestCase
             ->get(route('admin.promotion-quotes.create'));
 
         $response->assertOk()
-            ->assertSee('WhatsApp Cep Telefonu')
-            ->assertSee('🇹🇷 +90')
+            ->assertSee('WhatsApp / Telefon')
+            ->assertSee('+90')
             ->assertSee('5xx xxx xx xx');
     }
 

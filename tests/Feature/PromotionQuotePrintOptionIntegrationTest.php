@@ -29,6 +29,8 @@ class PromotionQuotePrintOptionIntegrationTest extends TestCase
     {
         parent::setUp();
 
+        config()->set('prodelya.features.promotion_intermediate_element_enabled', true);
+
         $this->adminUser = User::query()->where('email', 'admin@prodelya.local')->firstOrFail();
         $this->tenant = TenantAccount::query()->firstOrFail();
         $this->customer = Company::query()
@@ -86,7 +88,7 @@ class PromotionQuotePrintOptionIntegrationTest extends TestCase
                         'tenant_print_option_id' => $option->id,
                         'print_type' => $setting->displayName(),
                         'print_option' => $option->name,
-                        'cliche_status' => '',
+                        'cliche_status' => 'Yeni üretilecek',
                         'print_quantity' => '100',
                         'print_unit_price' => '10',
                         'base_print_unit_price' => '10',

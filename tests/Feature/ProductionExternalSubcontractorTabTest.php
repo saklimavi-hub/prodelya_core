@@ -36,7 +36,7 @@ class ProductionExternalSubcontractorTabTest extends TestCase
             ->firstOrFail();
     }
 
-    public function test_dis_uretim_tab_shows_subcontractor_metrics_and_does_not_show_internal_actions(): void
+    public function test_legacy_dis_uretim_tab_redirects_to_canonical_assignment_without_internal_actions(): void
     {
         $partner = $this->createPartnerCompany();
         $production = $this->createSubcontractedProduction($partner, [
@@ -44,19 +44,21 @@ class ProductionExternalSubcontractorTabTest extends TestCase
             'remaining_quantity' => 30,
         ]);
 
+        $this->actingAs($this->adminUser)
+            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
+            ->get(route('admin.productions.show', $production) . '?tab=dis-uretim')
+            ->assertRedirect(route('admin.productions.subcontract-assignment', $production));
+
         $response = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.productions.show', $production) . '?tab=dis-uretim');
+            ->get(route('admin.productions.subcontract-assignment', $production));
 
         $response->assertOk();
-        $response->assertSee('Dış Üretim / Fason');
-        $response->assertSee('Planlanan / Gönderilecek Adet');
-        $response->assertSee('Gelen / Tamamlanan Adet');
-        $response->assertSee('Kalan Adet');
-        $response->assertSee('Fason Firma');
-        $response->assertSee('Cari Hareketi');
-        $response->assertSee((string) $partner->short_name ?: $partner->legal_name);
+        $response->assertSee('Üretim / Fason');
+        $response->assertSee('Kalan');
+        $response->assertSee((string) ($partner->short_name ?: $partner->legal_name));
         $response->assertDontSee('Üretim Akış Adımları');
+        $response->assertDontSee('Cari Hareketi');
     }
 
     private function createSubcontractedProduction(Company $partner, array $quantityOverrides = []): OrderItemPrintProduction

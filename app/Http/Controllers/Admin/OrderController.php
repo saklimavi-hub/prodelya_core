@@ -369,6 +369,7 @@ class OrderController extends Controller
             'overview' => $screen['overview'],
             'moduleCards' => $screen['module_cards'],
             'itemRows' => $screen['item_rows'],
+            'historyRows' => $screen['history_rows'],
             'financialDataVisible' => $canViewFinancialData,
             'financeSummary' => $screen['finance'],
             'financeOverview' => $screen['finance_overview'],
@@ -622,10 +623,22 @@ class OrderController extends Controller
             abort(403, 'Bu teklife erisim yetkiniz yok.');
         }
 
-        if (!$quote->isQuote()) {
+        if (! $quote->isQuote()) {
             return redirect()
                 ->route('admin.orders.index')
                 ->withErrors(['error' => 'Bu kayıt teklif değil.']);
+        }
+
+        if (! $quote->customer_company_id) {
+            return redirect()
+                ->route('admin.promotion-quotes.show', $quote)
+                ->withErrors(['error' => 'Müşteri seçilmeden siparişe dönüştürülemez.']);
+        }
+
+        if ($quote->items()->count() < 1) {
+            return redirect()
+                ->route('admin.promotion-quotes.show', $quote)
+                ->withErrors(['error' => 'En az bir ürün kalemi gerekli.']);
         }
 
         $this->usageLimitGuardService->assertCanCreate($tenant, 'orders');
@@ -641,122 +654,153 @@ class OrderController extends Controller
                 ->with('info', 'Bu teklif daha önce siparişe dönüştürüldü.');
         }
 
-        $quote->loadMissing(['items.prints']);
-
-        DB::beginTransaction();
-
         try {
-            $documentNumber = $this->numberGenerationService->generateNumber($tenant->id, 'order');
-            $financialSnapshot = $this->buildQuoteFinancialSnapshot($quote);
+            $conversion = DB::transaction(function () use ($tenant, $quote): array {
+                $lockedQuote = Order::query()
+                    ->whereKey($quote->id)
+                    ->where('tenant_account_id', $tenant->id)
+                    ->with(['items.prints'])
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
-            $order = Order::create([
-                'tenant_account_id' => $quote->tenant_account_id,
-                'order_family' => $quote->order_family,
-                'order_mode' => $quote->order_mode,
-                'document_type' => 'order',
-                'document_number' => $documentNumber,
-                'source_quote_id' => $quote->id,
-                'source_quote_number' => $quote->document_number,
-                'customer_company_id' => $quote->customer_company_id,
-                'status' => 'pending',
-                'workflow_status' => 'order_created',
-                'quote_date' => $quote->quote_date,
-                'valid_until' => $quote->valid_until,
-                'invoice_status' => $quote->invoice_status,
-                'delivery_type' => $quote->delivery_type,
-                'delivery_type_id' => $quote->delivery_type_id,
-                'show_print_price_details_to_customer' => $quote->shouldShowPrintPriceDetailsToCustomer(),
-                'notes' => $quote->notes,
-                'currency' => $quote->currency,
-                'subtotal' => $quote->subtotal,
-                'vat_total' => $quote->vat_total,
-                'grand_total' => $quote->grand_total,
-                'product_total' => $financialSnapshot['product_total'],
-                'print_total' => $financialSnapshot['print_total'],
-                'vat_breakdown_json' => $financialSnapshot['vat_breakdown_json'],
-                'created_by' => Auth::id(),
-            ]);
+                $existingOrder = Order::query()
+                    ->orders()
+                    ->where('tenant_account_id', $tenant->id)
+                    ->where('source_quote_id', $lockedQuote->id)
+                    ->latest('id')
+                    ->lockForUpdate()
+                    ->first();
 
-            foreach ($quote->items as $quoteItem) {
-                $newItem = OrderItem::create([
-                    'tenant_account_id' => $quoteItem->tenant_account_id,
-                    'order_id' => $order->id,
-                    'tenant_catalog_product_id' => $quoteItem->tenant_catalog_product_id,
-                    'tenant_catalog_product_variant_id' => $quoteItem->tenant_catalog_product_variant_id,
-                    'standard_product_id' => $quoteItem->standard_product_id,
-                    'standard_product_variant_id' => $quoteItem->standard_product_variant_id,
-                    'item_type' => $quoteItem->item_type,
-                    'product_source' => $quoteItem->product_source,
-                    'product_name' => $quoteItem->product_name,
-                    'product_code' => $quoteItem->product_code,
-                    'supplier_id' => $quoteItem->supplier_id,
-                    'supplier_source_id' => $quoteItem->supplier_source_id,
-                    'quantity' => $quoteItem->quantity,
-                    'unit' => $quoteItem->unit,
-                    'description' => $quoteItem->description,
-                    'product_snapshot' => $quoteItem->product_snapshot,
-                    'price_snapshot' => $quoteItem->price_snapshot,
-                    'stock_snapshot' => $quoteItem->stock_snapshot,
-                    'catalog_source' => $quoteItem->catalog_source,
-                    'list_price' => $quoteItem->list_price,
-                    'discount_rate' => $quoteItem->discount_rate,
-                    'unit_price' => $quoteItem->unit_price,
-                    'line_total' => $quoteItem->line_total,
-                    'has_print' => $quoteItem->has_print,
-                    'print_total' => $quoteItem->print_total,
-                    'status' => $quoteItem->status ?? 'pending',
+                if ($existingOrder) {
+                    return [
+                        'created' => false,
+                        'order' => $existingOrder,
+                    ];
+                }
+
+                $documentNumber = $this->numberGenerationService->generateNumber($tenant->id, 'order');
+                $financialSnapshot = $this->buildQuoteFinancialSnapshot($lockedQuote);
+
+                $order = Order::create([
+                    'tenant_account_id' => $lockedQuote->tenant_account_id,
+                    'order_family' => $lockedQuote->order_family,
+                    'order_mode' => $lockedQuote->order_mode,
+                    'document_type' => 'order',
+                    'document_number' => $documentNumber,
+                    'source_quote_id' => $lockedQuote->id,
+                    'source_quote_number' => $lockedQuote->document_number,
+                    'customer_company_id' => $lockedQuote->customer_company_id,
+                    'status' => 'pending',
+                    'workflow_status' => 'order_created',
+                    'quote_date' => $lockedQuote->quote_date,
+                    'valid_until' => $lockedQuote->valid_until,
+                    'invoice_status' => $lockedQuote->invoice_status,
+                    'delivery_type' => $lockedQuote->delivery_type,
+                    'delivery_type_id' => $lockedQuote->delivery_type_id,
+                    'show_print_price_details_to_customer' => $lockedQuote->shouldShowPrintPriceDetailsToCustomer(),
+                    'notes' => $lockedQuote->notes,
+                    'currency' => $lockedQuote->currency,
+                    'subtotal' => $lockedQuote->subtotal,
+                    'vat_total' => $lockedQuote->vat_total,
+                    'grand_total' => $lockedQuote->grand_total,
+                    'product_total' => $financialSnapshot['product_total'],
+                    'print_total' => $financialSnapshot['print_total'],
+                    'vat_breakdown_json' => $financialSnapshot['vat_breakdown_json'],
+                    'created_by' => Auth::id(),
                 ]);
 
-            foreach ($quoteItem->prints as $quotePrint) {
-                    OrderItemPrint::create([
-                        'tenant_account_id' => $quotePrint->tenant_account_id,
+                foreach ($lockedQuote->items as $quoteItem) {
+                    $newItem = OrderItem::create([
+                        'tenant_account_id' => $quoteItem->tenant_account_id,
                         'order_id' => $order->id,
-                        'order_item_id' => $newItem->id,
-                        'tenant_print_setting_id' => $quotePrint->tenant_print_setting_id,
-                        'standard_print_type_id' => $quotePrint->standard_print_type_id,
-                        'tenant_print_option_id' => $quotePrint->tenant_print_option_id,
-                        'print_type' => $quotePrint->print_type,
-                        'print_option' => $quotePrint->print_option,
-                        'print_location' => $quotePrint->print_location,
-                        'production_type' => $quotePrint->production_type,
-                        'subcontractor_company_id' => $quotePrint->subcontractor_company_id,
-                        'print_color' => $quotePrint->print_color,
-                        'print_size' => $quotePrint->print_size,
-                        'cliche_status' => $quotePrint->cliche_status,
-                        'setup_pricing_enabled' => $quotePrint->setup_pricing_enabled,
-                        'setup_type' => $quotePrint->setup_type,
-                        'setup_status' => $quotePrint->setup_status,
-                        'setup_total_amount' => $quotePrint->setup_total_amount,
-                        'setup_distribution_quantity' => $quotePrint->setup_distribution_quantity,
-                        'setup_unit_amount' => $quotePrint->setup_unit_amount,
-                        'base_print_unit_price' => $quotePrint->base_print_unit_price,
-                        'print_quantity' => $quotePrint->print_quantity,
-                        'print_unit_price' => $quotePrint->print_unit_price,
-                        'print_total' => $quotePrint->print_total,
-                        'note' => $quotePrint->note,
-                        'production_note' => $quotePrint->production_note,
-                        'status' => $quotePrint->status ?? 'pending',
+                        'tenant_catalog_product_id' => $quoteItem->tenant_catalog_product_id,
+                        'tenant_catalog_product_variant_id' => $quoteItem->tenant_catalog_product_variant_id,
+                        'standard_product_id' => $quoteItem->standard_product_id,
+                        'standard_product_variant_id' => $quoteItem->standard_product_variant_id,
+                        'item_type' => $quoteItem->item_type,
+                        'product_source' => $quoteItem->product_source,
+                        'product_name' => $quoteItem->product_name,
+                        'product_code' => $quoteItem->product_code,
+                        'supplier_id' => $quoteItem->supplier_id,
+                        'supplier_source_id' => $quoteItem->supplier_source_id,
+                        'quantity' => $quoteItem->quantity,
+                        'unit' => $quoteItem->unit,
+                        'description' => $quoteItem->description,
+                        'product_snapshot' => $quoteItem->product_snapshot,
+                        'price_snapshot' => $quoteItem->price_snapshot,
+                        'stock_snapshot' => $quoteItem->stock_snapshot,
+                        'catalog_source' => $quoteItem->catalog_source,
+                        'list_price' => $quoteItem->list_price,
+                        'discount_rate' => $quoteItem->discount_rate,
+                        'unit_price' => $quoteItem->unit_price,
+                        'line_total' => $quoteItem->line_total,
+                        'has_print' => $quoteItem->has_print,
+                        'print_total' => $quoteItem->print_total,
+                        'status' => $quoteItem->status ?? 'pending',
                     ]);
+
+                    foreach ($quoteItem->prints as $quotePrint) {
+                        OrderItemPrint::create([
+                            'tenant_account_id' => $quotePrint->tenant_account_id,
+                            'order_id' => $order->id,
+                            'order_item_id' => $newItem->id,
+                            'tenant_print_setting_id' => $quotePrint->tenant_print_setting_id,
+                            'standard_print_type_id' => $quotePrint->standard_print_type_id,
+                            'tenant_print_option_id' => $quotePrint->tenant_print_option_id,
+                            'print_type' => $quotePrint->print_type,
+                            'print_option' => $quotePrint->print_option,
+                            'print_location' => $quotePrint->print_location,
+                            'production_type' => $quotePrint->production_type,
+                            'subcontractor_company_id' => $quotePrint->subcontractor_company_id,
+                            'print_color' => $quotePrint->print_color,
+                            'print_size' => $quotePrint->print_size,
+                            'cliche_status' => $quotePrint->cliche_status,
+                            'setup_pricing_enabled' => $quotePrint->setup_pricing_enabled,
+                            'setup_type' => $quotePrint->setup_type,
+                            'setup_status' => $quotePrint->setup_status,
+                            'setup_total_amount' => $quotePrint->setup_total_amount,
+                            'setup_distribution_quantity' => $quotePrint->setup_distribution_quantity,
+                            'setup_unit_amount' => $quotePrint->setup_unit_amount,
+                            'base_print_unit_price' => $quotePrint->base_print_unit_price,
+                            'print_quantity' => $quotePrint->print_quantity,
+                            'print_unit_price' => $quotePrint->print_unit_price,
+                            'print_total' => $quotePrint->print_total,
+                            'note' => $quotePrint->note,
+                            'production_note' => $quotePrint->production_note,
+                            'status' => $quotePrint->status ?? 'pending',
+                        ]);
+                    }
                 }
+
+                $order->loadMissing([
+                    'customer.contacts',
+                    'customer.addresses',
+                    'items.prints.subcontractorCompany',
+                    'items.tenantCatalogProductVariant.catalogProduct',
+                    'items.tenantCatalogProduct',
+                    'items.legacySupplierCompany',
+                ]);
+
+                $this->workFormCreationService->createForOrder($order, Auth::user());
+                $this->orderCurrentAccountDebitSyncService->syncOrder($order->fresh(['customer.companyRoles', 'payments']), Auth::user());
+
+                $lockedQuote->forceFill([
+                    'workflow_status' => 'quote_converted',
+                ])->save();
+
+                return [
+                    'created' => true,
+                    'order' => $order,
+                ];
+            });
+
+            $order = $conversion['order'];
+
+            if (! ($conversion['created'] ?? false)) {
+                return redirect()
+                    ->route('admin.orders.show', $order)
+                    ->with('info', 'Bu teklif daha önce siparişe dönüştürüldü.');
             }
-
-            $order->loadMissing([
-                'customer.contacts',
-                'customer.addresses',
-                'items.prints.subcontractorCompany',
-                'items.tenantCatalogProductVariant.catalogProduct',
-                'items.tenantCatalogProduct',
-                'items.legacySupplierCompany',
-            ]);
-
-            $this->workFormCreationService->createForOrder($order, Auth::user());
-            $this->orderCurrentAccountDebitSyncService->syncOrder($order->fresh(['customer.companyRoles', 'payments']), Auth::user());
-
-            $quote->update([
-                'workflow_status' => 'quote_converted',
-            ]);
-
-            DB::commit();
 
             try {
                 $this->notificationEventService->dispatchEvent(
@@ -782,8 +826,6 @@ class OrderController extends Controller
                 ->route('admin.orders.show', $order)
                 ->with('success', 'Teklif başarıyla siparişe dönüştürüldü.');
         } catch (\Throwable $exception) {
-            DB::rollBack();
-
             \Log::error('Quote conversion failed', [
                 'quote_id' => $quote->id,
                 'tenant_id' => $tenant->id,
@@ -795,7 +837,6 @@ class OrderController extends Controller
                 ->withErrors(['error' => $this->humanizeConversionException($exception)]);
         }
     }
-
     private function createCopiedQuoteDraft(Request $request, Order $order, string $copyType): RedirectResponse
     {
         $tenant = $this->tenantResolver->getCurrentTenant($request);

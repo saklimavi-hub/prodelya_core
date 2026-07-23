@@ -28,12 +28,12 @@ class ProductionSummaryMockupLayoutTest extends TestCase
             ->get(route('admin.productions.show', $production) . '?tab=genel');
 
         $response->assertOk();
-        $response->assertSee('Genel Özet');
-        $response->assertSee('Sipariş No');
-        $response->assertSee('İş Formu No');
-        $response->assertSee('Üretim Durumu Adımları');
-        $response->assertSee('Hızlı Bakış');
-        $response->assertSee('Önemli Notlar');
+        $response->assertSee('Üretim Detayı · Exact Baskı');
+        $response->assertSee('Siparişi Aç');
+        $response->assertSee('İş Formu');
+        $response->assertSee('Süreç durumu');
+        $response->assertSee('Kompakt üretim özeti');
+        $response->assertSee('Kalite kontrol gerekli değil');
         $response->assertSee('Sıradaki İşlem');
     }
 }

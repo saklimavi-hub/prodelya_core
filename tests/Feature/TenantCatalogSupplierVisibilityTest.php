@@ -207,9 +207,8 @@ class TenantCatalogSupplierVisibilityTest extends TestCase
         $this->actingAs($this->owner, 'web')
             ->getJson($this->tenantUrl('/admin/catalog/search?q=VIS-002&only_quote_visible=0'))
             ->assertOk()
-            ->assertJsonFragment(['product_code' => 'VIS-002']);
+            ->assertJsonMissing(['product_code' => 'VIS-002']);
     }
-
     private function tenantUrl(string $path): string
     {
         return 'http://' . $this->tenant->panel_subdomain . '.' . self::CENTRAL_HOST . $path;

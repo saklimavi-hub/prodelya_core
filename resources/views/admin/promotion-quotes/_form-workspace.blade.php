@@ -3,11 +3,77 @@
     $formAction = $formAction ?? '#';
     $submitLabel = $submitLabel ?? 'Kaydet';
     $cancelUrl = $cancelUrl ?? route('admin.promotion-quotes.index');
-    $currency = old('currency', $quote->currency ?? 'TL');
+    $canonicalQuoteFormId = 'quote-form';
+    $currencyRefreshFormId = isset($quote) ? 'quote-currency-refresh-form' : null;
+    $currencyAcknowledgeFormId = isset($quote) ? 'quote-currency-acknowledge-form' : null;
+    $quoteCurrency = $quoteCurrency ?? [
+        'access' => ['multi_currency_enabled' => false, 'can_view_currency_details' => false],
+        'options' => [['value' => 'TRY', 'label' => 'TL']],
+        'document_currency' => 'TRY',
+        'document_currency_label' => 'TL',
+        'status_label' => 'Kur gerekmiyor',
+        'status_visible' => false,
+    ];
+    $currency = old('currency', $quoteCurrency['document_currency'] ?? ($quote->currency ?? 'TRY'));
+    $currencyDisplay = $currency === 'TRY' ? 'TL' : $currency;
     $quoteDateValue = old('quote_date', isset($quote) ? optional($quote->quote_date ?? $quote->created_at)->format('Y-m-d') : now()->format('Y-m-d'));
     $deliveryDateValue = old('valid_until', isset($quote) ? optional($quote->valid_until)->format('Y-m-d') : now()->addDays(7)->format('Y-m-d'));
     $invoiceStatusValue = old('invoice_status', $quote->invoice_status ?? 'fis');
-    $initialItems = collect($initialItems ?? [[]])->values()->all();
+    $generalError = null;
+    $fieldErrors = collect();
+    $rowErrorSummary = [];
+    $itemRowErrors = [];
+    $printRowErrors = [];
+
+    if ($errors->any()) {
+        $generalError = $errors->first('error');
+
+        foreach ($errors->getMessages() as $path => $messages) {
+            if ($path === 'error') {
+                continue;
+            }
+
+            $message = collect($messages)->filter()->first();
+            if (! filled($message)) {
+                continue;
+            }
+
+            if (preg_match('/^items\.(\d+)\.prints\.(\d+)\./', (string) $path, $matches)) {
+                $itemIndex = (int) $matches[1];
+                $printIndex = (int) $matches[2];
+                $printLabel = sprintf('Ürün %d / Baskı %d%s', $itemIndex + 1, $itemIndex + 1, chr(97 + $printIndex));
+                $printRowErrors["{$itemIndex}.{$printIndex}"] = ['path' => $path, 'message' => $message];
+                $rowErrorSummary[] = ['path' => $path, 'label' => $printLabel, 'message' => $message];
+                continue;
+            }
+
+            if (preg_match('/^items\.(\d+)(?:\.|$)/', (string) $path, $matches)) {
+                $itemIndex = (int) $matches[1];
+                $itemLabel = sprintf('Ürün %d', $itemIndex + 1);
+                $itemRowErrors[$itemIndex] = ['path' => $path, 'message' => $message];
+                $rowErrorSummary[] = ['path' => $path, 'label' => $itemLabel, 'message' => $message];
+                continue;
+            }
+
+            $fieldErrors->push($message);
+        }
+
+        $fieldErrors = $fieldErrors->values();
+    }
+
+    $initialItems = collect($initialItems ?? [[]])->map(function ($item, $itemIndex) use ($itemRowErrors, $printRowErrors) {
+        $item['_row_error'] = $itemRowErrors[$itemIndex]['message'] ?? ($item['_row_error'] ?? '');
+        $item['_error_path'] = $itemRowErrors[$itemIndex]['path'] ?? ($item['_error_path'] ?? null);
+        $item['prints'] = collect($item['prints'] ?? [])->map(function ($print, $printIndex) use ($itemIndex, $printRowErrors) {
+            $printError = $printRowErrors["{$itemIndex}.{$printIndex}"] ?? null;
+            $print['_row_error'] = $printError['message'] ?? ($print['_row_error'] ?? '');
+            $print['_error_path'] = $printError['path'] ?? ($print['_error_path'] ?? null);
+
+            return $print;
+        })->values()->all();
+
+        return $item;
+    })->values()->all();
     $quoteStatusLabel = old('quote_status_label', isset($quote) ? $quote->quoteDisplayStatusLabel() : 'Teklif');
     $showInitialVatSummary = $invoiceStatusValue === 'fatura';
     $quotePrintDebug = config('app.debug') && request()->boolean('quote_print_debug');
@@ -282,123 +348,92 @@
     }
 
     .pd-product-live-info {
-        margin-top: 10px;
-        border: 1px solid #dbe3f0;
-        border-radius: 10px;
-        background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
-        padding: 10px 12px;
+        margin-top: 6px;
         display: grid;
-        gap: 8px;
+        gap: 6px;
         font-family: Arial, Helvetica, sans-serif;
     }
-
-    .pd-product-live-info__title {
-        font-size: 13px;
-        font-weight: 700;
-        color: #0f172a;
-    }
-
-    .pd-product-live-info__header {
+    .pd-product-live-info__chips {
         display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
         align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-    }
-
-    .pd-product-live-info__status {
-        font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 0.02em;
-        text-transform: uppercase;
-        color: #475569;
     }
 
     .pd-product-live-info__grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 8px 12px;
-    }
-
-    .pd-product-live-info__compact-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 8px;
     }
 
-    .pd-product-live-info__metric {
-        display: grid;
-        gap: 2px;
-        padding: 7px 8px;
+    .pd-product-live-info__card {
+        padding: 10px 12px;
         border: 1px solid #dbe3f0;
-        border-radius: 8px;
-        background: rgba(255, 255, 255, 0.78);
+        border-radius: 10px;
+        background: #ffffff;
     }
 
-    .pd-product-live-info__metric strong {
-        font-size: 10px;
+    .pd-product-live-info__label {
+        font-size: 11px;
         font-weight: 700;
-        color: #64748b;
+        letter-spacing: 0.02em;
         text-transform: uppercase;
-        letter-spacing: 0.03em;
+        color: #64748b;
     }
 
-    .pd-product-live-info__metric span {
-        font-size: 12px;
-        font-weight: 600;
+    .pd-product-live-info__value {
+        margin-top: 4px;
+        font-size: 13px;
+        font-weight: 700;
+        line-height: 1.45;
         color: #0f172a;
     }
 
-    .pd-product-live-info__line {
-        display: grid;
-        gap: 2px;
-        font-size: 12px;
-        color: #475569;
-    }
-
-    .pd-product-live-info__line strong {
+    .pd-product-live-info__note {
+        margin-top: 2px;
         font-size: 11px;
-        font-weight: 700;
-        color: #334155;
-        text-transform: uppercase;
-        letter-spacing: 0.02em;
-    }
-
-    .pd-product-live-info__message {
-        font-size: 12px;
-        line-height: 1.4;
-        color: #334155;
-    }
-
-    .pd-product-live-info--ok {
-        border-color: #bfdbfe;
-        background: linear-gradient(180deg, #eff6ff 0%, #ffffff 100%);
-    }
-
-    .pd-product-live-info--warning {
-        border-color: #fcd34d;
-        background: linear-gradient(180deg, #fff7ed 0%, #ffffff 100%);
-    }
-
-    .pd-product-live-info--error {
-        border-color: #fecaca;
-        background: linear-gradient(180deg, #fef2f2 0%, #ffffff 100%);
-    }
-
-    .pd-product-live-info__warnings {
-        display: grid;
-        gap: 4px;
-    }
-
-    .pd-product-live-info__chips {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 5px;
-    }
-
-    .pd-product-live-info__empty {
-        font-size: 12px;
+        line-height: 1.45;
         color: #64748b;
     }
+
+    .pd-product-live-info__summary {
+        display: grid;
+        gap: 6px;
+    }
+
+    .pd-product-live-info__summary-row {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 10px;
+    }
+
+    .pd-product-live-info__summary-row strong {
+        font-size: 13px;
+        color: #0f172a;
+    }
+
+.pd-product-live-info__meta-line {
+font-size: 12px;
+line-height: 1.5;
+color: #64748b;
+}
+
+    .pd-product-live-info__message,
+    .pd-product-live-info__empty {
+        font-size: 12px;
+        line-height: 1.45;
+        color: #64748b;
+    }
+
+    .pd-product-live-info__message.is-warning {
+        color: #92400e;
+    }
+
+    .pd-product-live-info__message.is-danger {
+        color: #b91c1c;
+    }
+
 
     .pd-quote-line-subtitle-rich {
         display: flex;
@@ -694,24 +729,29 @@
     }
 </style>
 
-<form method="POST" action="{{ $formAction }}" id="quote-form" class="space-y-5">
+<form method="POST" action="{{ $formAction }}" id="{{ $canonicalQuoteFormId }}" data-promotion-quote-form class="space-y-5">
     @csrf
     @if ($formMethod !== 'POST')
         @method($formMethod)
     @endif
-
     @if ($errors->any())
-        @php
-            $generalError = $errors->first('error');
-            $fieldErrors = collect($errors->all())->reject(fn ($message) => $message === $generalError)->values();
-        @endphp
         <div class="pd-card border-red-200 bg-red-50">
             <div class="pd-card-body">
                 @if ($generalError)
                     <div class="text-sm font-semibold text-red-800">{{ $generalError }}</div>
                 @endif
+                @if (!empty($rowErrorSummary))
+                    <div class="text-sm font-semibold text-red-800 {{ $generalError ? 'mt-3' : '' }}">Satır bazında düzeltme gerekiyor.</div>
+                    <div class="mt-2 flex flex-col gap-2">
+                        @foreach ($rowErrorSummary as $summary)
+                            <button type="button" class="text-left text-sm font-medium text-red-700 underline-offset-2 hover:underline" data-error-target="{{ $summary['path'] }}">
+                                {{ $summary['label'] }} — {{ $summary['message'] }}
+                            </button>
+                        @endforeach
+                    </div>
+                @endif
                 @if ($fieldErrors->isNotEmpty())
-                    <div class="text-sm font-semibold text-red-800 {{ $generalError ? 'mt-3' : '' }}">Formda düzeltilmesi gereken alanlar var.</div>
+                    <div class="text-sm font-semibold text-red-800 {{ ($generalError || !empty($rowErrorSummary)) ? 'mt-3' : '' }}">Formda düzeltilmesi gereken alanlar var.</div>
                     <ul class="mt-2 space-y-1 text-sm text-red-700 list-disc list-inside">
                         @foreach ($fieldErrors as $error)
                             <li>{{ $error }}</li>
@@ -725,6 +765,7 @@
     <div id="quote-client-error" class="pd-card border-red-200 bg-red-50 hidden">
         <div class="pd-card-body">
             <div class="text-sm font-semibold text-red-800" data-client-error-message></div>
+            <div class="mt-2 hidden" data-client-error-list></div>
         </div>
     </div>
 
@@ -821,10 +862,28 @@
                         <div class="pd-quote-meta-row">
                             <label class="pd-label">Para birimi</label>
                             <select name="currency" class="pd-compact-select">
-                                @foreach (['TL', 'USD', 'EUR'] as $option)
-                                    <option value="{{ $option }}" @selected($currency === $option)>{{ $option }}</option>
+                                @foreach (($quoteCurrency['options'] ?? []) as $option)
+                                    <option value="{{ $option['value'] }}" @selected($currency === $option['value'])>{{ $option['label'] }}</option>
                                 @endforeach
                             </select>
+                            @if(($quoteCurrency['status_visible'] ?? false) && filled($quoteCurrency['status_label'] ?? null))
+                                <p class="mt-2 text-xs leading-5 text-slate-600">
+                                    {{ $quoteCurrency['status_label'] }}
+                                    @if(($quoteCurrency['last_refreshed_at'] ?? null))
+                                        · Son kur güncelleme: {{ optional($quoteCurrency['last_refreshed_at'])->format('d.m.Y H:i') }}
+                                    @endif
+                                </p>
+                            @endif
+                            @if(isset($quote) && (($quoteCurrency['can_refresh'] ?? false) || ($quoteCurrency['can_acknowledge'] ?? false)))
+                                <div class="mt-2 flex flex-wrap gap-2">
+                                    @if($quoteCurrency['can_refresh'] ?? false)
+                                        <button type="submit" form="{{ $currencyRefreshFormId }}" class="pd-btn pd-btn-light pd-btn-sm">Kuru Yenile</button>
+                                    @endif
+                                    @if($quoteCurrency['can_acknowledge'] ?? false)
+                                        <button type="submit" form="{{ $currencyAcknowledgeFormId }}" class="pd-btn pd-btn-light pd-btn-sm">Mevcut Kuru Koru</button>
+                                    @endif
+                                </div>
+                            @endif
                         </div>
                         <div class="pd-quote-meta-row pd-quote-meta-row-toggle">
                             <label class="pd-label" for="show-print-price-details-select">Baskı fiyatı gösterimi</label>
@@ -866,9 +925,9 @@
                         <span>No</span>
                         <span>Ürün</span>
                         <span>Miktar</span>
-                        <span>Liste</span>
+                        <span>Satış Liste</span>
                         <span>İskonto %</span>
-                        <span>Birim Fiyat</span>
+                        <span>Satış Birim Fiyatı</span>
                         <span>Toplam</span>
                         <span>Baskı</span>
                         <span>Sil</span>
@@ -896,25 +955,25 @@
                             <div class="pd-summary-stack">
                                 <div class="pd-summary-stack-row">
                                     <span>Ürün Toplamı</span>
-                                    <strong id="summary-product-total">0,00 {{ $currency }}</strong>
+                                    <strong id="summary-product-total">0,00 {{ $currencyDisplay }}</strong>
                                 </div>
                                 <div class="pd-summary-stack-row pd-summary-stack-row-print">
                                     <span>Baskı Toplamı</span>
-                                    <strong id="summary-print-total">0,00 {{ $currency }}</strong>
+                                    <strong id="summary-print-total">0,00 {{ $currencyDisplay }}</strong>
                                 </div>
                                 <div class="pd-summary-stack-row">
                                     <span>Ara Toplam</span>
-                                    <strong id="summary-subtotal">0,00 {{ $currency }}</strong>
+                                    <strong id="summary-subtotal">0,00 {{ $currencyDisplay }}</strong>
                                 </div>
                             </div>
                             <div id="summary-vat-breakdown" class="space-y-2 {{ $showInitialVatSummary ? '' : 'hidden' }}"></div>
                             <div class="pd-summary-stack-row pd-summary-stack-row-vat {{ $showInitialVatSummary ? '' : 'hidden' }}" id="summary-vat-total-row">
                                 <span id="summary-vat-label">KDV Toplamı</span>
-                                <strong id="summary-vat">0,00 {{ $currency }}</strong>
+                                <strong id="summary-vat">0,00 {{ $currencyDisplay }}</strong>
                             </div>
                             <div class="pd-summary-total-box">
                                 <div class="pd-summary-total-label">Genel toplam</div>
-                                <strong id="summary-grand-total">0,00 {{ $currency }}</strong>
+                                <strong id="summary-grand-total">0,00 {{ $currencyDisplay }}</strong>
                             </div>
                             <div class="pd-summary-section mt-4">
                                 <div class="pd-summary-section-title">Hızlı Aksiyon</div>
@@ -933,6 +992,17 @@
         </aside>
     </div>
 </form>
+@if(isset($quote) && ($quoteCurrency['can_refresh'] ?? false))
+    <form method="POST" action="{{ route('admin.promotion-quotes.currency.refresh', $quote) }}" id="{{ $currencyRefreshFormId }}">
+        @csrf
+    </form>
+@endif
+
+@if(isset($quote) && ($quoteCurrency['can_acknowledge'] ?? false))
+    <form method="POST" action="{{ route('admin.promotion-quotes.currency.acknowledge', $quote) }}" id="{{ $currencyAcknowledgeFormId }}">
+        @csrf
+    </form>
+@endif
 
 <div id="quick-customer-modal" class="pd-customer-modal-overlay hidden" aria-hidden="true">
     <div class="pd-customer-modal-panel" role="dialog" aria-modal="true" aria-labelledby="quick-customer-modal-title">
@@ -955,7 +1025,7 @@
                     <label for="quick-customer-identity-type" class="pd-label">Firma Tipi</label>
                     <select id="quick-customer-identity-type" class="pd-select">
                         <option value="company">Tüzel Kişi</option>
-                        <option value="person">Şahıs / Bireysel</option>
+                        <option value="person">Åahıs / Bireysel</option>
                     </select>
                 </div>
                 <div class="pd-customer-modal-field">
@@ -963,9 +1033,9 @@
                     <input type="email" id="quick-customer-email" class="pd-input" autocomplete="email">
                 </div>
                 <div class="pd-customer-modal-field">
-                    <label for="quick-customer-phone" class="pd-label">WhatsApp Cep Telefonu</label>
+                    <label for="quick-customer-phone" class="pd-label">WhatsApp / Telefon</label>
                     <div style="display:flex; align-items:center; border:1px solid #d0d5dd; border-radius:10px; overflow:hidden; background:#fff;">
-                        <span style="display:inline-flex; align-items:center; gap:8px; padding:0 12px; min-height:42px; background:#f8fafc; border-right:1px solid #e4e7ec; color:#344054; font-size:13px; white-space:nowrap;">🇹🇷 +90</span>
+                        <span style="display:inline-flex; align-items:center; gap:8px; padding:0 12px; min-height:42px; background:#f8fafc; border-right:1px solid #e4e7ec; color:#344054; font-size:13px; white-space:nowrap;">+90</span>
                         <input type="text" id="quick-customer-phone" class="pd-input" autocomplete="tel" placeholder="5xx xxx xx xx" style="border:0; border-radius:0; box-shadow:none;">
                     </div>
                 </div>
@@ -974,7 +1044,7 @@
                     <input type="text" id="quick-customer-contact-name" class="pd-input" autocomplete="name">
                 </div>
                 <div class="pd-customer-modal-field">
-                    <label for="quick-customer-city" class="pd-label">Şehir</label>
+                    <label for="quick-customer-city" class="pd-label">Åehir</label>
                     <input type="text" id="quick-customer-city" class="pd-input" autocomplete="address-level2">
                 </div>
                 <div class="pd-customer-modal-field full">
@@ -1002,6 +1072,8 @@
         'customerLookup' => $customerLookup ?? [],
         'selectedCustomer' => $selectedCustomer ?? null,
         'currency' => $currency,
+        'currencyDisplay' => $currencyDisplay,
+        'quoteCurrency' => $quoteCurrency,
         'canViewFinancialData' => (bool) ($canViewFinancialData ?? false),
         'items' => $initialItems,
         'tenantPrintSettings' => $tenantPrintSettings ?? [],
@@ -1012,7 +1084,9 @@
         'invoiceStatus' => $invoiceStatusValue,
         'defaultPrintVatRate' => 20,
         'printDebugEnabled' => $quotePrintDebug,
+        'canonicalFormId' => $canonicalQuoteFormId,
         'liveProductInfoUrl' => route('admin.product-hub.live-product-info'),
+        'intermediateElementEnabled' => app(\App\Services\PromotionIntermediateElementPolicy::class)->shouldRender(),
     ];
 @endphp
 
@@ -1030,6 +1104,7 @@ const tenantPrintSettingsById = new Map(tenantPrintSettings.map((setting) => [St
 const legacyPrintTypeOptions = Array.isArray(quoteWorkspace.legacyPrintTypeOptions) ? quoteWorkspace.legacyPrintTypeOptions : [];
 const printOptionMap = quoteWorkspace.printOptionMap || {};
 const clicheRequiredTypes = quoteWorkspace.clicheRequiredTypes || ['Sıcak Baskı'];
+const canonicalQuoteFormId = quoteWorkspace.canonicalFormId || 'quote-form';
 const customerLookup = new Map(
     Object.values(quoteWorkspace.customerLookup || {}).map((customer) => [String(customer.id), customer])
 );
@@ -1052,9 +1127,13 @@ function escapeHtml(value) {
         .replace(/'/g, '&#039;');
 }
 
-function formatMoney(value, currency = document.querySelector('select[name="currency"]')?.value || quoteWorkspace.currency || 'TL') {
+function displayCurrencyLabel(currency) {
+    return String(currency || '').toUpperCase() === 'TRY' ? 'TL' : (currency || 'TL');
+}
+
+function formatMoney(value, currency = document.querySelector('select[name="currency"]')?.value || quoteWorkspace.currency || 'TRY') {
     const number = Number(value ?? 0);
-    return `${number.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
+    return `${number.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${displayCurrencyLabel(currency)}`;
 }
 
 function formatInputNumber(value, digits = 2) {
@@ -1120,6 +1199,398 @@ function formatLiveInfoTimestamp(value) {
     return `${day}.${month}.${year}${timePart ? ` ${timePart}` : ''}`;
 }
 
+function formatSalesInfoDate(value) {
+    if (!value) {
+        return '—';
+    }
+
+    const [year = '', month = '', day = ''] = String(value).split('-');
+    if (!year || !month || !day) {
+        return String(value);
+    }
+
+    return `${day}.${month}.${year}`;
+}
+
+function formatSalesMetricAmount(value, currency = 'TRY', digits = 2) {
+    if (value === null || value === undefined || value === '') {
+        return '—';
+    }
+
+    const number = Number(value);
+    if (!Number.isFinite(number)) {
+        return '—';
+    }
+
+    return `${number.toLocaleString('tr-TR', { minimumFractionDigits: digits, maximumFractionDigits: digits })} ${displayCurrencyLabel(currency)}`;
+}
+
+function formatSalesDiscountPercent(value) {
+    if (value === null || value === undefined || value === '') {
+        return '—';
+    }
+
+    const number = Number(value);
+    if (!Number.isFinite(number)) {
+        return '—';
+    }
+
+    return `%${number.toLocaleString('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+}
+function resolveStockTruth(item = {}, payload = {}) {
+    const stockSnapshot = safeObject(item.stock_snapshot);
+    const local = finiteNumber(firstFilledValue([
+        payload.local_stock_quantity,
+        stockSnapshot.local_stock_quantity,
+    ], 0), 0);
+    const supplier = finiteNumber(firstFilledValue([
+        payload.supplier_stock_quantity,
+        stockSnapshot.supplier_stock_quantity,
+    ], 0), 0);
+    const fallback = finiteNumber(firstFilledValue([
+        payload.fallback_stock_quantity,
+        stockSnapshot.total_stock_quantity,
+        stockSnapshot.stock_quantity,
+    ], 0), 0);
+    const visible = finiteNumber(firstFilledValue([
+        payload.current_stock,
+        payload.visible_stock_quantity,
+        stockSnapshot.visible_stock_quantity,
+        stockSnapshot.total_stock_quantity,
+        fallback,
+    ], 0), 0);
+
+    return { local, supplier, fallback, visible };
+}
+
+function resolveLocalStockPresentation(item = {}, payload = {}) {
+    const stockSnapshot = safeObject(item.stock_snapshot);
+    const rawValue = firstFilledValue([
+        payload.local_stock_quantity,
+        stockSnapshot.local_stock_quantity,
+    ], null);
+    const rawProjectionValue = firstFilledValue([
+        payload.local_stock_projection_quantity,
+        stockSnapshot.local_stock_projection_quantity,
+    ], rawValue);
+    const normalizedValue = Number(rawValue);
+    const normalizedProjectionValue = Number(rawProjectionValue);
+
+    return {
+        label: firstFilledValue([payload.local_stock_label, stockSnapshot.local_stock_label], ''),
+        note: firstFilledValue([payload.local_stock_note, stockSnapshot.local_stock_note], ''),
+        source: firstFilledValue([payload.local_stock_source, stockSnapshot.local_stock_source], ''),
+        scope: firstFilledValue([payload.local_stock_scope, stockSnapshot.local_stock_scope], ''),
+        reasonCode: firstFilledValue([payload.local_stock_reason_code, stockSnapshot.local_stock_reason_code], ''),
+        operational: !!firstFilledValue([payload.local_stock_operational, stockSnapshot.local_stock_operational], false),
+        value: Number.isFinite(normalizedValue) ? normalizedValue : null,
+        projectionValue: Number.isFinite(normalizedProjectionValue) ? normalizedProjectionValue : null,
+    };
+}
+
+function resolveStockSourceLabel(localStockPresentation = {}, localStock = 0, supplierStock = 0) {
+    if (localStockPresentation?.label) {
+        return localStockPresentation.label;
+    }
+
+    if (localStock > 0 && supplierStock > 0) {
+        return 'Yerel kullanılabilir stok + Tedarikçi stok';
+    }
+
+    if (localStock > 0) {
+        return 'Yerel kullanılabilir stok';
+    }
+
+    if (supplierStock > 0) {
+        return 'Tedarikçi stok';
+    }
+
+    return 'Stok yok';
+}
+
+function resolveCompactLocalStockDisplay(stockTruth = {}, localStockPresentation = {}) {
+    const localStock = finiteNumber(stockTruth.local, 0);
+    const visibleStock = finiteNumber(stockTruth.visible, 0);
+    const operationalValue = finiteNumber(localStockPresentation.value, localStock);
+    const projectionValue = finiteNumber(localStockPresentation.projectionValue, visibleStock);
+
+    if (localStockPresentation?.operational && operationalValue > 0) {
+        return operationalValue;
+    }
+
+    if (operationalValue > 0) {
+        return operationalValue;
+    }
+
+    if (projectionValue > 0) {
+        return projectionValue;
+    }
+
+    return null;
+}
+
+function resolveCompactStockMetric(stockTruth = {}, localStockPresentation = {}) {
+    const supplierStock = finiteNumber(stockTruth.supplier, 0);
+    const localDisplay = resolveCompactLocalStockDisplay(stockTruth, localStockPresentation);
+
+    if (localDisplay !== null) {
+        return `Local stok: ${formatLiveInfoStock(localDisplay)}`;
+    }
+
+    if (supplierStock > 0) {
+        return `Tedarikçi stok: ${formatLiveInfoStock(supplierStock)}`;
+    }
+
+    return 'Stok yok';
+}
+
+function resolveCompactStockSummary(stockTruth = {}, localStockPresentation = {}) {
+    const supplierStock = finiteNumber(stockTruth.supplier, 0);
+    const localDisplay = resolveCompactLocalStockDisplay(stockTruth, localStockPresentation);
+    const parts = [];
+
+    if (localDisplay !== null) {
+        parts.push(`Local stok: ${formatLiveInfoStock(localDisplay)}`);
+    }
+
+    if (supplierStock > 0) {
+        parts.push(`Tedarikçi stok: ${formatLiveInfoStock(supplierStock)}`);
+    }
+
+    if (!parts.length) {
+        parts.push('Stok yok');
+    }
+
+    return parts.join(' · ');
+}
+
+function resolveOperationalListPriceValue(source = {}, fallbackSnapshot = {}) {
+    const snapshot = {
+        ...safeObject(fallbackSnapshot),
+        ...safeObject(source),
+    };
+    const quoteCurrency = resolveQuoteCurrencyCode();
+    const sourceCurrency = String(firstFilledValue([
+        snapshot.source_currency,
+        source.source_currency,
+    ], '')).toUpperCase();
+
+    if (quoteCurrency === 'TRY') {
+        return finiteNumber(firstFilledValue([
+            snapshot.base_price,
+            snapshot.sales_presentation?.sales_list_try,
+            source.base_price,
+            source.quote_price_value,
+        ], 0), 0);
+    }
+
+    if (sourceCurrency && quoteCurrency === sourceCurrency) {
+        return finiteNumber(firstFilledValue([
+            snapshot.source_price,
+            source.source_price,
+            source.quote_price_value,
+        ], 0), 0);
+    }
+
+    return finiteNumber(firstFilledValue([
+        source.quote_price_value,
+        snapshot.quote_price_value,
+        snapshot.base_price,
+        source.base_price,
+        snapshot.display_price,
+        snapshot.list_price,
+    ], 0), 0);
+}
+
+function resolveSalesPresentation(item = {}, payload = {}) {
+    const itemSnapshot = safeObject(item.price_snapshot);
+    const liveSnapshot = safeObject(payload.quote_price_snapshot);
+    const mergedSnapshot = {
+        ...itemSnapshot,
+        ...liveSnapshot,
+    };
+    const savedPresentation = safeObject(mergedSnapshot.sales_presentation);
+    const sourceCurrency = firstFilledValue([
+        savedPresentation.sales_source_currency,
+        mergedSnapshot.source_currency,
+        payload.source_currency,
+    ], 'TRY');
+    const documentCurrency = firstFilledValue([
+        savedPresentation.sales_document_currency,
+        mergedSnapshot.document_currency,
+        payload.quote_currency,
+        currentQuoteCurrency(),
+    ], currentQuoteCurrency());
+    const baseCurrency = firstFilledValue([
+        mergedSnapshot.base_currency,
+        payload.base_currency,
+        'TRY',
+    ], 'TRY');
+    let sourceToBaseRate = firstFilledValue([
+        savedPresentation.sales_rate,
+        mergedSnapshot.source_to_base_rate,
+        payload.source_to_base_rate,
+        itemSnapshot.source_to_base_rate,
+    ], null);
+    let sourceToBaseRateDate = firstFilledValue([
+        savedPresentation.sales_rate_date,
+        mergedSnapshot.source_to_base_rate_date,
+        payload.source_to_base_rate_date,
+        itemSnapshot.source_to_base_rate_date,
+    ], '');
+    let sourceToBaseRateSource = firstFilledValue([
+        savedPresentation.sales_rate_source,
+        mergedSnapshot.source_to_base_rate_source,
+        payload.source_to_base_rate_source,
+        itemSnapshot.source_to_base_rate_source,
+    ], '');
+    const sourceAmount = firstFilledValue([
+        savedPresentation.sales_source_amount,
+        mergedSnapshot.source_price,
+        payload.source_price,
+        mergedSnapshot.source_list_price,
+    ], null);
+    const listTry = firstFilledValue([
+        savedPresentation.sales_list_try,
+        mergedSnapshot.base_price,
+        payload.base_price,
+        mergedSnapshot.base_cost,
+    ], null);
+
+    if (String(sourceCurrency).toUpperCase() === String(baseCurrency).toUpperCase()) {
+        sourceToBaseRate = null;
+        sourceToBaseRateDate = '';
+        sourceToBaseRateSource = '';
+    } else if ((sourceToBaseRate === null || sourceToBaseRate === '') && Number(sourceAmount || 0) > 0 && Number(listTry || 0) > 0) {
+        sourceToBaseRate = Number(listTry) / Number(sourceAmount);
+        sourceToBaseRateSource = sourceToBaseRateSource || 'derived';
+    }
+
+    return {
+        sourceAmount,
+        sourceCurrency,
+        rate: sourceToBaseRate,
+        rateDate: sourceToBaseRateDate,
+        rateSource: sourceToBaseRateSource,
+        listTry,
+        discountPercent: firstFilledValue([
+            savedPresentation.sales_discount_percent,
+            item.discount_rate,
+            mergedSnapshot.discount_rate,
+        ], null),
+        calculatedUnit: firstFilledValue([
+            savedPresentation.sales_calculated_unit_try,
+            mergedSnapshot.suggested_sales_unit_price_document,
+            item.calculated_unit_price,
+        ], null),
+        finalUnit: firstFilledValue([
+            savedPresentation.sales_final_unit_try,
+            mergedSnapshot.actual_sales_unit_price_document,
+            item.unit_price,
+        ], null),
+        manualOverride: savedPresentation.sales_manual_override === true
+            || mergedSnapshot.manual_sales_price_override === true
+            || item.manual_unit_price === true
+            || item.manual_unit_price === 1
+            || item.manual_unit_price === '1',
+        conversionStatus: firstFilledValue([
+            savedPresentation.conversion_status,
+            mergedSnapshot.document_conversion_status,
+            payload.quote_price_status,
+        ], ''),
+        fallbackUsed: savedPresentation.fallback_used === true || mergedSnapshot.fallback_used === true,
+        stale: savedPresentation.stale === true || mergedSnapshot.stale === true,
+        documentCurrency,
+        baseCurrency,
+    };
+}
+
+function resolveCompactMetaSupplierLabel(item = {}, payload = {}) {
+    const itemSnapshot = safeObject(item.product_snapshot);
+    const payloadSnapshot = safeObject(payload.product_snapshot);
+
+    return String(firstFilledValue([
+        payload.supplier_name,
+        payloadSnapshot.supplier_name,
+        item.supplier_name,
+        itemSnapshot.supplier_name,
+        item.selected_catalog_identity?.supplier_name,
+    ], '')).trim();
+}
+
+function resolveCompactMetaSku(item = {}, payload = {}) {
+    const itemSnapshot = safeObject(item.product_snapshot);
+    const payloadSnapshot = safeObject(payload.product_snapshot);
+
+    return String(firstFilledValue([
+        payload.product_code,
+        payload.sku,
+        payload.supplier_product_code,
+        payloadSnapshot.product_code,
+        item.product_code,
+        itemSnapshot.product_code,
+    ], '')).trim();
+}
+
+function buildCompactProductMetaBits(item = {}, payload = {}, options = {}) {
+    const stockTruth = resolveStockTruth(item, payload);
+    const localStockPresentation = resolveLocalStockPresentation(item, payload);
+    const includePrice = options.includePrice === true;
+    const includeUpdated = options.includeUpdated !== false;
+    const supplier = resolveCompactMetaSupplierLabel(item, payload);
+    const code = resolveCompactMetaSku(item, payload);
+    const bits = [
+        supplier,
+        code ? `SKU: ${code}` : '',
+        resolveCompactStockSummary(stockTruth, localStockPresentation),
+    ];
+
+    if (includePrice) {
+        const sourceCurrency = String(firstFilledValue([payload.source_currency, payload.currency], '')).toUpperCase();
+        const sourcePrice = firstFilledValue([payload.source_price, payload.list_price, payload.display_price], null);
+
+        if (sourcePrice !== null && sourcePrice !== '') {
+            bits.push(`Güncel fiyat: ${formatSalesMetricAmount(sourcePrice, sourceCurrency || 'TRY', 2)}`);
+        }
+    }
+
+    if (includeUpdated && payload.last_synced_at) {
+        bits.push(`Güncellendi: ${formatLiveInfoTimestamp(payload.last_synced_at)}`);
+    }
+
+    return bits
+        .map((bit) => String(bit || '').trim())
+        .filter(Boolean)
+        .filter((bit, index, values) => values.indexOf(bit) === index);
+}
+
+function buildCompactProductMetaLine(item = {}, payload = {}, options = {}) {
+    return buildCompactProductMetaBits(item, payload, options).join(' · ');
+}
+
+function formatRateSourceLabel(rateSource = '') {
+    const normalized = String(rateSource || '').trim().toLowerCase();
+
+    if (!normalized) {
+        return '';
+    }
+
+    const labels = {
+        tcmb: 'TCMB',
+        ecb: 'ECB',
+        fixer: 'Fixer',
+        manual: 'Manuel kur',
+        derived: 'Hesaplanan',
+        fallback: 'Yedek kaynak',
+        identity: '',
+    };
+
+    return labels[normalized] ?? String(rateSource || '').toUpperCase();
+}
+
+function renderSalesPresentationPanel(item = {}, payload = {}) {
+    return '';
+}
 function parseJsonValue(value) {
     if (!value) return null;
     if (typeof value === 'object') return value;
@@ -1206,6 +1677,11 @@ function buildLiveProductInfoUrl(item = {}) {
     }
 
     const params = new URLSearchParams();
+    const priceSnapshot = safeObject(item.price_snapshot);
+    const manualUnitPrice = item.manual_unit_price === true
+        || item.manual_unit_price === 1
+        || item.manual_unit_price === '1'
+        || priceSnapshot.manual_unit_price === true;
 
     if (productId) {
         params.set('tenant_catalog_product_id', productId);
@@ -1219,6 +1695,9 @@ function buildLiveProductInfoUrl(item = {}) {
         params.set('quote_item_id', item.quote_item_id);
     }
 
+    params.set('currency', currentQuoteCurrency());
+    params.set('quote_date', currentQuoteDate());
+
     const snapshotPrice = resolveLiveProductSnapshotPrice(item);
     const snapshotStock = resolveLiveProductSnapshotStock(item);
 
@@ -1228,6 +1707,24 @@ function buildLiveProductInfoUrl(item = {}) {
 
     if (snapshotStock !== '') {
         params.set('snapshot_stock', snapshotStock);
+    }
+
+    if (manualUnitPrice) {
+        const manualPriceValue = firstFilledValue([
+            priceSnapshot.manual_entry_amount,
+            priceSnapshot.actual_sales_unit_price_document,
+            item.unit_price,
+        ], '');
+        const manualPriceCurrency = firstFilledValue([
+            priceSnapshot.manual_entry_currency,
+            priceSnapshot.document_currency,
+            currentQuoteCurrency(),
+        ], currentQuoteCurrency());
+
+        if (manualPriceValue !== '') {
+            params.set('manual_unit_price', manualPriceValue);
+            params.set('manual_unit_price_currency', manualPriceCurrency);
+        }
     }
 
     return `${quoteWorkspace.liveProductInfoUrl}?${params.toString()}`;
@@ -1258,29 +1755,83 @@ function getLiveProductInfoState(stableKey) {
     return liveProductInfoState.get(String(stableKey || '')) || null;
 }
 
-function buildLiveProductInfoWarnings(payload = {}) {
-    const explicitWarnings = Array.isArray(payload.warnings) ? payload.warnings.filter(Boolean) : [];
-    const chips = [
-        payload.price_changed_since_snapshot ? 'Fiyat farkı var' : '',
-        payload.stock_changed_since_snapshot ? 'Stok değişmiş olabilir' : '',
-        payload.stock_warning || '',
-        payload.product_inactive_warning || '',
-        ...explicitWarnings,
-    ].filter(Boolean);
-
-    return Array.from(new Set(chips));
+function isCategoryWarningMessage(message = '') {
+    return String(message || '').toLocaleLowerCase('tr-TR').includes('kategori');
 }
 
-function liveProductInfoStatusLabel(payload = {}) {
-    if (payload.ok) {
-        return 'Teklife uygun';
+function liveProductInfoWarningLabel(message = '', payload = {}) {
+    const normalized = String(message || '').toLocaleLowerCase('tr-TR');
+
+    if (normalized.includes('kur')) {
+        return 'Kur bilgisi bulunamadı';
     }
 
-    if (payload.is_sellable) {
-        return 'Kontrol gerekli';
+    if (normalized.includes('aktif değil') || normalized.includes('pasif')) {
+        return 'Ürün pasif';
     }
 
-    return 'Uygun değil';
+    if (
+        normalized.includes('uygun değil')
+        || normalized.includes('kullanıma kapalı')
+        || normalized.includes('erişemiyor')
+        || normalized.includes('doğrulanamadı')
+    ) {
+        return 'Teklifte kullanılamaz';
+    }
+
+    if (normalized.includes('stok')) {
+        return payload.ok ? '' : 'Teklifte kullanılamaz';
+    }
+
+    return payload.ok ? '' : 'Teklifte kullanılamaz';
+}
+
+function buildLiveProductInfoWarnings(payload = {}) {
+    const explicitWarnings = Array.isArray(payload.warnings) ? payload.warnings.filter(Boolean) : [];
+    const otherWarnings = explicitWarnings.filter((warning) => !isCategoryWarningMessage(warning));
+    const badges = [];
+
+    if (payload.quote_price_status && !isReadyQuotePriceStatus(payload.quote_price_status)) {
+        badges.push({
+            label: 'Kur bilgisi bulunamadı',
+            tone: 'red',
+            title: quoteCurrencyWarningMessage(),
+        });
+    }
+
+    const statusWarnings = [
+        payload.stock_warning || '',
+        payload.product_inactive_warning || '',
+        ...otherWarnings,
+    ].filter(Boolean).filter((warning, index, values) => values.indexOf(warning) === index);
+
+    statusWarnings.forEach((warning) => {
+        const label = liveProductInfoWarningLabel(warning, payload);
+        if (!label) {
+            return;
+        }
+
+        badges.push({
+            label,
+            tone: payload.ok ? 'amber' : 'red',
+            title: warning,
+        });
+    });
+
+    if (!payload.ok && !statusWarnings.length && payload.public_safe_message) {
+        const label = liveProductInfoWarningLabel(payload.public_safe_message, payload);
+        if (!label) {
+            return badges;
+        }
+
+        badges.push({
+            label,
+            tone: 'red',
+            title: payload.public_safe_message,
+        });
+    }
+
+    return badges.filter((badge, index, values) => values.findIndex((item) => item.label === badge.label && item.tone === badge.tone) === index);
 }
 
 function liveProductInfoTone(payload = {}, state = null) {
@@ -1318,69 +1869,45 @@ function renderLiveProductInfoPanel(item = {}) {
     const quoteItemId = item.quote_item_id || '';
     const snapshotPrice = resolveLiveProductSnapshotPrice(item);
     const snapshotStock = resolveLiveProductSnapshotStock(item);
-
-    let bodyHtml = `
-        <div class="pd-product-live-info__message">Canlı bilgi kontrol ediliyor...</div>
-    `;
+    const metaLine = buildCompactProductMetaLine(item, payload);
+    const salesPanelHtml = renderSalesPresentationPanel(item, payload);
+    let messageHtml = '';
 
     if (!hasSelection) {
-        bodyHtml = `
-            <div class="pd-product-live-info__empty">Ürün seçildiğinde canlı bilgi burada görünür.</div>
-        `;
+        messageHtml = '<div class="pd-product-live-info__empty">Ürün seçildiğinde güncel stok ve fiyat bilgisi burada görünür.</div>';
     } else if (safeState?.status === 'error') {
-        bodyHtml = `
-            <div class="pd-product-live-info__message">Canlı ürün bilgisi şu anda alınamadı.</div>
-        `;
+        messageHtml = '<div class="pd-product-live-info__message is-danger">Canlı ürün bilgisi şu anda alınamadı.</div>';
     } else if (safeState?.status === 'success' && Object.keys(payload).length) {
-        bodyHtml = `
-            <div class="pd-product-live-info__header">
-                <div class="pd-product-live-info__message">${escapeHtml(payload.public_safe_message || 'Canlı ürün bilgisi alındı.')}</div>
-                <div class="pd-product-live-info__status">${escapeHtml(liveProductInfoStatusLabel(payload))}</div>
-            </div>
-            <div class="pd-product-live-info__compact-grid">
-                <div class="pd-product-live-info__metric">
-                    <strong>Güncel fiyat</strong>
-                    <span>${escapeHtml(payload.current_price || '—')}</span>
-                </div>
-                <div class="pd-product-live-info__metric">
-                    <strong>Güncel stok</strong>
-                    <span>${escapeHtml(formatLiveInfoStock(payload.current_stock, payload.stock_label || null))}</span>
-                </div>
-                <div class="pd-product-live-info__metric">
-                    <strong>Son güncelleme</strong>
-                    <span>${escapeHtml(formatLiveInfoTimestamp(payload.last_synced_at || ''))}</span>
-                </div>
-                <div class="pd-product-live-info__metric">
-                    <strong>Satış durumu</strong>
-                    <span>${escapeHtml(liveProductInfoStatusLabel(payload))}</span>
-                </div>
-            </div>
-            <div class="pd-product-live-info__warnings">
-                <div class="pd-product-live-info__line">
-                    <strong>Uyarılar</strong>
-                </div>
-                <div class="pd-product-live-info__chips">
-                    ${warnings.map((warning) => `<span class="pd-chip">${escapeHtml(warning)}</span>`).join('')}
-                    ${warnings.length === 0 ? '<span class="pd-chip">Uyarı yok</span>' : ''}
-                </div>
-            </div>
-        `;
+        if (!payload.ok && payload.public_safe_message) {
+            const tone = warnings.some((warning) => warning.tone === 'red') ? 'danger' : 'warning';
+            messageHtml = `<div class="pd-product-live-info__message is-${tone}">${escapeHtml(payload.public_safe_message)}</div>`;
+        }
+    } else if (hasSelection) {
+        messageHtml = '<div class="pd-product-live-info__message">Canlı ürün bilgisi güncelleniyor...</div>';
     }
 
     return `
-        <div
-            class="pd-product-live-info pd-card ${toneClass}"
-            data-live-product-info-box
-            data-live-product-info-endpoint="${escapeHtml(quoteWorkspace.liveProductInfoUrl || '')}"
-            data-tenant-catalog-product-id="${escapeHtml(productId)}"
-            data-tenant-catalog-product-variant-id="${escapeHtml(variantId)}"
-            data-quote-item-id="${escapeHtml(quoteItemId)}"
-            data-snapshot-price="${escapeHtml(snapshotPrice)}"
-            data-snapshot-stock="${escapeHtml(snapshotStock)}"
-        >
-            <div class="pd-product-live-info__title">Canlı Ürün Bilgisi</div>
-            ${bodyHtml}
+    <div
+        class="pd-product-live-info ${toneClass}"
+        data-live-product-info-box
+        data-live-product-info-endpoint="${escapeHtml(quoteWorkspace.liveProductInfoUrl || '')}"
+        data-tenant-catalog-product-id="${escapeHtml(productId)}"
+        data-tenant-catalog-product-variant-id="${escapeHtml(variantId)}"
+        data-quote-item-id="${escapeHtml(quoteItemId)}"
+        data-snapshot-price="${escapeHtml(snapshotPrice)}"
+        data-snapshot-stock="${escapeHtml(snapshotStock)}"
+    >
+        ${metaLine ? `
+        <div class="pd-product-live-info__meta-line">${escapeHtml(metaLine)}</div>
+        ` : ''}
+        ${salesPanelHtml}
+        ${warnings.length ? `
+        <div class="pd-product-live-info__chips">
+            ${warnings.map((warning) => `<span class="pd-badge pd-badge-${escapeHtml(warning.tone || 'slate')}" title="${escapeHtml(warning.title || warning.label)}">${escapeHtml(warning.label)}</span>`).join('')}
         </div>
+        ` : ''}
+        ${messageHtml}
+    </div>
     `;
 }
 
@@ -1394,6 +1921,126 @@ function refreshLiveProductInfoPanel(stableKey = '') {
     }
 
     currentPanel.outerHTML = renderLiveProductInfoPanel(item);
+}
+
+function applyLiveProductQuotePricing(itemElement, payload = {}) {
+    const itemIndex = Number(itemElement?.dataset.itemIndex ?? -1);
+    const items = collectItems();
+    const target = items[itemIndex];
+
+    if (!target) {
+        return false;
+    }
+
+    const priceSnapshot = safeObject(target.price_snapshot);
+    const isManualUnitPrice = target.manual_unit_price === true
+        || target.manual_unit_price === 1
+        || target.manual_unit_price === '1'
+        || priceSnapshot.manual_unit_price === true;
+    const quoteValue = isManualUnitPrice ? payload.manual_quote_price_value : payload.quote_price_value;
+    const quoteStatus = isManualUnitPrice ? payload.manual_quote_price_status : payload.quote_price_status;
+    const quoteCurrency = isManualUnitPrice
+        ? firstFilledValue([payload.manual_quote_currency, payload.quote_currency, currentQuoteCurrency()], currentQuoteCurrency())
+        : firstFilledValue([payload.quote_currency, currentQuoteCurrency()], currentQuoteCurrency());
+
+    target.quantity = formatInputNumber(firstFilledValue([target.quantity, 1], 1));
+    target.price_snapshot = {
+        ...priceSnapshot,
+        ...safeObject(payload.quote_price_snapshot),
+        quote_price_value: payload.quote_price_value ?? null,
+        quote_currency: payload.quote_currency || quoteCurrency,
+        quote_price_status: payload.quote_price_status || null,
+        quote_price_reason_code: payload.quote_price_reason_code || null,
+        quote_price_message: payload.quote_price_message || null,
+        quote_price_snapshot: safeObject(payload.quote_price_snapshot),
+        document_currency: quoteCurrency,
+        currency: quoteCurrency,
+    };
+
+    if (payload.manual_quote_price_snapshot) {
+        target.price_snapshot.manual_quote_price_snapshot = safeObject(payload.manual_quote_price_snapshot);
+    }
+
+    const operationalListPrice = Number(resolveOperationalListPriceValue(payload, target.price_snapshot) || 0);
+    const hasSafeFallbackPrice = Number.isFinite(operationalListPrice) && operationalListPrice > 0;
+    const needsBlocking = (!isReadyQuotePriceStatus(quoteStatus) && !hasSafeFallbackPrice)
+        || (!hasSafeFallbackPrice && (quoteValue === null || quoteValue === undefined || quoteValue === ''));
+
+    if (needsBlocking) {
+        target._row_error = payload.quote_price_reason_code === 'canonical_quote_price_unavailable'
+            ? quotePriceUnavailableMessage(payload)
+            : quoteCurrencyWarningMessage();
+        target._error_path = `items.${itemIndex}.price_snapshot`;
+        target.price_snapshot.quote_price_status = quoteStatus || 'missing_rate';
+        target.price_snapshot.manual_unit_price = isManualUnitPrice;
+        target.price_snapshot.manual_sales_price_override = isManualUnitPrice;
+        items[itemIndex] = target;
+        setClientFormError('Teklif kaydedilemedi. 1 ürün/baskı satırında düzeltme gerekiyor.', [
+            {
+                path: `items.${itemIndex}.price_snapshot`,
+                label: buildValidationSummaryLabel('item', itemIndex),
+                message: target._row_error,
+            },
+        ]);
+        mountItems(items);
+        return true;
+    }
+
+    const quantity = Number(target.quantity || 0);
+    const normalizedListPrice = operationalListPrice.toFixed(2);
+
+    target.list_price = normalizedListPrice;
+    target.discount_rate = target.discount_rate || '0';
+    target.calculated_unit_price = Number(calculateItemUnitPrice({
+        list_price: operationalListPrice,
+        discount_rate: target.discount_rate,
+    }) || 0).toFixed(2);
+    const calculatedUnitPrice = Number(target.calculated_unit_price || 0);
+    const finalUnitPrice = isManualUnitPrice
+        ? Number(quoteValue || 0)
+        : calculatedUnitPrice;
+
+    target.unit_price = finalUnitPrice.toFixed(2);
+    target.manual_unit_price = isManualUnitPrice;
+    target.line_total = (finalUnitPrice * quantity).toFixed(2);
+    target._row_error = payload.quote_price_reason_code === 'canonical_quote_price_unavailable'
+        ? quotePriceUnavailableMessage(payload)
+        : '';
+    target._error_path = payload.quote_price_reason_code === 'canonical_quote_price_unavailable'
+        ? `items.${itemIndex}.price_snapshot`
+        : '';
+    target.price_snapshot.list_price = operationalListPrice;
+    target.price_snapshot.display_price = operationalListPrice;
+    target.price_snapshot.calculated_unit_price = calculatedUnitPrice;
+    target.price_snapshot.document_currency = quoteCurrency;
+    target.price_snapshot.currency = quoteCurrency;
+    target.price_snapshot.actual_sales_unit_price_document = Number(finalUnitPrice || 0);
+    target.price_snapshot.manual_unit_price = isManualUnitPrice;
+    target.price_snapshot.manual_sales_price_override = isManualUnitPrice;
+
+    if (isManualUnitPrice) {
+        target.price_snapshot.manual_entry_currency = quoteCurrency;
+        target.price_snapshot.manual_entry_amount = Number(finalUnitPrice || 0);
+    } else {
+        target.price_snapshot.manual_entry_currency = null;
+        target.price_snapshot.manual_entry_amount = null;
+        target.price_snapshot.suggested_sales_unit_price_document = calculatedUnitPrice;
+    }
+
+    items[itemIndex] = target;
+    if (!target._row_error) {
+        clearClientFormError();
+    }
+    mountItems(items);
+    return true;
+}
+
+async function repriceAllQuoteItems() {
+    const items = collectItems().filter((item) => itemHasLiveProductSelection(item));
+
+    for (const item of items) {
+        await ensureLiveProductInfo(item);
+    }
 }
 
 async function ensureLiveProductInfo(item = {}) {
@@ -1454,6 +2101,11 @@ async function ensureLiveProductInfo(item = {}) {
             payload,
             error: null,
         });
+
+        const itemElement = findItemElementByStableKey(stableKey);
+        if (itemElement) {
+            applyLiveProductQuotePricing(itemElement, payload);
+        }
     } catch (error) {
         const latestState = getLiveProductInfoState(stableKey);
 
@@ -1509,21 +2161,38 @@ function getCatalogEntry(entryKey) {
     return cloneJsonSafe(catalogEntryStore.get(entryKey)) ?? catalogEntryStore.get(entryKey);
 }
 
-function setClientFormError(message = '') {
+function setClientFormError(message = '', entries = []) {
     const box = document.getElementById('quote-client-error');
     const label = box?.querySelector('[data-client-error-message]');
+    const list = box?.querySelector('[data-client-error-list]');
 
-    if (!box || !label) {
+    if (!box || !label || !list) {
         return;
     }
 
     if (!message) {
         label.textContent = '';
+        list.innerHTML = '';
+        list.classList.add('hidden');
         box.classList.add('hidden');
         return;
     }
 
     label.textContent = message;
+    const safeEntries = Array.isArray(entries) ? entries.filter((entry) => entry && entry.message) : [];
+
+    if (safeEntries.length) {
+        list.innerHTML = safeEntries.map((entry) => `
+            <button type="button" class="block w-full text-left text-sm font-medium text-red-700 underline-offset-2 hover:underline" data-error-target="${escapeHtml(entry.path || '')}">
+                ${escapeHtml(entry.label || 'Hatalı satır')} — ${escapeHtml(entry.message || '')}
+            </button>
+        `).join('');
+        list.classList.remove('hidden');
+    } else {
+        list.innerHTML = '';
+        list.classList.add('hidden');
+    }
+
     box.classList.remove('hidden');
 }
 
@@ -1531,6 +2200,49 @@ function clearClientFormError() {
     setClientFormError('');
 }
 
+function resolveValidationTarget(path = '') {
+    if (!path) {
+        return null;
+    }
+
+    return Array.from(document.querySelectorAll('[data-error-path]')).find((element) => (element.dataset.errorPath || '') === path) || null;
+}
+
+function focusValidationTarget(path = '') {
+    const target = resolveValidationTarget(path);
+    if (!target) {
+        return false;
+    }
+
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const focusable = target.querySelector('input:not([type="hidden"]), select, textarea, button');
+    if (typeof focusable?.focus === 'function') {
+        focusable.focus({ preventScroll: true });
+    }
+
+    return true;
+}
+
+function buildValidationSummaryLabel(type, itemIndex, printIndex = null) {
+    if (type === 'print' && printIndex !== null) {
+        return `Ürün ${itemIndex + 1} / Baskı ${itemIndex + 1}${String.fromCharCode(97 + printIndex)}`;
+    }
+
+    return `Ürün ${itemIndex + 1}`;
+}
+
+function printSetupSelectionProvided(printRow = {}) {
+    const setupStatus = String(printRow.setup_status || printRow.cliche_status || '').trim();
+    if (setupStatus !== '') {
+        return true;
+    }
+
+    if (String(printRow.setup_pricing_enabled || '') === '1') {
+        return true;
+    }
+
+    return Number(printRow.setup_total_amount || 0) > 0 || Number(printRow.setup_unit_amount || 0) > 0;
+}
 function normalizeCatalogSelectionEntry(entry = {}, currentItem = {}) {
     const normalizedEntry = safeObject(entry);
     const currentProductSnapshot = safeObject(currentItem.product_snapshot);
@@ -1550,6 +2262,7 @@ function normalizeCatalogSelectionEntry(entry = {}, currentItem = {}) {
         currentPriceSnapshot.calculated_unit_price,
     ], 0), 0);
     const selectedListPrice = finiteNumber(firstFilledValue([
+        resolveOperationalListPriceValue(normalizedEntry, entryPriceSnapshot),
         normalizedEntry.list_price,
         normalizedEntry.display_price,
         normalizedEntry.sale_price,
@@ -1701,12 +2414,15 @@ function normalizeCatalogSelectionEntry(entry = {}, currentItem = {}) {
             20,
         ], 20),
         currency: firstFilledValue([
+            normalizedEntry.quote_currency,
             normalizedEntry.currency,
+            entryPriceSnapshot.quote_currency,
             entryPriceSnapshot.currency,
+            currentPriceSnapshot.document_currency,
             currentPriceSnapshot.currency,
             quoteWorkspace.currency,
-            'TL',
-        ], 'TL'),
+            'TRY',
+        ], 'TRY'),
         catalog_source: normalizedEntry.catalog_source === 'local_product' ? 'local_product' : (currentItem.catalog_source || 'tenant_catalog'),
         product_snapshot: entryProductSnapshot,
         price_snapshot: entryPriceSnapshot,
@@ -1773,6 +2489,30 @@ function normalizeCatalogSelectionEntry(entry = {}, currentItem = {}) {
             entryPriceSnapshot.supplier_warning_type,
             currentPriceSnapshot.supplier_warning_type,
         ], null),
+        quote_price_value: firstFilledValue([
+            normalizedEntry.quote_price_value,
+            entryPriceSnapshot.quote_price_value,
+            selectedListPrice,
+        ], null),
+        quote_currency: firstFilledValue([
+            normalizedEntry.quote_currency,
+            entryPriceSnapshot.quote_currency,
+            normalizedEntry.currency,
+            entryPriceSnapshot.currency,
+            currentQuoteCurrency(),
+        ], currentQuoteCurrency()),
+        quote_price_status: firstFilledValue([
+            normalizedEntry.quote_price_status,
+            entryPriceSnapshot.quote_price_status,
+            currentPriceSnapshot.quote_price_status,
+            'not_required',
+        ], 'not_required'),
+        quote_price_snapshot: safeObject(firstFilledValue([
+            normalizedEntry.quote_price_snapshot,
+            entryPriceSnapshot.quote_price_snapshot,
+            currentPriceSnapshot.quote_price_snapshot,
+            {},
+        ], {})),
         is_warning_sellable: selectedCatalogIdentity.is_warning_sellable,
         warning_tone: selectedCatalogIdentity.warning_tone,
         warning_summary: selectedCatalogIdentity.warning_summary,
@@ -1890,17 +2630,17 @@ function normalizePrint(printRow = {}, index = 0) {
     const resolvedSetupTypes = Array.isArray(printRow.setup_types)
         ? printRow.setup_types
         : (optionSetupType ? [optionSetupType] : (setting?.setup_types || []));
-    const resolvedSetupStatus = printRow.setup_status || printRow.cliche_status || selectedOption?.setup_status_default || '';
-    const resolvedSetupType = printRow.setup_type || optionSetupType || resolvedSetupTypes[0] || '';
+    const resolvedSetupStatus = quoteWorkspace.intermediateElementEnabled ? (printRow.setup_status || printRow.cliche_status || selectedOption?.setup_status_default || '') : '';
+    const resolvedSetupType = quoteWorkspace.intermediateElementEnabled ? (printRow.setup_type || optionSetupType || resolvedSetupTypes[0] || '') : '';
     const resolvedBasePrintUnitPrice = printRow.base_print_unit_price ?? printRow.print_unit_price ?? '';
-    const resolvedSetupTotalAmount = printRow.setup_total_amount ?? '';
-    const resolvedSetupDistributionQuantity = printRow.setup_distribution_quantity ?? printRow.print_quantity ?? '';
-    const resolvedSetupUnitAmount = printRow.setup_unit_amount ?? '';
-    const resolvedSetupPricingEnabled = printRow.setup_pricing_enabled === true
+    const resolvedSetupTotalAmount = quoteWorkspace.intermediateElementEnabled ? (printRow.setup_total_amount ?? '') : '';
+    const resolvedSetupDistributionQuantity = quoteWorkspace.intermediateElementEnabled ? (printRow.setup_distribution_quantity ?? printRow.print_quantity ?? '') : '';
+    const resolvedSetupUnitAmount = quoteWorkspace.intermediateElementEnabled ? (printRow.setup_unit_amount ?? '') : '';
+    const resolvedSetupPricingEnabled = quoteWorkspace.intermediateElementEnabled && (printRow.setup_pricing_enabled === true
         || printRow.setup_pricing_enabled === 1
         || printRow.setup_pricing_enabled === '1'
         || resolvedSetupStatus === 'Yeni üretilecek'
-        || Number(resolvedSetupTotalAmount || 0) > 0;
+        || Number(resolvedSetupTotalAmount || 0) > 0);
 
     return {
         _stable_key: printRow._stable_key || printRow.stable_key || printRow.print_key || `print-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`,
@@ -1911,7 +2651,7 @@ function normalizePrint(printRow = {}, index = 0) {
         print_option: printRow.print_option || selectedOption?.name || '',
         production_type: printRow.production_type || '',
         subcontractor_company_id: printRow.subcontractor_company_id || '',
-        cliche_status: printRow.cliche_status || '',
+        cliche_status: quoteWorkspace.intermediateElementEnabled ? (printRow.cliche_status || '') : '',
         setup_pricing_enabled: resolvedSetupPricingEnabled,
         setup_type: resolvedSetupType,
         setup_status: resolvedSetupStatus,
@@ -1924,14 +2664,16 @@ function normalizePrint(printRow = {}, index = 0) {
         print_total: formatInputNumber(printRow.print_total ?? ''),
         note: printRow.note || '',
         print_vat_rate: printRow.print_vat_rate ?? quoteWorkspace.defaultPrintVatRate ?? 20,
-        requires_setup: printRow.requires_setup === true || printRow.requires_setup === 1 || printRow.requires_setup === '1' || optionRequiresSetup || !!setting?.requires_setup,
-        setup_types: resolvedSetupTypes,
+        requires_setup: quoteWorkspace.intermediateElementEnabled && (printRow.requires_setup === true || printRow.requires_setup === 1 || printRow.requires_setup === '1' || optionRequiresSetup || !!setting?.requires_setup),
+        setup_types: quoteWorkspace.intermediateElementEnabled ? resolvedSetupTypes : [],
         option_requires_setup: optionRequiresSetup,
         option_setup_type: optionSetupType,
         option_setup_status_default: selectedOption?.setup_status_default || '',
         option_default_unit_price: selectedOption?.default_unit_price ?? '',
         _manual_quantity: !!printRow._manual_quantity,
         _price_suggested: !!printRow._price_suggested,
+        _row_error: printRow._row_error || '',
+        _error_path: printRow._error_path || '',
         _index: index,
     };
 }
@@ -1966,6 +2708,7 @@ function defaultItem() {
         selected_catalog_identity: null,
         print_vat_rate: quoteWorkspace.defaultPrintVatRate || 20,
         _row_error: '',
+        _error_path: '',
     };
 }
 
@@ -2020,6 +2763,7 @@ function normalizeItem(item = {}, index = 0) {
             warning_summary: productSnapshot?.warning_summary || '',
         },
         _row_error: item._row_error || '',
+        _error_path: item._error_path || '',
     };
 }
 
@@ -2036,46 +2780,17 @@ function vatModeLabel(mode) {
 }
 
 function quoteLineWarningBadges(item) {
-    const badges = [];
     const rawBadges = item.warning_badges || [];
-    const hasSupplierWarning = rawBadges.includes('Kırmızı Ürün') || rawBadges.includes('Turuncu Ürün');
-    const hasNetWarning = rawBadges.includes('Net fiyat uyarısı');
-    const hasMissingPrice = rawBadges.includes('Fiyat eksik');
-    const hasMissingImage = rawBadges.includes('Görsel eksik');
-    const hiddenInCatalog = item.product_snapshot?.visible_in_catalog === false;
-    const closedForQuote = item.product_snapshot?.visible_in_quote === false;
 
-    if (hasSupplierWarning) {
-        badges.push({ text: 'Uyarılı', tone: 'red' });
-    }
-
-    if (hasNetWarning) {
-        badges.push({ text: 'Net Fiyat', tone: 'amber' });
-    }
-
-    if (hasMissingPrice) {
-        badges.push({ text: 'Fiyat Eksik', tone: 'red' });
-    }
-
-    if (hasMissingImage) {
-        badges.push({ text: 'Görsel Yok', tone: 'slate' });
-    }
-
-    if (hiddenInCatalog) {
-        badges.push({ text: 'Katalogda Gizli', tone: 'slate' });
-    }
-
-    if (closedForQuote) {
-        badges.push({ text: 'Teklife Kapalı', tone: 'slate' });
-    }
-
-    return badges;
+    return rawBadges.includes('Kırmızı Ürün')
+        ? [{ text: 'Kırmızı Ürün', tone: 'red' }]
+        : [];
 }
 
 function quoteWarningMeta(item) {
     const rawBadges = item.warning_badges || [];
     return {
-        hasSupplierWarning: rawBadges.includes('Kırmızı Ürün') || rawBadges.includes('Turuncu Ürün'),
+        hasSupplierWarning: rawBadges.includes('Kırmızı Ürün'),
         hasNetWarning: rawBadges.includes('Net fiyat uyarısı'),
         hasStockWarning: rawBadges.includes('Stok yok'),
     };
@@ -2257,7 +2972,7 @@ function setupTypeTitle(printRow = {}) {
         apparatus: 'Aparat',
         aparat: 'Aparat',
         bicak: 'Bıçak',
-        sablon: 'Şablon',
+        sablon: 'Åablon',
         'varak kalibi': 'Varak kalıbı',
         'lazer sablonu': 'Lazer şablonu',
     };
@@ -2378,7 +3093,23 @@ function calculateItemUnitPrice(item) {
 }
 
 function currentQuoteCurrency() {
-    return document.querySelector('select[name="currency"]')?.value || quoteWorkspace.currency || 'TL';
+    return document.querySelector('select[name="currency"]')?.value || quoteWorkspace.currency || 'TRY';
+}
+
+function currentQuoteDate() {
+    return document.getElementById('quote-date-input')?.value || quoteWorkspace.quoteDate || new Date().toISOString().slice(0, 10);
+}
+
+function isReadyQuotePriceStatus(status = '') {
+    return ['converted', 'stale_rate', 'ready', 'not_required'].includes(String(status || ''));
+}
+
+function quoteCurrencyWarningMessage() {
+    return 'Güncel kur bulunamadı. Kur bilgilerini kontrol edin.';
+}
+
+function quotePriceUnavailableMessage(payload = {}) {
+    return String(payload.quote_price_message || 'Ürün satış fiyatı teklif için hazırlanamadı.');
 }
 
 function resolvePrintSettingCurrency(setting = null) {
@@ -2906,12 +3637,12 @@ function renderPrintRows(item) {
             selectedOption?.setup_type ? [selectedOption.setup_type] : printRow.setup_types
         );
         const selectorValue = printSelectorValue(printRow);
-        const showSetupBadge = !!(selectedOption?.requires_setup || printSetting?.requires_setup || printRow.requires_setup);
+        const showSetupBadge = quoteWorkspace.intermediateElementEnabled && !!(selectedOption?.requires_setup || printSetting?.requires_setup || printRow.requires_setup);
         const currencyWarning = printCurrencyWarningMessage(printSetting);
         const setupPricingVisible = shouldShowSetupPricingBox(printRow);
         const setupTypeText = setupTypeTitle(printRow);
         return `
-            <div class="pd-print-operation" data-print-index="${printIndex}" data-print-key="${escapeHtml(printRow._stable_key || '')}">
+            <div class="pd-print-operation" data-print-index="${printIndex}" data-print-key="${escapeHtml(printRow._stable_key || '')}" data-row-error-message="${escapeHtml(printRow._row_error || '')}" data-error-path="${escapeHtml(printRow._error_path || '')}">
                 <div class="pd-print-operation-grid pd-print-operation-grid-flat">
                     <div class="pd-print-operation-index">${escapeHtml(printRowCode(item._index, printIndex))}</div>
                     <div>
@@ -2974,6 +3705,7 @@ function renderPrintRows(item) {
                         ` : ''}
                     </div>
                     <div class="pd-print-row-actions">
+                        ${printRow._row_error ? `<div class="mt-2 text-xs font-medium text-red-700" data-print-row-error>${escapeHtml(printRow._row_error)}</div>` : ''}
                         <input type="hidden" name="items[${item._index}][prints][${printIndex}][print_vat_rate]" value="${escapeHtml(printRow.print_vat_rate ?? quoteWorkspace.defaultPrintVatRate ?? 20)}">
                         <button type="button" class="pd-btn pd-btn-danger-soft pd-btn-xs" data-action="remove-print">Sil</button>
                     </div>
@@ -3027,7 +3759,7 @@ function renderPrintSetupModals(item) {
                             </label>
                             <label class="setup-modal-field" style="display:grid; gap:6px;">
                                 <span class="pd-label text-xs">Birim etki</span>
-                                <input type="text" value="${escapeHtml(formatMoney(Number(printRow.setup_unit_amount || 0), currentQuoteCurrency()) || '0,00 ' + currentQuoteCurrency())}" class="pd-compact-input bg-slate-50" data-setup-modal-unit-effect readonly style="width:100%; color:#334155; background:#f8fafc;">
+                                <input type="text" value="${escapeHtml(formatMoney(Number(printRow.setup_unit_amount || 0), currentQuoteCurrency()) || '0,00 ' + displayCurrencyLabel(currentQuoteCurrency()))}" class="pd-compact-input bg-slate-50" data-setup-modal-unit-effect readonly style="width:100%; color:#334155; background:#f8fafc;">
                             </label>
                         </div>
                         <div class="setup-modal-result-wrap" style="border:1px solid #e2e8f0; border-radius:14px; background:#f8fafc; padding:16px 18px;">
@@ -3035,15 +3767,15 @@ function renderPrintSetupModals(item) {
                             <div class="setup-modal-result-grid" style="display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px;">
                                 <div class="setup-modal-result-card" style="border:1px solid #dbe4ee; border-radius:12px; background:#fff; padding:10px 12px;">
                                     <div class="text-[11px] uppercase tracking-[0.02em] text-slate-500">Birim etki</div>
-                                    <div class="mt-1 text-sm font-semibold text-slate-900" data-setup-modal-unit-effect>${escapeHtml(formatMoney(Number(printRow.setup_unit_amount || 0), currentQuoteCurrency()) || '0,00 ' + currentQuoteCurrency())}</div>
+                                    <div class="mt-1 text-sm font-semibold text-slate-900" data-setup-modal-unit-effect>${escapeHtml(formatMoney(Number(printRow.setup_unit_amount || 0), currentQuoteCurrency()) || '0,00 ' + displayCurrencyLabel(currentQuoteCurrency()))}</div>
                                 </div>
                                 <div class="setup-modal-result-card" style="border:1px solid #dbe4ee; border-radius:12px; background:#fff; padding:10px 12px;">
                                     <div class="text-[11px] uppercase tracking-[0.02em] text-slate-500">Nihai baskı birim fiyatı</div>
-                                    <div class="mt-1 text-sm font-semibold text-slate-900" data-setup-modal-final-unit>${escapeHtml(formatMoney(Number(printRow.print_unit_price || 0), currentQuoteCurrency()) || '0,00 ' + currentQuoteCurrency())}</div>
+                                    <div class="mt-1 text-sm font-semibold text-slate-900" data-setup-modal-final-unit>${escapeHtml(formatMoney(Number(printRow.print_unit_price || 0), currentQuoteCurrency()) || '0,00 ' + displayCurrencyLabel(currentQuoteCurrency()))}</div>
                                 </div>
                                 <div class="setup-modal-result-card" style="border:1px solid #dbe4ee; border-radius:12px; background:#fff; padding:10px 12px;">
                                     <div class="text-[11px] uppercase tracking-[0.02em] text-slate-500">Nihai baskı toplamı</div>
-                                    <div class="mt-1 text-sm font-semibold text-slate-900" data-setup-modal-final-total>${escapeHtml(formatMoney(Number(printRow.print_total || 0), currentQuoteCurrency()) || '0,00 ' + currentQuoteCurrency())}</div>
+                                    <div class="mt-1 text-sm font-semibold text-slate-900" data-setup-modal-final-total>${escapeHtml(formatMoney(Number(printRow.print_total || 0), currentQuoteCurrency()) || '0,00 ' + displayCurrencyLabel(currentQuoteCurrency()))}</div>
                                 </div>
                             </div>
                             <div class="hidden" data-setup-modal-quantity>${escapeHtml(printRow.print_quantity)}</div>
@@ -3071,42 +3803,35 @@ function renderItem(item) {
     const productLineTotal = Number(item.price_snapshot?.product_line_total ?? item.line_total ?? 0);
     const calculatedUnitPrice = Number(item.calculated_unit_price || item.price_snapshot?.calculated_unit_price || calculateItemUnitPrice(item) || 0);
     const manualUnitPrice = item.manual_unit_price || item.price_snapshot?.manual_unit_price;
-    const compactInfoBits = [
-        item.product_code || 'Ürün kodu ürün seçilince otomatik gelir',
-        `Stok: ${formatStock(supplierStock)}`,
-    ];
     const compactWarningBadges = displayWarningBadges
-        .filter((badge) => ['Uyarılı', 'Net Fiyat', 'Fiyat Eksik'].includes(badge.text))
         .map((badge) => badgeHtml(badge.text, badge.tone || 'amber'));
 
     return `
-        <div class="pd-quote-item pd-quote-item-group ${warningMeta.hasSupplierWarning || warningMeta.hasStockWarning ? 'is-warning' : ''}" data-item-index="${item._index}" data-stable-key="${escapeHtml(item._stable_key || '')}" data-row-error-message="${escapeHtml(item._row_error || '')}">
+        <div class="pd-quote-item pd-quote-item-group ${warningMeta.hasSupplierWarning || warningMeta.hasStockWarning ? 'is-warning' : ''}" data-item-index="${item._index}" data-stable-key="${escapeHtml(item._stable_key || '')}" data-row-error-message="${escapeHtml(item._row_error || '')}" data-error-path="${escapeHtml(item._error_path || '')}">
             <div class="pd-quote-line-row">
                 <div class="pd-quote-item-number">${item._index + 1}</div>
                 <div class="pd-quote-line-product">
                     <div class="pd-catalog-search">
                         <input type="text" name="items[${item._index}][product_name]" class="pd-compact-input catalog-search-input" value="${escapeHtml(item.product_name)}" placeholder="Ürün adı, ürün kodu, SKU, renk...">
                         <div class="pd-catalog-results hidden"></div>
-                    </div>
-                    <div class="pd-quote-line-product-meta">
-                        ${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="Ürün görseli" class="pd-quote-item-thumb">` : ''}
+                    </div>                    <div class="pd-quote-line-product-meta">
+                        ${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="${escapeHtml(item.product_name || `Ürün ${item._index + 1}`)}" class="pd-quote-item-thumb">` : ''}
                         <div class="min-w-0">
-                            <div class="pd-quote-line-title">${escapeHtml(item.product_name || `Ürün ${item._index + 1}`)}</div>
-                            <div class="pd-quote-line-subtitle pd-quote-line-subtitle-rich">
-                                ${compactInfoBits.map((bit) => `<span class="pd-quote-subtle-bit">${escapeHtml(bit)}</span>`).join('')}
-                                ${manualUnitPrice ? badgeHtml('Manuel', 'purple') : ''}
-                                ${showVatDetails ? `
-                                    <label class="pd-quote-inline-pill pd-quote-inline-pill-input">
-                                        <strong>KDV</strong>
-                                        <input type="number" name="items[${item._index}][vat_rate]" value="${escapeHtml(vatRate)}" step="0.01" min="0" max="100" class="pd-inline-number-input" placeholder="20">
-                                    </label>
-                                ` : ''}
-                                ${warningMeta.hasStockWarning ? badgeHtml('Stok Yok', 'red') : ''}
-                                ${compactWarningBadges.join('')}
-                            </div>
+                            ${renderLiveProductInfoPanel(item)}
                         </div>
                     </div>
-                    ${renderLiveProductInfoPanel(item)}
+                    ${showVatDetails || warningMeta.hasStockWarning || compactWarningBadges.length ? `
+                        <div class="pd-quote-line-subtitle pd-quote-line-subtitle-rich">
+                            ${showVatDetails ? `
+                                <label class="pd-quote-inline-pill pd-quote-inline-pill-input">
+                                    <strong>KDV</strong>
+                                    <input type="number" name="items[${item._index}][vat_rate]" value="${escapeHtml(vatRate)}" step="0.01" min="0" max="100" class="pd-inline-number-input" placeholder="20">
+                                </label>
+                            ` : ''}
+                            ${warningMeta.hasStockWarning ? badgeHtml('Stok Yok', 'red') : ''}
+                            ${compactWarningBadges.join('')}
+                        </div>
+                    ` : ''}
                     ${item._row_error ? `<div class="mt-2 text-xs font-medium text-red-700">${escapeHtml(item._row_error)}</div>` : ''}
                 </div>
                 <div><input type="number" name="items[${item._index}][quantity]" value="${escapeHtml(formatInputNumber(item.quantity || ''))}" step="0.01" min="0.01" class="pd-compact-input" placeholder="1.00"></div>
@@ -3167,6 +3892,18 @@ function renderItem(item) {
     `;
 }
 
+function syncQuoteItemFormOwnership(root = document) {
+    if (!root || !canonicalQuoteFormId) {
+        return;
+    }
+
+    root.querySelectorAll('input[name^="items["], select[name^="items["], textarea[name^="items["]').forEach((element) => {
+        if (element.getAttribute('form') !== canonicalQuoteFormId) {
+            element.setAttribute('form', canonicalQuoteFormId);
+        }
+    });
+}
+
 function mountItems(items) {
     const container = document.getElementById('product-items-container');
     container.innerHTML = '';
@@ -3182,6 +3919,7 @@ function mountItems(items) {
                 stableKey: normalized._stable_key,
                 printsLength: Array.isArray(normalized.prints) ? normalized.prints.length : 0,
             });
+            syncQuoteItemFormOwnership(container);
         } catch (error) {
             const fallbackItem = normalizeItem({
                 ...defaultItem(),
@@ -3191,6 +3929,7 @@ function mountItems(items) {
             const debugItem = ensureQuotePrintDebugItem(index, fallbackItem._stable_key || '');
             debugItem.lastError = error?.message || 'mount-error';
             container.insertAdjacentHTML('beforeend', renderItem(fallbackItem));
+            syncQuoteItemFormOwnership(container);
             setClientFormError('Teklif satırlarından biri güvenli şekilde yeniden yüklendi. Lütfen hatalı satırı kontrol edin.');
         }
     });
@@ -3247,11 +3986,12 @@ function collectItems() {
             supplier_id: element.querySelector('input[name$="[supplier_id]"]')?.value || '',
             supplier_source_id: element.querySelector('input[name$="[supplier_source_id]"]')?.value || '',
             catalog_source: element.querySelector('input[name$="[catalog_source]"]')?.value || 'tenant_catalog',
+            _row_error: element.dataset.rowErrorMessage || '',
+            _error_path: element.dataset.errorPath || '',
             product_snapshot: productSnapshot,
             price_snapshot: priceSnapshot,
             stock_snapshot: stockSnapshot,
             selected_catalog_identity: selectedCatalogIdentity,
-            _row_error: element.dataset.rowErrorMessage || '',
             print_vat_rate: priceSnapshot?.print_vat_rate || quoteWorkspace.defaultPrintVatRate || 20,
             prints: Array.from(element.querySelectorAll('[data-print-list] .pd-print-operation')).map((row, printIndex) => {
                 const setupModal = resolveSetupModalElement(row);
@@ -3276,6 +4016,8 @@ function collectItems() {
                     print_quantity: row.querySelector('input[name*="[print_quantity]"]')?.value || '',
                     print_unit_price: row.querySelector('input[name*="[print_unit_price]"]')?.value || '',
                     print_total: row.querySelector('input[name*="[print_total]"]')?.value || '',
+                    _row_error: row.dataset.rowErrorMessage || '',
+                    _error_path: row.dataset.errorPath || '',
                     note: row.querySelector('input[name*="[note]"]')?.value || '',
                     print_vat_rate: row.querySelector('input[name*="[print_vat_rate]"]')?.value || quoteWorkspace.defaultPrintVatRate || 20,
                     _manual_quantity: row.querySelector('input[name*="[print_quantity]"]')?.dataset.manualQuantity === '1',
@@ -3371,18 +4113,16 @@ function removePrintRow(itemIndex, printIndex) {
         target.prints = [];
         target.has_print = false;
     }
-    debugItem.lastAddAfter = target.prints.length;
-    quotePrintDebugLog('remove-print-row', {
-        itemIndex,
-        removedIndex: printIndex,
-        after: target.prints.length,
-    });
+
     activeItemIndex = itemIndex;
     mountItems(items);
+    recalculateTotals();
 }
 
 function resolveWarningBadges(entry) {
-    return entry?.warning_badges || [];
+    return Array.isArray(entry?.warning_badges) && entry.warning_badges.includes('Kırmızı Ürün')
+        ? ['Kırmızı Ürün']
+        : [];
 }
 
 function resolveWarningMessages(entry) {
@@ -3390,37 +4130,45 @@ function resolveWarningMessages(entry) {
 }
 
 function buildCatalogResult(entry) {
-    const price = entry.list_price ?? 0;
     const code = entry.product_code || '-';
     const label = entry.product_name || '-';
     const thumbnail = entry.image_url || '';
     const badges = resolveWarningBadges(entry);
-    const localPriority = entry.local_stock_priority ?? false;
-    const metaBits = [
-        entry.supplier_name || '',
-        `SKU: ${code}`,
-        `Stok: ${formatStock(entry.visible_stock_quantity ?? 0)}`,
-        `${formatMoney(price, entry.currency || 'TL')}`,
-    ].filter(Boolean).join(' • ');
+    const metaLine = buildCompactProductMetaLine(entry, entry, { includePrice: true });
     const entryKey = rememberCatalogEntry(entry);
 
     return `
-        <button type="button" class="pd-catalog-result" data-entry-key="${escapeHtml(entryKey)}">
-            <div class="flex items-start gap-3">
-                ${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="Ürün" class="pd-catalog-result-thumb">` : ''}
-                <div class="min-w-0">
-                    <div class="font-medium text-slate-800">${escapeHtml(label)}</div>
-                    <div class="text-xs text-slate-500">${escapeHtml(metaBits)}</div>
-                    <div class="pd-chip-row mt-1">
-                        ${badgeHtml(entry.catalog_source === 'local_product' ? 'Local Ürün' : 'Tedarikçi Ürünü', entry.catalog_source === 'local_product' ? 'green' : 'blue')}
-                        ${localPriority ? badgeHtml('Local Stok', 'green') : badgeHtml('Tedarikçi Stok', 'slate')}
-                        ${((entry.visible_stock_quantity ?? 0) <= 0) ? badgeHtml('Stok Yok', 'red') : ''}
-                        ${badges.map((badge) => badgeHtml(badge, 'amber')).join('')}
-                    </div>
+    <button type="button" class="pd-catalog-result" data-entry-key="${escapeHtml(entryKey)}">
+        <div class="flex items-start gap-3">
+            ${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="Ürün" class="pd-catalog-result-thumb">` : ''}
+            <div class="min-w-0">
+                <div class="font-medium text-slate-800">${escapeHtml(label)}</div>
+                <div class="text-xs text-slate-500">${escapeHtml(metaLine)}</div>
+                <div class="pd-chip-row mt-1">
+                    ${badgeHtml(entry.catalog_source === 'local_product' ? 'Local Ürün' : 'Tedarikçi Ürünü', entry.catalog_source === 'local_product' ? 'green' : 'blue')}
+                    ${((entry.visible_stock_quantity ?? 0) <= 0) ? badgeHtml('Stok Yok', 'red') : ''}
+                    ${badges.map((badge) => badgeHtml(badge, 'amber')).join('')}
                 </div>
             </div>
-        </button>
+        </div>
+    </button>
     `;
+}
+
+function normalizeCatalogResults(payload) {
+    if (Array.isArray(payload)) {
+        return payload;
+    }
+
+    if (Array.isArray(payload?.results)) {
+        return payload.results;
+    }
+
+    if (Array.isArray(payload?.items)) {
+        return payload.items;
+    }
+
+    return [];
 }
 
 function renderCatalogResults(itemElement, results) {
@@ -3510,6 +4258,7 @@ function updateItemSummary(itemElement, entry) {
         normalizedEntry = normalizeCatalogSelectionEntry(entry, target);
     } catch (error) {
         target._row_error = 'Seçilen ürün bilgisi güvenli şekilde işlenemedi. Lütfen ürünü yeniden seçin.';
+        target._error_path = `items.${itemIndex}.product_snapshot`;
         items[itemIndex] = target;
         setClientFormError('Seçilen ürün bilgisi işlenemedi. Lütfen hatalı satırı kontrol edin.');
         mountItems(items);
@@ -3525,6 +4274,7 @@ function updateItemSummary(itemElement, entry) {
     target._stable_key = target._stable_key || itemElement.dataset.stableKey || defaultItem()._stable_key;
     target.product_name = normalizedEntry.product_name || target.product_name || '';
     target.product_code = normalizedEntry.product_code || target.product_code || '';
+    target.quantity = formatInputNumber(firstFilledValue([target.quantity, 1], 1));
     target.list_price = selectedPrice.toFixed(2);
     target.discount_rate = '0';
     target.unit_price = selectedPrice.toFixed(2);
@@ -3540,6 +4290,7 @@ function updateItemSummary(itemElement, entry) {
     target.quote_item_id = '';
     target.selected_catalog_identity = normalizedEntry.selected_catalog_identity;
     target._row_error = '';
+    target._error_path = '';
     clearClientFormError();
     target.product_snapshot = {
         ...safeObject(target.product_snapshot),
@@ -3568,9 +4319,15 @@ function updateItemSummary(itemElement, entry) {
     target.price_snapshot = {
         ...safeObject(target.price_snapshot),
         ...normalizedEntry.price_snapshot,
+        ...normalizedEntry.quote_price_snapshot,
         list_price: selectedPrice,
         display_price: selectedPrice,
         currency: normalizedEntry.currency,
+        document_currency: normalizedEntry.currency,
+        quote_price_value: normalizedEntry.quote_price_value ?? selectedPrice,
+        quote_currency: normalizedEntry.quote_currency || normalizedEntry.currency,
+        quote_price_status: normalizedEntry.quote_price_status || 'not_required',
+        quote_price_snapshot: normalizedEntry.quote_price_snapshot,
         vat_mode: invoiceStatusValue() === 'fatura' ? 'taxable' : 'none',
         invoice_status: invoiceStatusValue(),
         vat_rate: normalizedEntry.vat_rate,
@@ -3614,17 +4371,28 @@ function updateItemSummary(itemElement, entry) {
 async function performCatalogSearch(itemElement, term) {
     const resultsBox = itemElement.querySelector('.pd-catalog-results');
 
-    if (term.length < 2) {
+    if (!resultsBox) {
+        return;
+    }
+
+    if (term.length < 3) {
         resultsBox.innerHTML = '';
         hideCatalogResults(itemElement);
         return;
     }
 
+    const params = new URLSearchParams();
+    params.set('q', term);
+    params.set('currency', resolveQuoteCurrencyCode());
+    params.set('quote_date', currentQuoteDate());
+    params.set('only_visible', '1');
+    params.set('only_quote_visible', '1');
+
     resultsBox.innerHTML = '<div class="pd-catalog-result text-sm text-slate-500">Aranıyor...</div>';
     showCatalogResults(itemElement);
 
     try {
-        const response = await fetch(`${quoteWorkspace.searchUrl}?q=${encodeURIComponent(term)}`, {
+        const response = await fetch(`${quoteWorkspace.searchUrl}?${params.toString()}`, {
             headers: {
                 'X-Requested-With': 'XMLHttpRequest',
                 'Accept': 'application/json',
@@ -3635,9 +4403,11 @@ async function performCatalogSearch(itemElement, term) {
             throw new Error('Catalog search failed');
         }
 
-        renderCatalogResults(itemElement, await response.json());
+        const payload = await response.json();
+        const results = normalizeCatalogResults(payload);
+        renderCatalogResults(itemElement, results);
     } catch (error) {
-        resultsBox.innerHTML = '<div class="pd-catalog-result text-sm text-red-600">Katalog arama sırasında hata oluştu.</div>';
+        resultsBox.innerHTML = '<div class="pd-catalog-result text-sm text-red-600">Ürün araması şu anda tamamlanamadı.</div>';
         showCatalogResults(itemElement);
     }
 }
@@ -3654,6 +4424,7 @@ function recalculateTotals() {
     let warningCount = 0;
     let missingPriceCount = 0;
     let stockWarningCount = 0;
+    const currency = document.querySelector('select[name="currency"]')?.value || quoteWorkspace.currency || 'TRY';
     const itemElements = Array.from(document.querySelectorAll('.pd-quote-item'));
     const vatTotalsByRate = new Map();
 
@@ -3739,6 +4510,19 @@ function recalculateTotals() {
         priceSnapshot.print_vat_rate = defaultPrintVatRate;
         priceSnapshot.calculated_unit_price = Number(calculatedUnitPrice.toFixed(2));
         priceSnapshot.manual_unit_price = isManualUnitPrice;
+        priceSnapshot.manual_sales_price_override = isManualUnitPrice;
+        priceSnapshot.document_currency = currency;
+        priceSnapshot.quote_currency = priceSnapshot.quote_currency || currency;
+        if (isManualUnitPrice) {
+            priceSnapshot.manual_entry_currency = currency;
+            priceSnapshot.manual_entry_amount = Number(unitPrice.toFixed(2));
+            priceSnapshot.actual_sales_unit_price_document = Number(unitPrice.toFixed(2));
+        } else {
+            priceSnapshot.manual_entry_currency = null;
+            priceSnapshot.manual_entry_amount = null;
+            priceSnapshot.suggested_sales_unit_price_document = Number(calculatedUnitPrice.toFixed(2));
+            priceSnapshot.actual_sales_unit_price_document = Number(unitPrice.toFixed(2));
+        }
         priceSnapshot.product_line_total = Number(productBaseTotal.toFixed(2));
         priceSnapshot.print_line_total = Number(printLineTotal.toFixed(2));
         priceSnapshot.product_total = Number(productBaseTotal.toFixed(2));
@@ -3763,8 +4547,6 @@ function recalculateTotals() {
         vatTotal += lineVatTotal;
         grandTotal += lineGrossTotal;
     });
-    const currency = document.querySelector('select[name="currency"]')?.value || quoteWorkspace.currency || 'TL';
-
     const summaryItemCount = document.getElementById('summary-item-count');
     const summaryPrintCount = document.getElementById('summary-print-count');
     if (summaryItemCount) {
@@ -4211,6 +4993,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const initialItems = quoteWorkspace.items?.length ? quoteWorkspace.items : [defaultItem()];
     mountItems(initialItems);
 
+    const initialErrorTarget = document.querySelector('[data-error-target]')?.dataset.errorTarget || '';
+    if (initialErrorTarget) {
+        window.setTimeout(() => {
+            focusValidationTarget(initialErrorTarget);
+        }, 40);
+    }
+
     document.getElementById('add-product-item')?.addEventListener('click', addProductItem);
     document.getElementById('customer-select')?.addEventListener('change', refreshCustomerSummary);
     document.getElementById('quote-customer-search')?.addEventListener('input', (event) => {
@@ -4250,19 +5039,17 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('invoice-status-select')?.addEventListener('change', () => {
         mountItems(collectItems());
     });
-    document.getElementById('quote-date-input')?.addEventListener('change', (event) => {
+    document.getElementById('quote-date-input')?.addEventListener('change', async (event) => {
         const deliveryInput = document.getElementById('delivery-date-input');
-        if (!deliveryInput || deliveryInput.dataset.manualOverride === '1' || !event.target.value) {
-            return;
+        if (deliveryInput && deliveryInput.dataset.manualOverride !== '1' && event.target.value) {
+            const baseDate = new Date(`${event.target.value}T00:00:00`);
+            if (!Number.isNaN(baseDate.getTime())) {
+                baseDate.setDate(baseDate.getDate() + 7);
+                deliveryInput.value = baseDate.toISOString().slice(0, 10);
+            }
         }
 
-        const baseDate = new Date(`${event.target.value}T00:00:00`);
-        if (Number.isNaN(baseDate.getTime())) {
-            return;
-        }
-
-        baseDate.setDate(baseDate.getDate() + 7);
-        deliveryInput.value = baseDate.toISOString().slice(0, 10);
+        await repriceAllQuoteItems();
     });
     document.getElementById('delivery-date-input')?.addEventListener('change', () => {
         const deliveryInput = document.getElementById('delivery-date-input');
@@ -4333,7 +5120,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    document.addEventListener('change', (event) => {
+    document.addEventListener('change', async (event) => {
         if (event.target.classList.contains('quote-has-print')) {
             const itemElement = event.target.closest('.pd-quote-item');
             const itemIndex = Number(itemElement?.dataset.itemIndex ?? -1);
@@ -4400,7 +5187,14 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        if (event.target.name === 'currency' || event.target.name === 'invoice_status') {
+        if (event.target.name === 'currency') {
+            recalculateTotals();
+            refreshAllPrintCurrencyWarnings();
+            await repriceAllQuoteItems();
+            return;
+        }
+
+        if (event.target.name === 'invoice_status') {
             recalculateTotals();
             refreshAllPrintCurrencyWarnings();
         }
@@ -4429,6 +5223,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
+        const errorTargetButton = event.target.closest('[data-error-target]');
+        if (errorTargetButton) {
+            focusValidationTarget(errorTargetButton.dataset.errorTarget || '');
+            return;
+        }
+
         const resultButton = event.target.closest('.pd-catalog-result[data-entry-key]');
         if (resultButton) {
             const itemElement = resultButton.closest('.pd-quote-item');
@@ -4438,17 +5238,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 const itemIndex = Number(itemElement?.dataset.itemIndex ?? -1);
                 if (items[itemIndex]) {
                     items[itemIndex]._row_error = 'Seçilen ürün bilgisi eksik kaldı. Lütfen ürünü katalogdan yeniden seçin.';
+                    items[itemIndex]._error_path = `items.${itemIndex}.product_snapshot`;
                     mountItems(items);
-                    setClientFormError('Teklif kaydedilemedi. Hatalı satırları kontrol edip tekrar deneyin.');
+                    setClientFormError('Teklif kaydedilemedi. Hatalı satırları kontrol edip tekrar deneyin.', [
+                        {
+                            path: `items.${itemIndex}.product_snapshot`,
+                            label: buildValidationSummaryLabel('item', itemIndex),
+                            message: 'Seçilen ürün bilgisi eksik kaldı. Lütfen ürünü katalogdan yeniden seçin.',
+                        },
+                    ]);
+                    focusValidationTarget(`items.${itemIndex}.product_snapshot`);
                 }
                 hideCatalogResults(itemElement);
                 return;
-        }
-        updateItemSummary(itemElement, entry);
-        hideCatalogResults(itemElement);
-        return;
-        }
+            }
 
+            updateItemSummary(itemElement, entry);
+            hideCatalogResults(itemElement);
+            return;
+        }
         const itemElement = event.target.closest('.pd-quote-item');
         if (itemElement) {
             const itemIndex = Number(itemElement.dataset.itemIndex);
@@ -4482,14 +5290,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    document.getElementById('quote-form')?.addEventListener('submit', (event) => {
+    document.getElementById(canonicalQuoteFormId)?.addEventListener('submit', (event) => {
         const items = collectItems();
-        let firstErrorIndex = -1;
-        let hasErrors = false;
+        const summaryEntries = [];
+        let firstErrorPath = '';
 
         const nextItems = items.map((item, index) => {
             const normalized = normalizeItem(item, index);
             const identity = safeObject(normalized.selected_catalog_identity);
+            const productSnapshot = safeObject(normalized.product_snapshot);
+            const priceSnapshot = safeObject(normalized.price_snapshot);
             const hasCatalogIdentity = Boolean(
                 identity.tenant_catalog_product_id
                 || identity.tenant_catalog_product_variant_id
@@ -4497,48 +5307,85 @@ document.addEventListener('DOMContentLoaded', () => {
                 || normalized.tenant_catalog_product_variant_id
                 || normalized.standard_product_id
             );
-            let rowError = '';
 
-            if (!normalized.product_name || !normalized.product_code && hasCatalogIdentity && !safeObject(normalized.product_snapshot).product_code) {
+            let rowError = '';
+            let rowErrorPath = '';
+
+            if ((!normalized.product_name || !normalized.product_code) && hasCatalogIdentity && !productSnapshot.product_code) {
                 rowError = 'Seçilen ürün bilgisi eksik kaldı. Lütfen ürünü katalogdan yeniden seçin.';
-            } else if (hasCatalogIdentity && !safeObject(normalized.product_snapshot).product_name) {
+                rowErrorPath = `items.${index}.product_snapshot`;
+            } else if (hasCatalogIdentity && !productSnapshot.product_name) {
                 rowError = 'Seçilen ürün bilgisi eksik kaldı. Lütfen ürünü katalogdan yeniden seçin.';
-            } else if (hasCatalogIdentity && !safeObject(normalized.price_snapshot).list_price && !safeObject(normalized.price_snapshot).display_price) {
+                rowErrorPath = `items.${index}.product_snapshot`;
+            } else if (hasCatalogIdentity && !priceSnapshot.list_price && !priceSnapshot.display_price) {
                 rowError = 'Ürün fiyat özeti okunamadı. Satırı yeniden seçip tekrar deneyin.';
+                rowErrorPath = `items.${index}.price_snapshot`;
             } else if (
                 identity.tenant_catalog_product_variant_id
                 && normalized.tenant_catalog_product_variant_id
                 && String(identity.tenant_catalog_product_variant_id) !== String(normalized.tenant_catalog_product_variant_id)
             ) {
                 rowError = 'Seçilen varyasyon ürün ile eşleşmiyor. Lütfen satırı yeniden seçin.';
-            } else if (identity.is_warning_sellable && hasCatalogIdentity && !safeObject(normalized.product_snapshot).product_name) {
+                rowErrorPath = `items.${index}.tenant_catalog_product_variant_id`;
+            } else if (identity.is_warning_sellable && hasCatalogIdentity && !productSnapshot.product_name) {
                 rowError = 'Uyarılı ürün seçildi ancak teklif satırı eksik veri taşıyor. Lütfen satırı yeniden seçin veya manuel ürün olarak kaydedin.';
+                rowErrorPath = `items.${index}.product_snapshot`;
             }
 
-            if (rowError) {
-                hasErrors = true;
-                if (firstErrorIndex === -1) {
-                    firstErrorIndex = index;
-                }
+            if (rowErrorPath) {
+                summaryEntries.push({
+                    path: rowErrorPath,
+                    label: buildValidationSummaryLabel('item', index),
+                    message: rowError,
+                });
+                firstErrorPath = firstErrorPath || rowErrorPath;
             }
+
+            const nextPrints = normalized.prints.map((printRow, printIndex) => {
+                const nextPrintRow = normalizePrint(printRow, printIndex);
+                let printError = '';
+                let printErrorPath = '';
+
+                if (quoteWorkspace.intermediateElementEnabled && nextPrintRow.requires_setup && !printSetupSelectionProvided(nextPrintRow)) {
+                    printError = 'Bu baskı için ara eleman ayarı gereklidir.';
+                    printErrorPath = `items.${index}.prints.${printIndex}.setup_requirement`;
+                    summaryEntries.push({
+                        path: printErrorPath,
+                        label: buildValidationSummaryLabel('print', index, printIndex),
+                        message: printError,
+                    });
+                    firstErrorPath = firstErrorPath || printErrorPath;
+                }
+
+                return {
+                    ...nextPrintRow,
+                    _row_error: printError,
+                    _error_path: printErrorPath,
+                };
+            });
 
             return {
                 ...normalized,
+                prints: nextPrints,
                 _row_error: rowError,
+                _error_path: rowErrorPath,
             };
         });
 
-        if (hasErrors) {
+        if (summaryEntries.length) {
             event.preventDefault();
             mountItems(nextItems);
-            setClientFormError('Teklif kaydedilemedi. Hatalı satırları kontrol edip tekrar deneyin.');
-            const firstErrorRow = document.querySelector(`.pd-quote-item[data-item-index="${firstErrorIndex}"]`);
-            firstErrorRow?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        } else {
-            clearClientFormError();
+            setClientFormError(`Teklif kaydedilemedi. ${summaryEntries.length} ürün/baskı satırında düzeltme gerekiyor.`, summaryEntries);
+            if (firstErrorPath) {
+                window.setTimeout(() => {
+                    focusValidationTarget(firstErrorPath);
+                }, 40);
+            }
+            return;
         }
-    });
 
+        clearClientFormError();
+    });
     window.addEventListener('resize', () => {
         document.querySelectorAll('.pd-quote-item.is-search-open').forEach((itemElement) => positionCatalogResults(itemElement));
     });

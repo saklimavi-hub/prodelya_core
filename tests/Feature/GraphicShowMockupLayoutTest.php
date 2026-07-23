@@ -31,7 +31,7 @@ class GraphicShowMockupLayoutTest extends TestCase
         $response->assertSee('Genel Durum');
         $response->assertSee('İş Özeti');
         $response->assertSee('Büyük Önizleme');
-        $response->assertSee('Kısayollar');
+        $response->assertSee('Hızlı İşlemler');
         $response->assertSee('Çalışma Klasörü');
         $response->assertSee('gg-workspace', false);
         $response->assertSee('graphic-action-step-tabs', false);

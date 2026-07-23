@@ -16,7 +16,7 @@ class QuotePdfCustomerPriceDisplayTest extends TestCase
 
     protected bool $seed = true;
 
-    public function test_pdf_shows_customer_unit_price_with_print_included_and_optionally_hides_print_breakdown(): void
+    public function test_pdf_switches_between_separate_and_combined_customer_price_presentations(): void
     {
         $adminUser = User::query()->where('email', 'admin@prodelya.local')->firstOrFail();
         $customer = Company::query()->where('tenant_account_id', 1)->where('legal_name', 'ABC İnşaat A.Ş.')->firstOrFail();
@@ -24,10 +24,12 @@ class QuotePdfCustomerPriceDisplayTest extends TestCase
         $visibleQuote = $this->createQuote($adminUser, $customer, 'TK-PDF-CUST-01', true);
         $visibleHtml = app(PromotionQuotePdfService::class)->renderHtml($visibleQuote->fresh());
 
-        $this->assertStringContainsString('15,00 TL', $visibleHtml);
-        $this->assertStringContainsString('1.500,00 TL', $visibleHtml);
-        $this->assertStringContainsString('UV Baskı · Çift Taraf Baskı · 100 Adet · BASKI ADI: 55555555 · Baskı Birim: 10,00 TL · Baskı Toplam: 1.000,00 TL', $visibleHtml);
-        $this->assertStringNotContainsString('>Baskı Toplamı<', $visibleHtml);
+        $this->assertStringContainsString('5,00 TL', $visibleHtml);
+        $this->assertStringContainsString('500,00 TL', $visibleHtml);
+        $this->assertStringContainsString('Ürün Birim Fiyatı', $visibleHtml);
+        $this->assertStringContainsString('Ürün Toplamı', $visibleHtml);
+        $this->assertStringContainsString('Ürün + Baskı Toplamı: 1.500,00 TL', $visibleHtml);
+        $this->assertStringContainsString('UV Baskı · Çift Taraf Baskı · 100 Adet · BASKI ADI: 55555555 · Baskı Birim Fiyatı: 10,00 TL · Baskı Toplamı: 1.000,00 TL', $visibleHtml);
         $this->assertStringNotContainsString('PDF-FIYAT-001', $visibleHtml);
 
         $hiddenQuote = $this->createQuote($adminUser, $customer, 'TK-PDF-CUST-02', false);
@@ -35,10 +37,11 @@ class QuotePdfCustomerPriceDisplayTest extends TestCase
 
         $this->assertStringContainsString('15,00 TL', $hiddenHtml);
         $this->assertStringContainsString('1.500,00 TL', $hiddenHtml);
+        $this->assertStringContainsString('Baskı Dahil Birim Fiyat', $hiddenHtml);
+        $this->assertStringContainsString('Baskı Dahil Satır Toplamı', $hiddenHtml);
         $this->assertStringContainsString('UV Baskı · Çift Taraf Baskı · 100 Adet · BASKI ADI: 55555555', $hiddenHtml);
-        $this->assertStringNotContainsString('Baskı Birim:', $hiddenHtml);
-        $this->assertStringNotContainsString('Baskı Toplam:', $hiddenHtml);
-        $this->assertStringNotContainsString('>Baskı Toplamı<', $hiddenHtml);
+        $this->assertStringNotContainsString('Baskı Birim Fiyatı:', $hiddenHtml);
+        $this->assertStringNotContainsString('Baskı Toplamı:', $hiddenHtml);
         $this->assertStringNotContainsString('PDF-FIYAT-001', $hiddenHtml);
     }
 
@@ -76,12 +79,12 @@ class QuotePdfCustomerPriceDisplayTest extends TestCase
 
         $html = app(PromotionQuotePdfService::class)->renderHtml($quote->fresh());
 
-        $this->assertStringContainsString('17,00 TL', $html);
-        $this->assertStringContainsString('1.700,00 TL', $html);
-        $this->assertStringContainsString('UV Baskı · Çift Taraf Baskı · 100 Adet · BASKI ADI: 55555555 · Baskı Birim: 10,00 TL · Baskı Toplam: 1.000,00 TL', $html);
-        $this->assertStringContainsString('Sıcak Baskı · Klişeli sıcak baskı · 100 Adet · sıcak baskı · Baskı Birim: 2,00 TL · Baskı Toplam: 200,00 TL', $html);
+        $this->assertStringContainsString('5,00 TL', $html);
+        $this->assertStringContainsString('500,00 TL', $html);
+        $this->assertStringContainsString('Ürün + Baskı Toplamı: 1.700,00 TL', $html);
+        $this->assertStringContainsString('UV Baskı · Çift Taraf Baskı · 100 Adet · BASKI ADI: 55555555 · Baskı Birim Fiyatı: 10,00 TL · Baskı Toplamı: 1.000,00 TL', $html);
+        $this->assertStringContainsString('Sıcak Baskı · Klişeli sıcak baskı · 100 Adet · sıcak baskı · Baskı Birim Fiyatı: 2,00 TL · Baskı Toplamı: 200,00 TL', $html);
         $this->assertStringContainsString('<span class="segment"> | </span>', $html);
-        $this->assertStringNotContainsString('>Baskı Toplamı<', $html);
     }
 
     private function createQuote(User $adminUser, Company $customer, string $documentNumber, bool $showPrintPriceDetails): Order

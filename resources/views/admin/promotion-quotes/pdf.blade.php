@@ -105,8 +105,8 @@
             <th class="cell-no">#</th>
             <th>Ürün / Baskı Bilgisi</th>
             <th class="cell-qty">Miktar</th>
-            <th class="cell-money">Birim Fiyat</th>
-            <th class="cell-money">Toplam</th>
+            <th class="cell-money">Müşteri Fiyatı</th>
+            <th class="cell-money">Müşteri Toplamı</th>
         </tr>
         </thead>
         <tbody>
@@ -124,21 +124,30 @@
                                         $print['print_option'],
                                         $print['quantity_label'],
                                         $print['note'],
-                                        $print['show_price_details'] ? 'Baskı Birim: ' . $print['unit_price_label'] : null,
-                                        $print['show_price_details'] ? 'Baskı Toplam: ' . $print['total_label'] : null,
+                                        $print['show_price_details'] ? 'Baskı Birim Fiyatı: ' . $print['unit_price_label'] : null,
+                                        $print['show_price_details'] ? 'Baskı Toplamı: ' . $print['total_label'] : null,
                                     ])->filter(fn ($value) => filled($value))->values();
                                 @endphp
                                 <span class="segment">{{ $segments->implode(' · ') }}</span>@if(! $loop->last) <span class="segment"> | </span>@endif
                             @endforeach
                         </div>
                     @endif
+                    @if($item['show_commercial_total'])
+                        <div class="item-note">{{ $item['commercial_total_label'] }}: {{ number_format($item['commercial_line_total'], 2, ',', '.') }} {{ $currency }}</div>
+                    @endif
                     @if($item['description'])
                         <div class="item-note">{{ $item['description'] }}</div>
                     @endif
                 </td>
                 <td class="cell-qty">{{ number_format($item['quantity'], 2, ',', '.') }} {{ $item['unit'] }}</td>
-                <td class="cell-money">{{ number_format($item['customer_unit_price'], 2, ',', '.') }} {{ $currency }}</td>
-                <td class="cell-money">{{ number_format($item['customer_line_total'], 2, ',', '.') }} {{ $currency }}</td>
+                <td class="cell-money">
+                    <div>{{ number_format($item['customer_main_unit_price'], 2, ',', '.') }} {{ $currency }}</div>
+                    <div class="item-note">{{ $item['main_unit_label'] }}</div>
+                </td>
+                <td class="cell-money">
+                    <div>{{ number_format($item['customer_main_total'], 2, ',', '.') }} {{ $currency }}</div>
+                    <div class="item-note">{{ $item['main_total_label'] }}</div>
+                </td>
             </tr>
         @endforeach
         </tbody>

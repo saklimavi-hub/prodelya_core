@@ -46,100 +46,14 @@
 @endphp
 
 @section('content')
-<style>
-    .poi-page{display:grid;gap:14px;padding-bottom:24px;font-family:Arial,Helvetica,sans-serif;color:#17233c}
-    .poi-card,.poi-stat,.poi-table-card,.poi-side-card{background:#fff;border:1px solid #e4e8ef;border-radius:8px;box-shadow:0 8px 24px rgba(16,24,40,.055)}
-    .poi-page-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
-    .poi-page-title h2{margin:0;font-size:18px;line-height:1.25;letter-spacing:-.02em}
-    .poi-page-title p{margin:4px 0 0;font-size:12px;color:#66728a}
-    .poi-header-tools{display:flex;flex-wrap:wrap;gap:8px}
-    .poi-stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
-    .poi-stat{padding:12px 13px;min-height:76px}
-    .poi-stat-label{font-size:11px;color:#66728a;font-weight:700}
-    .poi-stat-value{margin-top:5px;font-size:24px;font-weight:700;letter-spacing:-.03em}
-    .poi-stat-note{margin-top:2px;font-size:11px;color:#66728a;line-height:1.4}
-    .poi-stat.blue .poi-stat-value{color:#2f6fed}
-    .poi-stat.green .poi-stat-value{color:#17a55b}
-    .poi-stat.amber .poi-stat-value{color:#d98207}
-    .poi-stat.red .poi-stat-value{color:#d14343}
-    .poi-stat.purple .poi-stat-value{color:#6f50d8}
-    .poi-filter-card{padding:12px 14px}
-    .poi-filter-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px}
-    .poi-filter-head h3{margin:0;font-size:13px;font-weight:700}
-    .poi-filter-head p{margin:3px 0 0;font-size:11px;color:#66728a}
-    .poi-filter-grid{display:grid;grid-template-columns:1.4fr .9fr .9fr .8fr .8fr auto;gap:8px;align-items:end}
-    .poi-field label{display:block;margin-bottom:5px;font-size:11px;color:#59657a;font-weight:700}
-    .poi-field input,.poi-field select{width:100%;height:34px;border:1px solid #cfd7e3;border-radius:5px;background:#fff;padding:0 10px;color:#24324a;font-size:12px;outline:none}
-    .poi-field input:focus,.poi-field select:focus{border-color:#7aa5ff;box-shadow:0 0 0 3px rgba(47,111,237,.08)}
-    .poi-filter-actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
-    .poi-layout{display:grid;grid-template-columns:minmax(0,1fr) 306px;gap:14px;align-items:start}
-    .poi-table-card{overflow:hidden}
-    .poi-table-top{padding:12px 14px 10px;border-bottom:1px solid #edf1f6;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
-    .poi-table-top-left b{display:block;font-size:13px}
-    .poi-table-top-left span{display:block;margin-top:2px;font-size:11px;color:#66728a;line-height:1.45}
-    .poi-tabs{display:flex;flex-wrap:wrap;gap:6px}
-    .poi-tab{display:inline-flex;align-items:center;min-height:28px;padding:0 10px;border:1px solid #dbe2ec;border-radius:5px;background:#fff;color:#475467;font-size:12px;font-weight:700}
-    .poi-tab.is-active{background:#eaf1ff;border-color:#bfd2ff;color:#245bc7}
-    .poi-tab em{margin-left:6px;font-style:normal;font-size:11px;padding:1px 5px;border-radius:999px;background:#eef2f7;color:#59657a}
-    .poi-table-wrap{overflow-x:auto}
-    .poi-table{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed}
-    .poi-table th{height:37px;background:#f8fafc;border-bottom:1px solid #edf1f6;color:#59657a;text-align:left;font-size:11px;font-weight:700;padding:0 9px;white-space:nowrap}
-    .poi-table td{padding:10px 9px;border-bottom:1px solid #edf1f6;vertical-align:top;color:#24324a;font-size:12px}
-    .poi-table tbody tr{cursor:pointer}
-    .poi-table tbody tr:hover{background:#fbfdff}
-    .poi-table tbody tr.poi-row-selected{background:linear-gradient(90deg,#eef4ff 0%,#f7faff 100%);box-shadow:inset 4px 0 0 #2f6fed}
-    .poi-table tbody tr.poi-row-selected td{background:transparent}
-    .poi-table tbody tr.poi-row-selected .poi-order-no{color:#1f4fb8}
-    .poi-table tbody tr.poi-row-selected .pd-btn-light{border-color:#bfd2ff;background:#fff}
-    .poi-order-no{display:block;margin-bottom:2px;font-weight:700;color:#21426f}
-    .poi-muted{color:#66728a}
-    .poi-small{font-size:11px}
-    .poi-customer b{display:block;font-weight:700;line-height:1.3}
-    .poi-customer span{display:block;margin-top:2px;color:#66728a;font-size:11px;line-height:1.3}
-    .poi-badge-row{display:flex;flex-direction:column;gap:4px;align-items:flex-start}
-    .poi-badge-inline{display:flex;flex-wrap:wrap;gap:4px}
-    .poi-finance-stack,.poi-next-stack{display:flex;flex-direction:column;gap:4px;align-items:flex-start}
-    .poi-finance-stack b,.poi-next-stack b{font-size:12px;line-height:1.3}
-    .poi-finance-stack span,.poi-next-stack span{font-size:10.5px;color:#66728a;line-height:1.3}
-    .poi-row-actions{display:flex;flex-direction:column;gap:5px;align-items:stretch}
-    .poi-row-help{font-size:10px;color:#66728a;line-height:1.2;text-align:center}
-    .poi-side-stack{display:grid;gap:12px}
-    .poi-side-card{padding:14px}
-    .poi-side-title{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
-    .poi-side-title b{font-size:13px}
-    .poi-side-title span{font-size:11px;color:#66728a}
-    .poi-kv{display:grid;grid-template-columns:90px 1fr;gap:7px 8px;font-size:12px}
-    .poi-kv div:nth-child(odd){color:#66728a}
-    .poi-kv div:nth-child(even){font-weight:700;text-align:right}
-    .poi-quick-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
-    .poi-quick-grid .pd-btn-primary{grid-column:1 / -1}
-    .poi-process-list,.poi-summary-list{display:grid;gap:8px}
-    .poi-process-item,.poi-summary-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid #edf1f6}
-    .poi-process-item:last-child,.poi-summary-item:last-child{border-bottom:0}
-    .poi-process-item span:first-child,.poi-summary-item span:first-child{color:#344054;font-size:12px;font-weight:700}
-    .poi-summary-item b{font-size:12px}
-    .poi-summary-item.total b{font-size:15px}
-    .poi-note-box{background:#f8fafc;border:1px solid #e4e8ef;border-radius:6px;padding:10px;font-size:11.5px;color:#536075;line-height:1.45}
-    .poi-empty{padding:24px;text-align:center;color:#66728a}
-    @media (max-width:1540px){.poi-stats{grid-template-columns:repeat(3,minmax(0,1fr))}}
-    @media (max-width:1240px){.poi-filter-grid{grid-template-columns:1fr 1fr 1fr}.poi-filter-actions{grid-column:1 / -1}.poi-layout{grid-template-columns:1fr}.poi-side-stack{grid-template-columns:1fr 1fr}}
-    @media (max-width:960px){.poi-page-head{flex-direction:column}.poi-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.poi-side-stack{grid-template-columns:1fr}}
-    @media (max-width:720px){.poi-stats,.poi-filter-grid,.poi-quick-grid{grid-template-columns:1fr}.poi-table,.poi-table thead,.poi-table tbody,.poi-table tr,.poi-table th,.poi-table td{display:block}.poi-table thead{display:none}.poi-table tr{padding:10px 0;border-bottom:1px solid #edf1f6}.poi-table td{border-bottom:0;padding:6px 10px}.poi-table td::before{content:attr(data-label);display:block;margin-bottom:4px;color:#66728a;font-size:10px;font-weight:700;text-transform:uppercase}}
-</style>
-
-<div class="poi-page">
+<div class="pd-ui-v1-orders"><div class="poi-page">
     <section class="poi-page-head">
         <div class="poi-page-title">
             <h2>Siparişler</h2>
-            <p>Aktif siparişleri günlük akıştan yönetin, tamamlanan siparişleri ayrı görünümde inceleyin.</p>
+            <p>Aktif siparişleri, sıradaki işlemleri ve tamamlanan işleri tek listeden takip edin.</p>
         </div>
-        <div class="poi-header-tools">
-            <a href="{{ route('admin.orders.index', ['filter' => 'all']) }}" class="pd-btn pd-btn-light">Tüm Siparişler</a>
-            <a href="{{ route('admin.orders.index', ['filter' => 'open']) }}" class="pd-btn pd-btn-light">Aktif Siparişler</a>
-            <a href="{{ route('admin.orders.index', ['filter' => 'completed']) }}" class="pd-btn pd-btn-light">Tamamlanan Siparişler</a>
-            @if(data_get($selectedRow, 'links.work_form'))
-                <a href="{{ data_get($selectedRow, 'links.work_form') }}" class="pd-btn pd-btn-light">İş Formu</a>
-            @endif
+        <div class="poi-header-tools pd-ui-v1-orders__header-actions">
+            <a href="{{ route('admin.promotion-quotes.index') }}" class="pd-btn pd-btn-light">Tekliflere Git</a>
         </div>
     </section>
 
@@ -151,6 +65,22 @@
                 <div class="poi-stat-note">{{ $card['note'] }}</div>
             </article>
         @endforeach
+    </section>
+
+        <section class="pd-ui-v1-orders__tabs-card">
+        <div class="pd-ui-v1-orders__section-head">
+            <div>
+                <h3>Sekmeler</h3>
+                <p>Aktif, tamamlanan ve Tüm Siparişler görünümleri arasında geçiş yapın.</p>
+            </div>
+        </div>
+        <div class="pd-ui-v1-orders__section-body">
+            <div class="poi-tabs pd-ui-v1-orders__tabs">
+                @foreach($statusChips as $chip)
+                    <a href="{{ route('admin.orders.index', array_merge($statusRouteQuery, ['filter' => $chip['value']])) }}" class="poi-tab {{ ($filters['status'] ?? 'all') === $chip['value'] ? 'is-active' : '' }}">{{ $chip['label'] }} <em>{{ $tabCounts[$chip['value']] ?? 0 }}</em></a>
+                @endforeach
+            </div>
+        </div>
     </section>
 
     <section class="poi-card poi-filter-card">
@@ -307,7 +237,7 @@
                                 </td>
                                 <td data-label="Aksiyon">
                                     <div class="poi-row-actions">
-                                        <a href="{{ $row['links']['show'] }}" class="pd-btn pd-btn-sm pd-btn-light" data-testid="order-{{ $row['order']->id }}-show-link">Siparişi Aç</a>
+                                        <a href="{{ $row['links']['show'] }}" class="pd-btn pd-btn-sm pd-btn-primary" data-testid="order-{{ $row['order']->id }}-show-link">{{ $row['next_action_label'] ?: 'Siparişi Aç' }}</a>
                                         <span class="poi-row-help">Modüller detayda</span>
                                     </div>
                                 </td>
@@ -426,6 +356,7 @@
             </section>
         </aside>
     </div>
+</div>
 </div>
 @endsection
 

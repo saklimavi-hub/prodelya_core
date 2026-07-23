@@ -38,7 +38,7 @@ class ProductionFinancePermissionTest extends TestCase
             ->firstOrFail();
     }
 
-    public function test_subcontractor_cost_field_visible_only_with_financial_permission(): void
+    public function test_canonical_subcontract_assignment_hides_cost_fields_for_all_users(): void
     {
         $partner = $this->createPartnerCompany();
         $production = $this->createSubcontractedProduction($partner, [
@@ -49,21 +49,22 @@ class ProductionFinancePermissionTest extends TestCase
         $financeUser = $this->makeFinanceUser($this->tenant, 'production-finance-view@example.test');
         $limitedUser = $this->makeLimitedUser($this->tenant, 'production-limited-view@example.test');
 
-        $financeResponse = $this->actingAs($financeUser)
+        $this->actingAs($financeUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.productions.show', $production) . '?tab=dis-uretim');
+            ->get(route('admin.productions.show', $production) . '?tab=dis-uretim')
+            ->assertRedirect(route('admin.productions.subcontract-assignment', $production));
 
-        $financeResponse->assertOk();
-        $financeResponse->assertSee('Fason Maliyeti');
-        $financeResponse->assertSee('1.250,00');
+        foreach ([$financeUser, $limitedUser] as $user) {
+            $response = $this->actingAs($user)
+                ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
+                ->get(route('admin.productions.subcontract-assignment', $production));
 
-        $limitedResponse = $this->actingAs($limitedUser)
-            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.productions.show', $production) . '?tab=dis-uretim');
-
-        $limitedResponse->assertOk();
-        $limitedResponse->assertDontSee('Fason Maliyeti');
-        $limitedResponse->assertDontSee('1.250,00');
+            $response->assertOk();
+            $response->assertSee('Üretim / Fason');
+            $response->assertDontSee('Fason Maliyeti');
+            $response->assertDontSee('1.250,00');
+            $response->assertDontSee('subcontractor_cost', false);
+        }
     }
 
     private function createSubcontractedProduction(Company $partner, array $productionOverrides = []): OrderItemPrintProduction

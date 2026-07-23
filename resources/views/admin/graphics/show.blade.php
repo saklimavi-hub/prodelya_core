@@ -46,11 +46,14 @@
 
         return $query === [] ? $showUrl : $showUrl . '?' . http_build_query($query);
     };
-    $mainPreviewUrl = $selectedAttachment['original_url'] ?? data_get($productPreview, 'original_url');
-    $mainPreviewImageUrl = $selectedAttachment['preview_url'] ?? data_get($productPreview, 'preview_url');
+    $customerCompanyName = data_get($customerSnapshot, 'company_name', '-');
+    $productReferenceTitle = data_get($productPreview, 'title', 'Ürün Referansı');
+    $mainPreviewUrl = $selectedAttachment['original_url'] ?? null;
+    $mainPreviewImageUrl = $selectedAttachment['preview_url'] ?? null;
+    $mainPreviewOpenUrl = $selectedAttachment['open_url'] ?? null;
     $mainPreviewTitle = $selectedAttachment
-        ? (($selectedOperation['sequence_code'] ?? '-') . ' - ' . ($selectedAttachment['file_name'] ?? 'Görsel'))
-        : data_get($productPreview, 'title', 'Ürün görseli');
+        ? (($selectedOperation['sequence_code'] ?? '-') . ' - ' . ($selectedAttachment['file_name'] ?? 'Grafik Çalışması'))
+        : 'Grafik Çalışması';
 @endphp
 
 <style>
@@ -169,7 +172,7 @@
 
     .gg-summary-grid {
         display: grid;
-        grid-template-columns: repeat(5, minmax(0, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
         gap: 10px;
     }
 
@@ -618,16 +621,19 @@
         display: flex;
     }
 
-    .gg-lightbox-dialog {
-        width: min(1100px, 100%);
-        max-height: calc(100vh - 32px);
+    .pd-ui-v1-graphic-detail .gg-lightbox-dialog {
+        width: min(96vw, 1500px);
+        height: min(92vh, 980px);
+        max-height: 92vh;
         background: #fff;
         border-radius: 12px;
         overflow: hidden;
         box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr) auto;
     }
 
-    .gg-lightbox-head {
+    .pd-ui-v1-graphic-detail .gg-lightbox-head {
         display: flex;
         justify-content: space-between;
         align-items: center;
@@ -636,22 +642,72 @@
         border-bottom: 1px solid #e5e7eb;
     }
 
-    .gg-lightbox-body {
+    .pd-ui-v1-graphic-detail .gg-lightbox-body {
         padding: 18px;
         background: #f8fafc;
+        min-height: 0;
+        overflow: hidden;
     }
 
-    .gg-lightbox-image {
-        width: min(92vw, 100%);
-        max-width: 92vw;
-        height: min(85vh, 820px);
-        max-height: 85vh;
-        object-fit: contain;
-        display: block;
-        background: #fff;
-        border-radius: 8px;
+    .pd-ui-v1-graphic-detail .pd-graphic-lightbox__viewport {
+        display: grid;
+        place-items: center;
+        width: 100%;
+        height: 100%;
+        min-height: 0;
+        overflow: auto;
+        padding: 12px;
+        box-sizing: border-box;
         border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        background: #fff;
+    }
+
+    .pd-ui-v1-graphic-detail .gg-lightbox-foot {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        padding: 14px 16px;
+        border-top: 1px solid #e5e7eb;
+        background: #fff;
+    }
+
+    .pd-ui-v1-graphic-detail .pd-graphic-lightbox__image {
+        display: block;
+        width: 100%;
+        height: 100%;
+        min-width: 0;
+        min-height: 0;
+        max-width: calc(96vw - 72px);
+        max-height: calc(92vh - 120px);
+        object-fit: contain;
+        object-position: center center;
         margin: 0 auto;
+        background: #fff;
+    }
+
+    .pd-ui-v1-graphic-detail .pd-graphic-lightbox__image[hidden] {
+        display: none;
+    }
+
+    .pd-ui-v1-graphic-detail .pd-graphic-lightbox__status {
+        display: grid;
+        place-items: center;
+        width: 100%;
+        min-height: 240px;
+        padding: 20px;
+        text-align: center;
+        color: #64748b;
+        font-size: 13px;
+        line-height: 1.5;
+    }
+
+    .pd-ui-v1-graphic-detail .pd-graphic-lightbox__status.is-error {
+        color: #b91c1c;
+    }
+
+    .pd-ui-v1-graphic-detail .pd-graphic-lightbox__status[hidden] {
+        display: none;
     }
 
     @media (max-width: 1100px) {
@@ -699,7 +755,11 @@
     <div class="gg-flash gg-flash-error">{{ $errors->first() }}</div>
 @endif
 
-<div class="pd-page-stack">
+@if(session('warning'))
+    <div class="gg-flash gg-flash-warning">{{ session('warning') }}</div>
+@endif
+
+<div class="pd-page-stack pd-ui-v1-graphic-detail">
 <div class="gg-topbar pd-inline-stack">
     <a href="{{ route('admin.graphics.index') }}" class="gg-btn">Listeye Dön</a>
     <a href="{{ route('admin.work-forms.show', $workForm) }}" class="gg-btn">İş Formu</a>
@@ -732,7 +792,12 @@
                             <div class="gg-subvalue">İş Formu: {{ $workForm->work_form_number }}</div>
                         </div>
                         <div class="gg-summary-card">
-                            <div class="gg-label">Seçili İş</div>
+                            <div class="gg-label">Müşteri</div>
+                            <div class="gg-value">{{ $customerCompanyName }}</div>
+                            <div class="gg-subvalue">Sipariş sahibi firma</div>
+                        </div>
+                        <div class="gg-summary-card">
+                            <div class="gg-label">Seçili Baskı</div>
                             <div class="gg-value">{{ $selectedOperation['sequence_code'] ?? '-' }}</div>
                             <div class="gg-subvalue">{{ $selectedOperation['title'] ?? 'Operasyon yok' }}</div>
                         </div>
@@ -758,7 +823,7 @@
                                 type="button"
                                 class="gg-preview-frame gg-preview-frame--summary gg-preview-trigger"
                                 data-lightbox-trigger
-                                data-lightbox-src="{{ $productPreview['original_url'] }}"
+                                data-full-src="{{ $productPreview['original_url'] }}"
                                 data-lightbox-title="{{ $productPreview['title'] }}"
                             >
                                 <img class="gg-preview-image pd-allow-large" src="{{ $productPreview['preview_url'] }}" alt="{{ $productPreview['title'] }}" loading="lazy">
@@ -767,7 +832,7 @@
                             <div class="gg-preview-frame gg-preview-frame--summary gg-product-placeholder">Ürün görseli henüz yok</div>
                         @endif
                         <div class="gg-box">
-                            <div class="gg-label">Ürün</div>
+                            <div class="gg-label">Ürün Referansı</div>
                             <div class="gg-value">{{ data_get($productSnapshot, 'product_name', '-') }}</div>
                             <div class="gg-subvalue">Ürün kodu: {{ data_get($productSnapshot, 'product_code', '-') }}</div>
                             @if(!empty($operationSummaryLines))
@@ -799,7 +864,7 @@
                             <div class="gg-note">{{ data_get($latestHistory, 'label', 'Henüz hareket yok') }}</div>
                         </div>
                         <div>
-                            <div class="gg-label">Müşteri Onayı</div>
+                            <div class="gg-label">{{ $customerApprovalEnabled ? 'Müşteri Onayı' : 'Onay Durumu' }}</div>
                             <div class="gg-value">{{ $selectedOperation['customer_approval_label'] }}</div>
                         </div>
                         <div>
@@ -857,29 +922,35 @@
                                     type="button"
                                     class="gg-main-preview-frame gg-preview-trigger"
                                     data-lightbox-trigger
-                                    data-lightbox-src="{{ $mainPreviewUrl }}"
+                                    data-full-src="{{ $mainPreviewUrl }}"
                                     data-lightbox-title="{{ $mainPreviewTitle }}"
+                                    data-lightbox-open-url="{{ $mainPreviewOpenUrl }}"
                                     data-testid="graphic-main-preview-frame"
                                 >
                                     <img class="gg-preview-image graphic-preview-image pd-allow-large" src="{{ $mainPreviewImageUrl }}" alt="{{ $mainPreviewTitle }}" loading="lazy">
                                 </button>
                             @elseif($selectedAttachment && !$selectedAttachment['is_image'])
-                                <div class="gg-main-preview-frame gg-preview-empty">{{ $selectedAttachment['kind_label'] }}</div>
+                                <div class="gg-main-preview-frame gg-preview-empty">Bu grafik çalışması önizleme yerine güvenli dosya açma bağlantısıyla sunulur.</div>
                             @else
-                                <div class="gg-main-preview-frame gg-preview-empty">Önizleme alınamadı</div>
+                                <div class="gg-main-preview-frame gg-preview-empty">Henüz grafik çalışması yüklenmedi.<br>Bu alan, seçili baskı operasyonuna eklenen son grafik çalışmasını gösterecek.</div>
                             @endif
 
                             <div class="gg-preview-meta">
                                 <div class="gg-box">
-                                    <div class="gg-label">{{ $selectedAttachment ? 'Seçili Görsel' : 'Referans Görsel' }}</div>
-                                    <div class="gg-value">{{ $selectedAttachment['file_name'] ?? data_get($productPreview, 'title', 'Görsel bulunamadı') }}</div>
-                                    <div class="gg-subvalue">{{ $selectedAttachment['created_at'] ?? 'Ürün görseli referans olarak kullanılıyor.' }}</div>
+                                    <div class="gg-label">Grafik Çalışması</div>
+                                    <div class="gg-value">{{ $selectedAttachment['file_name'] ?? 'Henüz grafik çalışması yok' }}</div>
+                                    <div class="gg-subvalue">{{ $selectedAttachment['created_at'] ?? 'Ürün resmi grafik yerine kullanılmaz.' }}</div>
+                                </div>
+                                <div class="gg-box">
+                                    <div class="gg-label">Ürün Referansı</div>
+                                    <div class="gg-value">{{ data_get($productSnapshot, 'product_name', '-') }}</div>
+                                    <div class="gg-subvalue">Kod: {{ data_get($productSnapshot, 'product_code', '-') }}</div>
                                 </div>
                                 @if($showVisibilityDetails)
                                     <div class="gg-box">
                                         <div class="gg-label">Görünürlük</div>
                                         <div class="gg-value">{{ $selectedAttachment['visibility_label'] ?? ($selectedOperation['visibility_default'] === 'customer_visible' ? 'Müşteriye Açık' : 'İç Kayıt') }}</div>
-                                        <div class="gg-subvalue">Büyük önizleme tam alan standardıyla gösterilir.</div>
+                                        <div class="gg-subvalue">Müşteriye açılan exact attachment güvenli route ile sunulur.</div>
                                     </div>
                                 @else
                                     <div class="gg-box">
@@ -888,6 +959,11 @@
                                         <div class="gg-subvalue">{{ $selectedOperation['customer_approval_label'] }}</div>
                                     </div>
                                 @endif
+                                <div class="gg-box">
+                                    <div class="gg-label">Müşteri</div>
+                                    <div class="gg-value">{{ $customerCompanyName }}</div>
+                                    <div class="gg-subvalue">İş Formu: {{ $workForm->work_form_number }}</div>
+                                </div>
                             </div>
 
                             <div class="gg-file-chip-row">
@@ -896,17 +972,18 @@
                                         type="button"
                                         class="gg-file-chip"
                                         data-lightbox-trigger
-                                        data-lightbox-src="{{ $mainPreviewUrl }}"
+                                        data-full-src="{{ $mainPreviewUrl }}"
                                         data-lightbox-title="{{ $mainPreviewTitle }}"
+                                        data-lightbox-open-url="{{ $mainPreviewOpenUrl }}"
                                     >
                                         Büyük Önizleme
                                     </button>
                                 @else
-                                    <span class="gg-file-chip">Önizleme Yok</span>
+                                    <span class="gg-file-chip">Grafik Çalışması Yok</span>
                                 @endif
 
-                                @if($selectedAttachment && $selectedAttachment['open_url'] && !$selectedAttachment['is_image'])
-                                    <a href="{{ $selectedAttachment['open_url'] }}" target="_blank" rel="noopener" class="gg-file-chip">Dosyayı Aç</a>
+                                @if($selectedAttachment && $selectedAttachment['open_url'])
+                                    <a href="{{ $selectedAttachment['open_url'] }}" target="_blank" rel="noopener" class="gg-file-chip">Orijinal Boyutta Aç</a>
                                 @endif
                             </div>
                         </div>
@@ -1239,7 +1316,7 @@
                         <div class="gg-mini-grid">
                             <div class="gg-full"><div class="gg-label">Şu an</div><div class="gg-value">{{ $selectedOperation['status_label'] ?? $generalGraphicStatusLabel }}</div></div>
                             <div class="gg-full"><div class="gg-label">Sıradaki işlem</div><div class="gg-value">{{ $primaryAction['label'] ?? $nextActionLabel }}</div></div>
-                            <div class="gg-full"><div class="gg-label">Müşteri Onayı</div><div class="gg-value">{{ $selectedOperation['customer_approval_label'] ?? $approvalStatusLabel }}</div></div>
+                            <div class="gg-full"><div class="gg-label">{{ $customerApprovalEnabled ? 'Müşteri Onayı' : 'Onay Durumu' }}</div><div class="gg-value">{{ $selectedOperation['customer_approval_label'] ?? $approvalStatusLabel }}</div></div>
                             <div class="gg-full"><div class="gg-label">Üretime Hazır</div><div class="gg-note">{{ data_get($selectedOperation, 'production_ready_guidance.label', 'Ayrı izlenir') }}</div></div>
                         </div>
                         <div class="gg-actions" style="margin-top: 12px;">
@@ -1332,12 +1409,18 @@
         <div class="gg-lightbox-head">
             <div>
                 <div class="gg-label">Büyük Önizleme</div>
-                <div class="gg-value" data-lightbox-title>Görsel</div>
+                <div class="gg-value" data-lightbox-title>Grafik Çalışması</div>
             </div>
             <button type="button" class="gg-btn" data-lightbox-close>Kapat</button>
         </div>
         <div class="gg-lightbox-body">
-            <img src="" alt="" class="gg-lightbox-image" data-lightbox-image>
+            <div class="pd-graphic-lightbox__viewport">
+                <div class="pd-graphic-lightbox__status" data-lightbox-status hidden>Görsel yükleniyor...</div>
+                <img src="" alt="" class="gg-lightbox-image pd-graphic-lightbox__image" data-lightbox-image hidden>
+            </div>
+        </div>
+        <div class="gg-lightbox-foot">
+            <a href="#" class="gg-btn" target="_blank" rel="noopener" data-lightbox-open-original hidden>Orijinal Boyutta Aç</a>
         </div>
     </div>
 </div>
@@ -1347,6 +1430,58 @@ document.addEventListener('DOMContentLoaded', function () {
     const lightbox = document.querySelector('[data-lightbox-modal]');
     const lightboxImage = lightbox?.querySelector('[data-lightbox-image]');
     const lightboxTitle = lightbox?.querySelector('[data-lightbox-title]');
+    const lightboxOpenOriginal = lightbox?.querySelector('[data-lightbox-open-original]');
+    const lightboxStatus = lightbox?.querySelector('[data-lightbox-status]');
+
+    const setLightboxStatus = function (message, isError = false) {
+        if (!lightboxStatus) {
+            return;
+        }
+
+        lightboxStatus.textContent = message;
+        lightboxStatus.hidden = false;
+        lightboxStatus.classList.toggle('is-error', isError === true);
+    };
+
+    const resetLightbox = function () {
+        if (lightboxImage) {
+            lightboxImage.hidden = true;
+            lightboxImage.removeAttribute('src');
+            lightboxImage.alt = '';
+        }
+
+        if (lightboxStatus) {
+            lightboxStatus.hidden = true;
+            lightboxStatus.classList.remove('is-error');
+            lightboxStatus.textContent = 'Görsel yükleniyor...';
+        }
+
+        if (lightboxOpenOriginal) {
+            lightboxOpenOriginal.href = '#';
+            lightboxOpenOriginal.hidden = true;
+        }
+    };
+
+    lightboxImage?.addEventListener('load', function () {
+        if (!lightboxImage) {
+            return;
+        }
+
+        lightboxImage.hidden = false;
+        if (lightboxStatus) {
+            lightboxStatus.hidden = true;
+            lightboxStatus.classList.remove('is-error');
+        }
+    });
+
+    lightboxImage?.addEventListener('error', function () {
+        if (lightboxImage) {
+            lightboxImage.hidden = true;
+            lightboxImage.removeAttribute('src');
+        }
+
+        setLightboxStatus('Grafik görseli yüklenemedi. Orijinal dosyayı açmayı deneyin.', true);
+    });
 
     document.querySelectorAll('[data-lightbox-trigger]').forEach(function (trigger) {
         trigger.addEventListener('click', function () {
@@ -1354,35 +1489,38 @@ document.addEventListener('DOMContentLoaded', function () {
                 return;
             }
 
-            const src = trigger.getAttribute('data-lightbox-src');
+            const fullSrc = trigger.getAttribute('data-full-src');
             const title = trigger.getAttribute('data-lightbox-title') || 'Görsel';
+            const openUrl = trigger.getAttribute('data-lightbox-open-url') || fullSrc;
 
-            if (!src) {
+            if (!fullSrc) {
                 return;
             }
 
-            lightboxImage.src = src;
+            resetLightbox();
+            setLightboxStatus('Görsel yükleniyor...');
             lightboxImage.alt = title;
             lightboxTitle.textContent = title;
+            if (lightboxOpenOriginal) {
+                lightboxOpenOriginal.href = openUrl || '#';
+                lightboxOpenOriginal.hidden = !openUrl;
+            }
             lightbox.classList.add('is-open');
+            lightboxImage.src = fullSrc;
         });
     });
 
     lightbox?.addEventListener('click', function (event) {
         if (event.target === lightbox || event.target.hasAttribute('data-lightbox-close')) {
             lightbox.classList.remove('is-open');
-            if (lightboxImage) {
-                lightboxImage.src = '';
-            }
+            resetLightbox();
         }
     });
 
     document.addEventListener('keydown', function (event) {
         if (event.key === 'Escape' && lightbox?.classList.contains('is-open')) {
             lightbox.classList.remove('is-open');
-            if (lightboxImage) {
-                lightboxImage.src = '';
-            }
+            resetLightbox();
         }
     });
 
@@ -1488,15 +1626,3 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 @endsection
-
-
-
-
-
-
-
-
-
-
-
-

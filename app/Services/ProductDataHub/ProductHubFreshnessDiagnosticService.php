@@ -34,6 +34,95 @@ class ProductHubFreshnessDiagnosticService
     {
         return $this->buildSummary($rows);
     }
+    public function buildQuoteFreshnessPayload(TenantCatalogProduct $product, ?TenantCatalogProductVariant $variant = null): array
+    {
+        $product->loadMissing('standardProduct.rawProducts');
+        $variant?->loadMissing('standardVariant.rawVariants', 'catalogProduct');
+
+        $rowType = $variant ? 'variant' : 'flat';
+        $supplierId = (int) (
+            data_get($variant?->source_summary, 'supplier_id')
+            ?? data_get($product->source_summary, '0.supplier_id')
+            ?? 0
+        );
+
+        $access = $supplierId > 0
+            ? TenantSupplierAccess::query()
+                ->where('tenant_account_id', $product->tenant_account_id)
+                ->where('supplier_id', $supplierId)
+                ->first()
+            : null;
+
+        $rawSnapshot = $rowType === 'variant'
+            ? $this->variantRawSnapshot($variant?->standardVariant, $product->standardProduct)
+            : $this->productRawSnapshot($product->standardProduct);
+
+        $standardSnapshot = $rowType === 'variant'
+            ? $this->variantStandardSnapshot($variant?->standardVariant, $product->standardProduct)
+            : $this->productStandardSnapshot($product->standardProduct);
+
+        $projectionSnapshot = $this->selectedProjectionSnapshot($product, $variant, $rowType, $access);
+        $quoteSnapshot = $this->selectedQuoteSnapshot($product, $variant, $rowType, $access);
+
+        $badgeKeys = $this->resolveBadgeKeys($rowType, $rawSnapshot, $standardSnapshot, $projectionSnapshot, $quoteSnapshot);
+        $projectionLag = $this->hasProjectionLag($rawSnapshot, $standardSnapshot, $projectionSnapshot);
+        $stalePrice = in_array('stale_price', $badgeKeys, true);
+        $staleStock = in_array('stale_stock', $badgeKeys, true);
+        $projectionOutdated = $projectionLag || in_array('projection_outdated', $badgeKeys, true);
+        $rateChangedSinceProjection = $this->hasRateChangedSinceProjection($rawSnapshot, $standardSnapshot, $projectionSnapshot, $quoteSnapshot);
+
+        $status = match (true) {
+            $stalePrice && $staleStock => 'stale_price_and_stock',
+            $stalePrice => 'stale_price',
+            $staleStock => 'stale_stock',
+            $projectionLag => 'projection_lag',
+            default => 'fresh',
+        };
+
+        $warningCodes = [];
+
+        if ($projectionOutdated) {
+            $warningCodes[] = 'projection_outdated';
+        }
+
+        if ($stalePrice) {
+            $warningCodes[] = 'stale_price';
+        }
+
+        if ($staleStock) {
+            $warningCodes[] = 'stale_stock';
+        }
+
+        if ($rateChangedSinceProjection) {
+            $warningCodes[] = 'rate_changed_since_projection';
+        }
+
+        $message = match ($status) {
+            'projection_lag' => 'Kaynak daha yeni görünüyor; fiyat ve stok değerleri şu anda eşleşiyor.',
+            'stale_price' => 'Ürün fiyatı güncel katalog yayınıyla eşleşmiyor. Teklifi kaydetmeden önce katalog güncellenmelidir.',
+            'stale_stock' => 'Tedarikçi stok bilgisi değişmiş olabilir; gerçek uygunluğu tedarikçiden kontrol edin.',
+            'stale_price_and_stock' => 'Ürün fiyatı güncel katalog yayınıyla eşleşmiyor. Tedarikçi stok bilgisi de değişmiş olabilir.',
+            default => 'Ürün bilgisi güncel.',
+        };
+
+        return [
+            'status' => $status,
+            'projection_outdated' => $projectionOutdated,
+            'stale_price' => $stalePrice,
+            'stale_stock' => $staleStock,
+            'blocking' => $stalePrice,
+            'warning_codes' => $warningCodes,
+            'message' => $message,
+            'source_updated_at' => optional($rawSnapshot['updated_at'] ?? null)?->toIso8601String(),
+            'standard_updated_at' => optional($standardSnapshot['updated_at'] ?? null)?->toIso8601String(),
+            'projection_synced_at' => optional($projectionSnapshot['updated_at'] ?? null)?->toIso8601String(),
+            'checked_at' => now()->toIso8601String(),
+            'badges' => collect($warningCodes)
+                ->map(fn (string $key) => $this->badgePayload($key))
+                ->values()
+                ->all(),
+        ];
+    }
 
     private function buildContext(Collection $rows): array
     {
@@ -176,6 +265,74 @@ class ProductHubFreshnessDiagnosticService
         return $this->sellableTruthService->resolve($preferredRow);
     }
 
+
+    private function selectedProjectionSnapshot(
+        TenantCatalogProduct $product,
+        ?TenantCatalogProductVariant $variant,
+        string $rowType,
+        ?TenantSupplierAccess $access
+    ): array {
+        $price = $this->toFloat($variant?->display_price ?? $product->display_price);
+        $stock = $this->toFloat(
+            $variant
+                ? ($variant->supplier_stock_quantity ?? $variant->stock_quantity)
+                : ($product->supplier_stock_quantity ?? $product->stock_quantity ?? $product->total_stock_quantity)
+        );
+
+        return [
+            'count' => 1,
+            'price' => $price,
+            'stock' => $stock,
+            'price_values' => $price !== null ? [$price] : [],
+            'stock_values' => $stock !== null ? [$stock] : [],
+            'price_label' => $price !== null ? $this->valueListLabel(collect([$price]), true) : '—',
+            'stock_label' => $stock !== null ? $this->valueListLabel(collect([$stock]), false) : '—',
+            'updated_at' => $variant?->updated_at ?? $product->updated_at ?? $product->last_synced_at,
+            'source_price' => $this->toFloat(data_get($variant?->meta, 'price_snapshot.source_price', data_get($product->meta, 'price_snapshot.source_price'))),
+            'source_currency' => $this->normalizeCurrencyCode(data_get($variant?->meta, 'price_snapshot.source_currency', data_get($product->meta, 'price_snapshot.source_currency'))),
+            'price_currency' => $this->normalizeCurrencyCode($variant?->currency ?? $product->currency ?? 'TRY'),
+            'applied_rate' => $this->toFloat(data_get($variant?->meta, 'price_snapshot.currency_snapshot.applied_rate', data_get($product->meta, 'price_snapshot.currency_snapshot.applied_rate'))),
+            'access_open_count' => $this->accessAllowsCatalog($access) ? 1 : 0,
+            'access_closed_count' => $this->accessAllowsCatalog($access) ? 0 : 1,
+            'visible_count' => ($variant?->visible_in_catalog ?? $product->visible_in_catalog) ? 1 : 0,
+            'active_count' => ($variant?->is_active ?? $product->is_active) ? 1 : 0,
+            'row_type' => $rowType,
+        ];
+    }
+
+    private function selectedQuoteSnapshot(
+        TenantCatalogProduct $product,
+        ?TenantCatalogProductVariant $variant,
+        string $rowType,
+        ?TenantSupplierAccess $access
+    ): array {
+        $quoteVisible = $rowType === 'variant'
+            ? ((data_get($variant?->meta, 'quote_search_visible') !== null)
+                ? (bool) data_get($variant?->meta, 'quote_search_visible')
+                : (bool) $product->visible_in_quote)
+            : (bool) $product->visible_in_quote;
+
+        $eligible = $this->accessAllowsCatalog($access)
+            && (bool) ($variant?->visible_in_catalog ?? $product->visible_in_catalog)
+            && (bool) ($variant?->is_active ?? $product->is_active)
+            && $quoteVisible;
+
+        $price = $eligible
+            ? $this->toFloat($variant?->display_price ?? $product->display_price)
+            : null;
+
+        return [
+            'visible' => $eligible,
+            'count' => $eligible ? 1 : 0,
+            'price' => $price,
+            'price_values' => $price !== null ? [$price] : [],
+            'price_label' => $price !== null ? $this->valueListLabel(collect([$price]), true) : '—',
+            'source_price' => $eligible ? $this->toFloat(data_get($variant?->meta, 'price_snapshot.source_price', data_get($product->meta, 'price_snapshot.source_price'))) : null,
+            'source_currency' => $eligible ? $this->normalizeCurrencyCode(data_get($variant?->meta, 'price_snapshot.source_currency', data_get($product->meta, 'price_snapshot.source_currency'))) : null,
+            'price_currency' => $eligible ? $this->normalizeCurrencyCode($variant?->currency ?? $product->currency ?? 'TRY') : null,
+            'applied_rate' => $eligible ? $this->toFloat(data_get($variant?->meta, 'price_snapshot.currency_snapshot.applied_rate', data_get($product->meta, 'price_snapshot.currency_snapshot.applied_rate'))) : null,
+        ];
+    }
     private function productRawSnapshot(?StandardProduct $product): array
     {
         $raw = $product?->rawProducts?->sortByDesc('updated_at')->first();
@@ -184,6 +341,10 @@ class ProductHubFreshnessDiagnosticService
             'price' => $this->toFloat(data_get($raw, 'normalized_payload.list_price', $raw?->purchase_price)),
             'stock' => $this->toFloat(data_get($raw, 'normalized_payload.stock_quantity', $raw?->stock_quantity)),
             'updated_at' => $raw?->updated_at,
+            'source_price' => $this->toFloat(data_get($raw, 'normalized_payload.source_price', data_get($raw, 'normalized_payload.list_price', data_get($product?->meta, 'price_snapshot.source_price')))),
+            'source_currency' => $this->normalizeCurrencyCode(data_get($raw, 'normalized_payload.source_currency', data_get($raw, 'normalized_payload.currency', data_get($product?->meta, 'price_snapshot.source_currency')))),
+            'price_currency' => $this->normalizeCurrencyCode(data_get($raw, 'normalized_payload.currency', data_get($product?->meta, 'price_snapshot.source_currency'))),
+            'applied_rate' => $this->toFloat(data_get($raw, 'normalized_payload.currency_snapshot.applied_rate', data_get($product?->meta, 'price_snapshot.currency_snapshot.applied_rate'))),
             'supplier_product_code' => $raw?->supplier_product_code,
             'supplier_variant_code' => null,
         ];
@@ -197,6 +358,10 @@ class ProductHubFreshnessDiagnosticService
             'price' => $this->toFloat(data_get($raw, 'normalized_payload.list_price', data_get($variant?->source_summary, 'list_price', data_get($product?->source_summary, '0.list_price')))),
             'stock' => $this->toFloat(data_get($raw, 'normalized_payload.variant_stock_quantity', $raw?->variant_stock_quantity)),
             'updated_at' => $raw?->updated_at,
+            'source_price' => $this->toFloat(data_get($raw, 'normalized_payload.source_price', data_get($raw, 'normalized_payload.list_price', data_get($variant?->meta, 'price_snapshot.source_price', data_get($product?->meta, 'price_snapshot.source_price'))))),
+            'source_currency' => $this->normalizeCurrencyCode(data_get($raw, 'normalized_payload.source_currency', data_get($raw, 'normalized_payload.currency', data_get($variant?->meta, 'price_snapshot.source_currency', data_get($product?->meta, 'price_snapshot.source_currency'))))),
+            'price_currency' => $this->normalizeCurrencyCode(data_get($raw, 'normalized_payload.currency', data_get($variant?->meta, 'price_snapshot.source_currency', data_get($product?->meta, 'price_snapshot.source_currency')))),
+            'applied_rate' => $this->toFloat(data_get($raw, 'normalized_payload.currency_snapshot.applied_rate', data_get($variant?->meta, 'price_snapshot.currency_snapshot.applied_rate', data_get($product?->meta, 'price_snapshot.currency_snapshot.applied_rate')))),
             'supplier_product_code' => data_get($raw, 'rawProduct.supplier_product_code', data_get($product?->source_summary, '0.supplier_product_code')),
             'supplier_variant_code' => $raw?->variant_stock_code ?: $raw?->variant_code,
         ];
@@ -208,6 +373,10 @@ class ProductHubFreshnessDiagnosticService
             'price' => $this->toFloat($product?->min_purchase_price),
             'stock' => $this->toFloat($product?->total_stock_quantity),
             'updated_at' => $product?->updated_at,
+            'source_price' => $this->toFloat(data_get($product?->meta, 'price_snapshot.source_price')),
+            'source_currency' => $this->normalizeCurrencyCode(data_get($product?->meta, 'price_snapshot.source_currency')),
+            'price_currency' => $this->normalizeCurrencyCode(data_get($product?->meta, 'price_snapshot.source_currency')),
+            'applied_rate' => $this->toFloat(data_get($product?->meta, 'price_snapshot.currency_snapshot.applied_rate')),
             'display_code' => $product?->standard_product_code ?: $product?->sku,
         ];
     }
@@ -218,6 +387,10 @@ class ProductHubFreshnessDiagnosticService
             'price' => $this->toFloat($variant?->min_purchase_price ?? $product?->min_purchase_price),
             'stock' => $this->toFloat($variant?->stock_quantity ?? $product?->total_stock_quantity),
             'updated_at' => $variant?->updated_at ?? $product?->updated_at,
+            'source_price' => $this->toFloat(data_get($variant?->meta, 'price_snapshot.source_price', data_get($product?->meta, 'price_snapshot.source_price'))),
+            'source_currency' => $this->normalizeCurrencyCode(data_get($variant?->meta, 'price_snapshot.source_currency', data_get($product?->meta, 'price_snapshot.source_currency'))),
+            'price_currency' => $this->normalizeCurrencyCode(data_get($variant?->meta, 'price_snapshot.source_currency', data_get($product?->meta, 'price_snapshot.source_currency'))),
+            'applied_rate' => $this->toFloat(data_get($variant?->meta, 'price_snapshot.currency_snapshot.applied_rate', data_get($product?->meta, 'price_snapshot.currency_snapshot.applied_rate'))),
             'display_code' => $variant?->generated_variant_code ?: $variant?->variant_code ?: $product?->standard_product_code,
         ];
     }
@@ -314,7 +487,7 @@ class ProductHubFreshnessDiagnosticService
             $keys[] = 'supplier_access_closed';
         }
 
-        if ($this->hasMismatch([$raw['price'], $standard['price'], $projection['price'], $quote['price']])) {
+        if ($this->hasPriceMismatch([$raw, $standard, $projection, $quote])) {
             $keys[] = 'stale_price';
         }
 
@@ -330,7 +503,7 @@ class ProductHubFreshnessDiagnosticService
                 || $projection['updated_at']->lte($standard['updated_at'])
             )
             && (
-                $this->hasMismatch([$raw['price'], $standard['price'], $projection['price']])
+                $this->hasPriceMismatch([$raw, $standard, $projection])
                 || $this->hasMismatch([$raw['stock'], $standard['stock'], $projection['stock']])
             )
         ) {
@@ -344,20 +517,34 @@ class ProductHubFreshnessDiagnosticService
                 || $standard['updated_at']->lte($raw['updated_at'])
             )
             && (
-                $this->valuesDiffer($raw['price'], $standard['price'])
+                $this->priceValuesDiffer($raw['price'], $standard['price'])
                 || $this->valuesDiffer($raw['stock'], $standard['stock'])
             )
         ) {
             $keys[] = 'standard_variant_outdated';
         }
 
-        if ($quote['visible'] && $this->valuesDiffer($projection['price'], $quote['price'])) {
+        if ($quote['visible'] && $this->priceValuesDiffer($projection['price'], $quote['price'])) {
             $keys[] = 'quote_price_outdated';
         }
 
         return array_values(array_unique($keys));
     }
 
+
+    private function hasProjectionLag(array $raw, array $standard, array $projection): bool
+    {
+        if (
+            !($standard['updated_at'] ?? null)
+            || !($projection['updated_at'] ?? null)
+            || !$projection['updated_at']->lte($standard['updated_at'])
+        ) {
+            return false;
+        }
+
+        return !$this->hasPriceMismatch([$raw, $standard, $projection])
+            && !$this->hasMismatch([$raw['stock'] ?? null, $standard['stock'] ?? null, $projection['stock'] ?? null]);
+    }
     private function buildSummary(Collection $rows): array
     {
         return [
@@ -421,6 +608,7 @@ class ProductHubFreshnessDiagnosticService
             'stale_price' => ['key' => $key, 'label' => 'Katalog Fiyatı Eski', 'tone' => 'amber'],
             'stale_stock' => ['key' => $key, 'label' => 'Katalog Stoğu Eski', 'tone' => 'amber'],
             'projection_outdated' => ['key' => $key, 'label' => 'Katalog yansıması eski', 'tone' => 'red'],
+            'projection_lag' => ['key' => $key, 'label' => 'Katalog yansıması gecikiyor', 'tone' => 'amber'],
             'standard_variant_outdated' => ['key' => $key, 'label' => 'Varyant Eşleşmesi Kontrol', 'tone' => 'red'],
             'quote_price_outdated' => ['key' => $key, 'label' => 'Teklif fiyatı eski olabilir', 'tone' => 'amber'],
             'supplier_access_closed' => ['key' => $key, 'label' => 'Tedarikçi erişimi kapalı', 'tone' => 'red'],
@@ -452,6 +640,72 @@ class ProductHubFreshnessDiagnosticService
         return $values->count() > 1;
     }
 
+    private function hasPriceMismatch(array $snapshots): bool
+    {
+        if ($this->hasSourceSignatureMismatch($snapshots)) {
+            return true;
+        }
+
+        $targetCurrency = $this->comparisonCurrency($snapshots);
+        $values = collect($snapshots)
+            ->map(fn (array $snapshot) => $this->comparisonPriceValue($snapshot, $targetCurrency))
+            ->filter(fn ($value) => $value !== null)
+            ->unique()
+            ->values();
+
+        return $values->count() > 1;
+    }
+
+    private function hasSourceSignatureMismatch(array $snapshots): bool
+    {
+        $signatures = collect($snapshots)
+            ->map(fn (array $snapshot) => $this->sourceSignature($snapshot))
+            ->filter()
+            ->unique()
+            ->values();
+
+        return $signatures->count() > 1;
+    }
+
+    private function hasRateChangedSinceProjection(array $raw, array $standard, array $projection, array $quote): bool
+    {
+        if ($this->hasPriceMismatch([$raw, $standard, $projection, $quote]) || $this->hasSourceSignatureMismatch([$raw, $standard, $projection, $quote])) {
+            return false;
+        }
+
+        $rates = collect([$raw, $standard, $projection, $quote])
+            ->map(fn (array $snapshot) => $this->normalizeRateValue($snapshot['applied_rate'] ?? null))
+            ->filter(fn ($value) => $value !== null)
+            ->unique()
+            ->values();
+
+        return $rates->count() > 1;
+    }
+
+    private function sourceSignature(array $snapshot): ?string
+    {
+        $sourceCurrency = $this->normalizeCurrencyCode($snapshot['source_currency'] ?? null);
+        $sourcePrice = $this->normalizeSourceValue($snapshot['source_price'] ?? null);
+
+        if ($sourceCurrency === null || $sourcePrice === null) {
+            return null;
+        }
+
+        return $sourceCurrency . ':' . $sourcePrice;
+    }
+
+    private function priceValuesDiffer(mixed $left, mixed $right): bool
+    {
+        $leftValue = $this->normalizeMoneyValue($left);
+        $rightValue = $this->normalizeMoneyValue($right);
+
+        if ($leftValue === null || $rightValue === null) {
+            return false;
+        }
+
+        return $leftValue !== $rightValue;
+    }
+
     private function valuesDiffer(mixed $left, mixed $right): bool
     {
         if ($left === null || $right === null) {
@@ -459,6 +713,86 @@ class ProductHubFreshnessDiagnosticService
         }
 
         return abs((float) $left - (float) $right) > self::EPSILON;
+    }
+
+    private function comparisonCurrency(array $snapshots): ?string
+    {
+        foreach ($snapshots as $snapshot) {
+            $priceCurrency = $this->normalizeCurrencyCode($snapshot['price_currency'] ?? null);
+            if ($priceCurrency !== null) {
+                return $priceCurrency;
+            }
+        }
+
+        return null;
+    }
+
+    private function comparisonPriceValue(array $snapshot, ?string $targetCurrency): ?string
+    {
+        $price = $snapshot['price'] ?? null;
+        if ($price === null || $price === '') {
+            return null;
+        }
+
+        $priceCurrency = $this->normalizeCurrencyCode($snapshot['price_currency'] ?? null);
+        if ($targetCurrency === null || $priceCurrency === null || $priceCurrency === $targetCurrency) {
+            return $this->normalizeMoneyValue($price);
+        }
+
+        $sourceCurrency = $this->normalizeCurrencyCode($snapshot['source_currency'] ?? null);
+        $sourcePrice = $snapshot['source_price'] ?? null;
+        $appliedRate = $snapshot['applied_rate'] ?? null;
+
+        if ($sourceCurrency !== null && $sourceCurrency === $priceCurrency && $sourceCurrency !== $targetCurrency && $sourcePrice !== null && $appliedRate !== null) {
+            return $this->normalizeMoneyValue((float) $sourcePrice * (float) $appliedRate);
+        }
+
+        return null;
+    }
+
+    private function normalizeMoneyValue(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return number_format(round((float) $value, $this->moneyPrecision()), $this->moneyPrecision(), '.', '');
+    }
+
+    private function normalizeSourceValue(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $precision = (int) config('prodelya_currency.calculation_precision', 12);
+
+        return number_format(round((float) $value, $precision), $precision, '.', '');
+    }
+
+    private function normalizeRateValue(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $precision = (int) config('prodelya_currency.rate_precision', 8);
+
+        return number_format(round((float) $value, $precision), $precision, '.', '');
+    }
+
+    private function normalizeCurrencyCode(mixed $value): ?string
+    {
+        if (!is_string($value) || trim($value) === '') {
+            return null;
+        }
+
+        return strtoupper(trim($value));
+    }
+
+    private function moneyPrecision(): int
+    {
+        return (int) config('prodelya_currency.money_precision', 2);
     }
 
     private function valueListLabel(Collection $values, bool $isPrice): string

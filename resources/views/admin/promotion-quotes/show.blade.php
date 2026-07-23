@@ -107,12 +107,23 @@
     $initialPreviewMessage = $existingPublicQuoteUrl
         ? "Merhaba " . (old('contact_name', $latestApprovalRequest?->contact_name ?: ($quote->customer?->legal_name ?: 'Müşterimiz')) ?: 'Müşterimiz') . ",\n\n" . $quote->document_number . " numaralı teklifinizi inceleyebilirsiniz:\n" . $existingPublicQuoteUrl
         : "Merhaba " . (old('contact_name', $latestApprovalRequest?->contact_name ?: ($quote->customer?->legal_name ?: 'Müşterimiz')) ?: 'Müşterimiz') . ",\n\nPublic onay linki gönderim sonrası hazırlanır. WhatsApp Link kanalında link ayrı satırda tam URL olarak üretilir.";
+    $currencyLabel = static function (?string $currency): ?string {
+        if (! filled($currency)) {
+            return $currency;
+        }
+
+        return strtoupper((string) $currency) === 'TRY' ? 'TL' : strtoupper((string) $currency);
+    };
     $moneyText = static function ($amount, ?string $currency = null) use ($canViewFinancialData): string {
         if (! $canViewFinancialData) {
             return 'Gizli';
         }
 
-        return number_format((float) $amount, 2, ',', '.') . ($currency ? ' ' . $currency : '');
+        $displayCurrency = filled($currency) && strtoupper((string) $currency) === 'TRY'
+            ? 'TL'
+            : $currency;
+
+        return number_format((float) $amount, 2, ',', '.') . ($displayCurrency ? ' ' . $displayCurrency : '');
     };
     $quantityText = static function ($amount, ?string $unit = null): string {
         $value = (float) $amount;
@@ -130,9 +141,7 @@
         'whatsapp_link' => 2,
         default => 0,
     };
-    $quoteGuideNotice = ($publicQuoteApprovalEnabled ?? false)
-        ? 'WhatsApp Link için e-posta zorunlu değildir. Telefon alanı yeterliyse güvenli gönderim bağlantısı hazırlanır.'
-        : null;
+    $quoteGuideNotice = null;
     $showConvertPlaceholder = ! $isConverted && $itemCount > 0 && ! $canConvert;
     $quoteAlertMessage = null;
     $quoteAlertType = null;
@@ -266,6 +275,39 @@
             <div class="quote-metric"><span>Kalem / Baskı</span><strong>{{ $itemCount }} kalem / {{ $printCount }} baskı</strong></div>
             <div class="quote-metric"><span>Genel Toplam</span><strong>{{ $moneyText($quote->grand_total, $quote->currency) }}</strong></div>
         </div>
+    </section>
+
+    <section class="pd-card pd-quote-detail__notice quote-guide-notice">
+        Para birimi: <strong>{{ $currencyLabel($quoteCurrency['document_currency'] ?? $quote->currency) }}</strong>
+
+        {{-- Show currency details only for USD/EUR --}}
+        @if(in_array(($quoteCurrency['document_currency'] ?? $quote->currency), ['USD', 'EUR']))
+            @if(($quoteCurrency['status_visible'] ?? false) && filled($quoteCurrency['status_label'] ?? null))
+                · Kullanılan kur: {{ $quoteCurrency['rate'] ?? '-' }}
+                · Kur tarihi: {{ optional($quoteCurrency['rate_date'] ?? $quoteCurrency['last_refreshed_at'])->format('d.m.Y') ?? '-' }}
+                @if(($quoteCurrency['last_refreshed_at'] ?? null))
+                    · {{ $quoteCurrency['status_label'] }}
+                @endif
+            @endif
+
+            {{-- Show actions only for editable drafts --}}
+            @if(($quoteCurrency['can_refresh'] ?? false) || ($quoteCurrency['can_acknowledge'] ?? false))
+                <div class="mt-3 flex flex-wrap gap-2">
+                    @if($quoteCurrency['can_refresh'] ?? false)
+                        <form method="POST" action="{{ route('admin.promotion-quotes.currency.refresh', $quote) }}">
+                            @csrf
+                            <button type="submit" class="pd-btn pd-btn-light">Kuru Yenile</button>
+                        </form>
+                    @endif
+                    @if($quoteCurrency['can_acknowledge'] ?? false)
+                        <form method="POST" action="{{ route('admin.promotion-quotes.currency.acknowledge', $quote) }}">
+                            @csrf
+                            <button type="submit" class="pd-btn pd-btn-light">Mevcut Kuru Koru</button>
+                        </form>
+                    @endif
+                </div>
+            @endif
+        @endif
     </section>
 
     <div class="quote-layout">

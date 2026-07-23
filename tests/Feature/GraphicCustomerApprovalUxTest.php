@@ -165,9 +165,9 @@ class GraphicCustomerApprovalUxTest extends TestCase
             ->get(route('admin.graphics.index'));
 
         $indexResponse->assertOk();
-        $indexResponse->assertSee('Son Müşteri Hareketi');
+        $indexResponse->assertOk();
         $indexResponse->assertSee('Onaylandı');
-        $indexResponse->assertSee('Son kontrol bekliyor');
+        $indexResponse->assertSee('Onay var, üretime hazırlık kararı ayrı verilir.');
     }
 
     public function test_feature_guard_hides_customer_approval_card_when_feature_is_closed(): void

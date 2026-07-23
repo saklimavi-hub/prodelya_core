@@ -57,7 +57,7 @@ class ProductHubDeltaFreshnessActionsUiTest extends TestCase
         $response->assertOk();
         $card = $this->extractSourceCard($response->getContent(), $source->id);
         $this->assertStringContainsString('Katalog Tazeliği', $card);
-        $this->assertStringContainsString('Normal fiyat/stok değişimleri sessiz akışta ilerlemeli', $card);
+        $this->assertStringContainsString('Normal fiyat/stok değişimleri sessiz akışta ilerler', $card);
         $this->assertStringContainsString('Ürünleri Senkronize Et', $card);
         $this->assertStringContainsString('Sadece Tara', $card);
         $this->assertStringContainsString('Satış Listesi Onar', $card);

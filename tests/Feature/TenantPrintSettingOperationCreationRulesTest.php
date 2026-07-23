@@ -169,11 +169,20 @@ class TenantPrintSettingOperationCreationRulesTest extends TestCase
 
         $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
+            ->patch(route('admin.productions.update-assignment', $production), [
+                'production_type' => OrderItemPrintProduction::TYPE_INTERNAL,
+                'production_unit_name' => 'Lazer Hat 1',
+                'assigned_to' => $this->adminUser->id,
+            ])
+            ->assertRedirect(route('admin.productions.operator', $production));
+
+        $this->actingAs($this->adminUser)
+            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
             ->patch(route('admin.productions.update-status', $production), [
                 'action' => 'assign_internal',
                 'production_unit_name' => 'Lazer Hat 1',
             ])
-            ->assertRedirect(route('admin.productions.show', $production));
+            ->assertRedirect(route('admin.productions.operator', $production));
 
         $ordersIndex = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])

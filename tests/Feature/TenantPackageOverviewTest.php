@@ -102,7 +102,7 @@ class TenantPackageOverviewTest extends TestCase
         $response->assertSee('Yaklaşıyor');
         $response->assertSee('Limitsiz');
         $response->assertSee('Aktif Modüller');
-        $response->assertSee('Müşteri Portalı');
+        $response->assertSee('Musteri Portali');
         $response->assertSee('Yükseltilebilir Modüller');
         $response->assertSee('XML / Feed Hizmeti');
         $response->assertSee('Paket Taleplerim');

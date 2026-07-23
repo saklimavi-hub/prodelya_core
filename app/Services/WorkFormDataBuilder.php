@@ -6,8 +6,13 @@ use App\Models\Company;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\OrderItemPrintSetupRequirement;
+use App\Services\PromotionIntermediateElementPolicy;
 class WorkFormDataBuilder
 {
+    public function __construct(
+        protected PromotionIntermediateElementPolicy $promotionIntermediateElementPolicy
+    ) {}
+
     public function build(Order $order, OrderItem $item, int $itemSequence): array
     {
         $order->loadMissing(['customer.contacts', 'customer.addresses']);
@@ -104,7 +109,9 @@ class WorkFormDataBuilder
         return $item->prints
             ->values()
             ->map(function ($print, int $index) use ($itemSequence, $alpha) {
-                $setupSummary = $print->setupStatusSummary();
+                $setupSummary = $this->promotionIntermediateElementPolicy->shouldRender()
+                    ? $print->setupStatusSummary()
+                    : $this->emptySetupSummary();
 
                 return [
                     'sequence' => $itemSequence . ($alpha[$index] ?? (string) ($index + 1)),
@@ -115,13 +122,13 @@ class WorkFormDataBuilder
                     'print_quantity' => (float) ($print->print_quantity ?? 0),
                     'note' => $print->note,
                     'production_note' => $print->production_note,
-                    'cliche_status' => $print->cliche_status,
+                    'cliche_status' => $this->promotionIntermediateElementPolicy->shouldRender() ? $print->cliche_status : null,
                     'status' => $print->status,
                     'graphic_required' => $print->effectiveRequiresGraphic(),
                     'production_required' => $print->effectiveRequiresProduction(),
                     'graphic_required_label' => $print->effectiveRequiresGraphic() ? 'Grafik gerekli' : 'Grafik gerekli değil',
                     'production_required_label' => $print->effectiveRequiresProduction() ? 'Üretim gerekli' : 'Üretim gerekli değil',
-                    'setup_required' => (bool) data_get($setupSummary, 'required', false),
+                    'setup_required' => $this->promotionIntermediateElementPolicy->shouldRender() && (bool) data_get($setupSummary, 'required', false),
                     'setup_summary' => $setupSummary,
                 ];
             })
@@ -199,8 +206,8 @@ class WorkFormDataBuilder
                 'completed_quantity' => 0,
                 'remaining_quantity' => 0,
                 'cliche_required' => false,
-                'cliche_status' => 'gerekli_degil',
-                'cliche_status_label' => 'Gerekli Değil',
+                'cliche_status' => null,
+                'cliche_status_label' => null,
                 'note' => null,
                 'issue_note' => null,
                 'qc_status' => 'gerekli_degil',
@@ -208,14 +215,7 @@ class WorkFormDataBuilder
                 'qc_note' => null,
                 'public_status_label' => 'Üretim gerekli değil',
                 'setup_required' => false,
-                'setup_summary' => [
-                    'required' => false,
-                    'total' => 0,
-                    'ready_count' => 0,
-                    'pending_count' => 0,
-                    'labels' => [],
-                    'items' => [],
-                ],
+                'setup_summary' => $this->emptySetupSummary(),
                 'updated_at' => null,
             ];
         }
@@ -237,8 +237,8 @@ class WorkFormDataBuilder
                 'completed_quantity' => 0,
                 'remaining_quantity' => 0,
                 'cliche_required' => false,
-                'cliche_status' => 'gerekli_degil',
-                'cliche_status_label' => 'Gerekli Değil',
+                'cliche_status' => null,
+                'cliche_status_label' => null,
                 'note' => null,
                 'issue_note' => null,
                 'qc_status' => 'gerekli_degil',
@@ -246,23 +246,18 @@ class WorkFormDataBuilder
                 'qc_note' => null,
                 'public_status_label' => 'Üretim gerekli değil',
                 'setup_required' => false,
-                'setup_summary' => [
-                    'required' => false,
-                    'total' => 0,
-                    'ready_count' => 0,
-                    'pending_count' => 0,
-                    'labels' => [],
-                    'items' => [],
-                ],
+                'setup_summary' => $this->emptySetupSummary(),
                 'updated_at' => null,
             ];
         }
 
-        $requirements = $item->prints
-            ->filter(fn ($print) => $print->effectiveRequiresProduction())
-            ->flatMap(fn ($print) => data_get($print->setupStatusSummary(), 'items', []))
-            ->values()
-            ->all();
+        $requirements = $this->promotionIntermediateElementPolicy->shouldRender()
+            ? $item->prints
+                ->filter(fn ($print) => $print->effectiveRequiresProduction())
+                ->flatMap(fn ($print) => data_get($print->setupStatusSummary(), 'items', []))
+                ->values()
+                ->all()
+            : [];
         $setupRequired = !empty($requirements);
         $readyCount = collect($requirements)->where('status', OrderItemPrintSetupRequirement::STATUS_READY)->count();
         $pendingCount = collect($requirements)->filter(fn ($row) => in_array(data_get($row, 'status'), [
@@ -282,14 +277,7 @@ class WorkFormDataBuilder
             'qc_note' => null,
             'public_status_label' => 'Üretim bekliyor',
             'setup_required' => $setupRequired,
-            'setup_summary' => [
-                'required' => $setupRequired,
-                'total' => count($requirements),
-                'ready_count' => $readyCount,
-                'pending_count' => $pendingCount,
-                'labels' => collect($requirements)->pluck('setup_type_label')->filter()->unique()->values()->all(),
-                'items' => $requirements,
-            ],
+            'setup_summary' => $this->emptySetupSummary($requirements, $readyCount, $pendingCount),
             'updated_at' => null,
         ];
     }
@@ -328,6 +316,18 @@ class WorkFormDataBuilder
             'financial_warning' => 'odeme_bekliyor',
             'financial_warning_label' => 'Ödeme bekliyor',
             'updated_at' => null,
+        ];
+    }
+
+    private function emptySetupSummary(array $items = [], int $readyCount = 0, int $pendingCount = 0): array
+    {
+        return [
+            'required' => !empty($items),
+            'total' => count($items),
+            'ready_count' => $readyCount,
+            'pending_count' => $pendingCount,
+            'labels' => collect($items)->pluck('setup_type_label')->filter()->unique()->values()->all(),
+            'items' => array_values($items),
         ];
     }
 

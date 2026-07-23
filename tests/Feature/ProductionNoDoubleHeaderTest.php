@@ -48,22 +48,33 @@ class ProductionNoDoubleHeaderTest extends TestCase
         $baseContent = $base->getContent();
         $this->assertSame(
             1,
-            substr_count($baseContent, '<h2 class="prd-section-title">Genel Özet</h2>'),
-            'Genel Özet başlığı tekil görünmeli.'
+            substr_count($baseContent, 'pd-ui-v1-production-detail'),
+            'Kompakt üretim detay yüzeyi tekil görünmeli.'
         );
+        $this->assertSame(
+            1,
+            substr_count($baseContent, 'Üretim Detayı · Exact Baskı'),
+            'Üretim detay başlığı tekil görünmeli.'
+        );
+        $this->assertSame(0, substr_count($baseContent, 'Canonical Akış'));
+
+        $legacyActions = $this->actingAs($this->adminUser)
+            ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
+            ->get(route('admin.productions.show', $production) . '?tab=islemler');
+        $legacyActions->assertRedirect(route('admin.productions.operator', $production));
 
         $actions = $this->actingAs($this->adminUser)
             ->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])
-            ->get(route('admin.productions.show', $production) . '?tab=islemler');
+            ->get(route('admin.productions.operator', $production));
         $actions->assertOk();
 
         $actionsContent = $actions->getContent();
         $this->assertSame(
             1,
-            substr_count($actionsContent, '<h2 class="prd-section-title">Operasyon Yönetimi</h2>'),
-            'Operasyon Yönetimi başlığı tekil görünmeli.'
+            substr_count($actionsContent, 'pd-ui-v1-internal-operator'),
+            'Canonical operatör ekranı tekil görünmeli.'
         );
-        $this->assertSame(0, substr_count($baseContent, '<h2 class="prd-section-title">Operasyon Yönetimi</h2>'));
+        $this->assertSame(0, substr_count($baseContent, 'pd-ui-v1-internal-operator'));
     }
 
     private function createProductionRecord(): OrderItemPrintProduction

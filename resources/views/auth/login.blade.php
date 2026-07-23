@@ -10,7 +10,7 @@
             font-family: Arial, Helvetica, sans-serif;
             background-color: #f6f7f9;
         }
-        
+
         .card {
             background-color: white;
             border-radius: 0.375rem;
@@ -35,7 +35,7 @@
             </p>
         </div>
 
-        <form class="mt-8 space-y-6" action="{{ route('login.post') }}" method="POST">
+        <form class="mt-8 space-y-6" action="{{ route('login.post', absolute: false) }}" method="POST">
             @csrf
             <input type="hidden" name="remember" value="false">
 

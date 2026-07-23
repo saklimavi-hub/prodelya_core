@@ -24,10 +24,11 @@ class QuotePdfSetupPriceVisibilityTest extends TestCase
         $visibleQuote = $this->createQuote($adminUser, $customer, 'TK-PDF-SETUP-01', true);
         $visibleHtml = app(PromotionQuotePdfService::class)->renderHtml($visibleQuote->fresh());
 
-        $this->assertStringContainsString('23,00 TL', $visibleHtml);
-        $this->assertStringContainsString('2.300,00 TL', $visibleHtml);
-        $this->assertStringContainsString('Baskı Birim: 18,00 TL', $visibleHtml);
-        $this->assertStringContainsString('Baskı Toplam: 1.800,00 TL', $visibleHtml);
+        $this->assertStringContainsString('5,00 TL', $visibleHtml);
+        $this->assertStringContainsString('500,00 TL', $visibleHtml);
+        $this->assertStringContainsString('Ürün + Baskı Toplamı: 2.300,00 TL', $visibleHtml);
+        $this->assertStringContainsString('Baskı Birim Fiyatı: 18,00 TL', $visibleHtml);
+        $this->assertStringContainsString('Baskı Toplamı: 1.800,00 TL', $visibleHtml);
         $this->assertStringNotContainsString('Ara eleman toplam tutarı', $visibleHtml);
         $this->assertStringNotContainsString('Ara eleman toplamı', $visibleHtml);
         $this->assertStringNotContainsString('Klişe maliyeti', $visibleHtml);
@@ -39,8 +40,8 @@ class QuotePdfSetupPriceVisibilityTest extends TestCase
 
         $this->assertStringContainsString('23,00 TL', $hiddenHtml);
         $this->assertStringContainsString('2.300,00 TL', $hiddenHtml);
-        $this->assertStringNotContainsString('Baskı Birim:', $hiddenHtml);
-        $this->assertStringNotContainsString('Baskı Toplam:', $hiddenHtml);
+        $this->assertStringNotContainsString('Baskı Birim Fiyatı:', $hiddenHtml);
+        $this->assertStringNotContainsString('Baskı Toplamı:', $hiddenHtml);
         $this->assertStringNotContainsString('Ara eleman toplam tutarı', $hiddenHtml);
         $this->assertStringNotContainsString('Ara eleman toplamı', $hiddenHtml);
         $this->assertStringNotContainsString('base_print_unit_price', $hiddenHtml);

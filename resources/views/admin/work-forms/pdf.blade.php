@@ -563,7 +563,7 @@
                             </tr>
                             <tr>
                                 <td><span class="wf-field-label">Planlanan / Tamamlanan</span><div class="wf-field-value">{{ data_get($productionSnapshot, 'planned_quantity', 0) }} / {{ data_get($productionSnapshot, 'completed_quantity', 0) }}</div></td>
-                                <td><span class="wf-field-label">Kalan / Klişe Durumu</span><div class="wf-field-value">{{ data_get($productionSnapshot, 'remaining_quantity', 0) }} / {{ data_get($productionSnapshot, 'cliche_status_label', '-') }}</div></td>
+                                @if(app(\App\Services\PromotionIntermediateElementPolicy::class)->shouldRender())<td><span class="wf-field-label">Kalan / Klişe Durumu</span><div class="wf-field-value">{{ data_get($productionSnapshot, 'remaining_quantity', 0) }} / {{ data_get($productionSnapshot, 'cliche_status_label', '-') }}</div></td>@else<td><span class="wf-field-label">Kalan</span><div class="wf-field-value">{{ data_get($productionSnapshot, 'remaining_quantity', 0) }}</div></td>@endif
                             </tr>
                             <tr>
                                 <td colspan="2"><span class="wf-field-label">Üretim Notu</span><div class="wf-field-value">{{ data_get($productionSnapshot, 'note', '-') ?: '-' }}</div></td>

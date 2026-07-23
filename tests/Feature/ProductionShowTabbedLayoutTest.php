@@ -42,12 +42,13 @@ class ProductionShowTabbedLayoutTest extends TestCase
         $response = $this->actingAs($this->adminUser)->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])->get("/admin/productions/{$production->id}");
 
         $response->assertStatus(200);
-        $response->assertSee('Genel Özet');
-        $response->assertSee('İç Üretim');
-        $response->assertSee('Dış Üretim / Fason');
-        $response->assertSee('İşlemler');
+        $response->assertSee('Üretim Detayı · Exact Baskı');
         $response->assertSee('Fotoğraflar');
         $response->assertSee('Geçmiş');
+        $response->assertSee('Sıradaki İşlem');
+        $response->assertDontSee('?tab=ic-uretim', false);
+        $response->assertDontSee('?tab=dis-uretim', false);
+        $response->assertDontSee('?tab=islemler', false);
     }
 
     public function test_production_show_default_tab_is_internal_tab_for_internal_records(): void
@@ -57,9 +58,10 @@ class ProductionShowTabbedLayoutTest extends TestCase
         $response = $this->actingAs($this->adminUser)->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])->get("/admin/productions/{$production->id}");
 
         $response->assertStatus(200);
-        $response->assertSee('İç Üretim');
-        $response->assertSee('tabs-nav-item active');
-        $response->assertSee('Üretim Akış Adımları');
+        $response->assertSee('Üretim Detayı · Exact Baskı');
+        $response->assertSee('pd-production-detail__collapse', false);
+        $response->assertSee('Süreç durumu');
+        $response->assertSee('Sıradaki İşlem');
     }
 
     public function test_production_show_no_duplicate_headers(): void
@@ -81,12 +83,12 @@ class ProductionShowTabbedLayoutTest extends TestCase
         $response = $this->actingAs($this->adminUser)->withServerVariables(['HTTP_HOST' => self::CENTRAL_HOST])->get("/admin/productions/{$production->id}");
 
         $response->assertStatus(200);
-        $response->assertSee('?tab=genel');
-        $response->assertSee('?tab=ic-uretim');
-        $response->assertSee('?tab=dis-uretim');
-        $response->assertSee('?tab=islemler');
-        $response->assertSee('?tab=fotograflar');
-        $response->assertSee('?tab=gecmis');
+        $response->assertSee('Teknik / Kayıt Detayları');
+        $response->assertSee('Fotoğraflar');
+        $response->assertSee('Geçmiş');
+        $response->assertDontSee('?tab=ic-uretim', false);
+        $response->assertDontSee('?tab=dis-uretim', false);
+        $response->assertDontSee('?tab=islemler', false);
     }
 
     private function createProductionRecord(string $productionType = OrderItemPrintProduction::TYPE_INTERNAL): OrderItemPrintProduction

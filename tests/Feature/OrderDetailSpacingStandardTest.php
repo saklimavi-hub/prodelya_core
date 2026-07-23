@@ -12,10 +12,11 @@ class OrderDetailSpacingStandardTest extends TestCase
     use BuildsOrderShowFixtures;
     use RefreshDatabase;
 
+    protected bool $seed = true;
+
     protected function setUp(): void
     {
         parent::setUp();
-        $this->seed();
         $this->setUpOrderShowFixtures();
     }
 
