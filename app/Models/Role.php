@@ -117,13 +117,29 @@ class Role extends Model
             return [];
         }
 
+        $catalog = config('prodelya_permissions.permissions', []);
         $flattened = [];
 
-        array_walk_recursive($permissions, function ($value) use (&$flattened) {
-            if (is_string($value)) {
-                $flattened[] = $value;
+        foreach ($permissions as $key => $value) {
+            $values = is_array($value) ? $value : [$value];
+            $category = is_string($key) ? ($catalog[$key] ?? null) : null;
+
+            if (is_array($category) && in_array('*', $values, true)) {
+                // Category-scoped wildcard (e.g. 'customers' => ['*']): expand to
+                // that category's real permission keys only. A bare '*' must never
+                // be left in the flattened list here, or hasPermission() would
+                // treat it as a global wildcard for every category.
+                $flattened = array_merge($flattened, array_keys($category));
+
+                continue;
             }
-        });
+
+            array_walk_recursive($values, function ($leaf) use (&$flattened): void {
+                if (is_string($leaf) && $leaf !== '*') {
+                    $flattened[] = $leaf;
+                }
+            });
+        }
 
         return array_values(array_unique($flattened));
     }
