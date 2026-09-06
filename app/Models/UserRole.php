@@ -16,6 +16,17 @@ class UserRole extends Model
     ];
 
     /**
+     * Any role assignment change must invalidate User::rolesForTenant()'s
+     * request-scoped cache - see that method's docblock for why this can't
+     * rely on the HTTP request boundary alone.
+     */
+    protected static function booted(): void
+    {
+        static::saved(fn () => User::forgetRolesForTenantCache());
+        static::deleted(fn () => User::forgetRolesForTenantCache());
+    }
+
+    /**
      * Get the user that owns the role assignment
      */
     public function user()

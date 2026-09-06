@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Http\Request;
 use Illuminate\Notifications\Notifiable;
 
 #[Fillable(['name', 'email', 'phone', 'password', 'is_platform_admin', 'last_login_at', 'last_login_ip'])]
@@ -17,6 +18,8 @@ class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
+
+    private const ROLES_FOR_TENANT_CACHE_KEY = '_roles_for_tenant_cache';
 
     /**
      * Get the attributes that should be cast.
@@ -46,15 +49,72 @@ class User extends Authenticatable
     }
 
     /**
-     * Get the user's roles for a specific tenant
+     * Get the user's roles for a specific tenant.
+     *
+     * Memoized on the *current HTTP request instance* (not on this model
+     * instance), keyed by user+tenant, so repeated permission checks within
+     * a single request/page render (e.g. the admin menu evaluating several
+     * permission-gated items) don't re-query for every check. The whole
+     * cache map lives under one request attribute key so it can be dropped
+     * atomically.
+     *
+     * This alone would still go stale whenever a UserRole or Role row
+     * changes without an intervening HTTP request boundary (e.g. an Artisan
+     * command that repairs a role assignment and then immediately re-checks
+     * permissions in the same process - there is no Kernel::handle() call
+     * to rebind a fresh Request in that case). UserRole and Role therefore
+     * both call self::forgetRolesForTenantCache() from their model events
+     * to invalidate on any write, regardless of request/console boundaries.
      */
     public function rolesForTenant($tenantId)
     {
-        return $this->userRoles()
+        $tenantId = (int) $tenantId;
+        $request = app()->bound('request') ? app('request') : null;
+
+        if (!$request instanceof Request) {
+            return $this->userRoles()
+                ->where('tenant_account_id', $tenantId)
+                ->with('role')
+                ->get()
+                ->pluck('role');
+        }
+
+        $cache = $request->attributes->get(self::ROLES_FOR_TENANT_CACHE_KEY, []);
+        $key = $this->getKey() . ':' . $tenantId;
+
+        if (array_key_exists($key, $cache)) {
+            return $cache[$key];
+        }
+
+        $roles = $this->userRoles()
             ->where('tenant_account_id', $tenantId)
             ->with('role')
             ->get()
             ->pluck('role');
+
+        $cache[$key] = $roles;
+        $request->attributes->set(self::ROLES_FOR_TENANT_CACHE_KEY, $cache);
+
+        return $roles;
+    }
+
+    /**
+     * Drop the entire rolesForTenant() cache for the current request (if
+     * any). Called from UserRole/Role model events whenever role data
+     * changes, so a stale read never survives a write - independent of
+     * whether an HTTP request boundary happened in between.
+     */
+    public static function forgetRolesForTenantCache(): void
+    {
+        if (!app()->bound('request')) {
+            return;
+        }
+
+        $request = app('request');
+
+        if ($request instanceof Request) {
+            $request->attributes->remove(self::ROLES_FOR_TENANT_CACHE_KEY);
+        }
     }
 
     /**
@@ -76,13 +136,13 @@ class User extends Authenticatable
     public function hasPermissionInTenant($permission, $tenantId)
     {
         $roles = $this->rolesForTenant($tenantId);
-
+        
         foreach ($roles as $role) {
             if ($role->hasPermission($permission)) {
                 return true;
             }
         }
-
+        
         return false;
     }
 
@@ -92,13 +152,13 @@ class User extends Authenticatable
     public function hasAnyPermissionInTenant(array $permissions, $tenantId)
     {
         $roles = $this->rolesForTenant($tenantId);
-
+        
         foreach ($roles as $role) {
             if ($role->hasAnyPermission($permissions)) {
                 return true;
             }
         }
-
+        
         return false;
     }
 
@@ -162,7 +222,7 @@ class User extends Authenticatable
             'manage_current_account_transactions',
             'cancel_current_account_transactions',
         ];
-
+        
         return $this->hasAnyPermissionInTenant($financialPermissions, $tenantId);
     }
 }

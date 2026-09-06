@@ -25,6 +25,18 @@ class Role extends Model
         'is_active' => 'boolean',
     ];
 
+    /**
+     * A role's permission set (or active/inactive state) changing must
+     * invalidate User::rolesForTenant()'s request-scoped cache - see that
+     * method's docblock for why this can't rely on the HTTP request
+     * boundary alone.
+     */
+    protected static function booted(): void
+    {
+        static::saved(fn () => User::forgetRolesForTenantCache());
+        static::deleted(fn () => User::forgetRolesForTenantCache());
+    }
+
     // TODO: Add permission checking methods
     // TODO: Add scope methods for active roles
     // TODO: Add validation for role keys against allowed permissions

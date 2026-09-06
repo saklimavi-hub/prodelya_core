@@ -468,7 +468,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:web', 'resolve.tenant'
     Route::get('/companies/import/template', [CompanyImportController::class, 'template'])->middleware('module.enabled:current_accounts')->name('companies.import.template');
 
     // Dynamic company routes - Must come after specific routes
-    Route::get('/companies/{company}', [CompanyController::class, 'show'])->middleware(['module.enabled:current_accounts', 'permission.check:view_customers'])->name('companies.show')->whereNumber('company');
+    Route::get('/companies/{company}', [CompanyController::class, 'show'])->middleware('module.enabled:current_accounts')->name('companies.show')->whereNumber('company');
     Route::post('/companies/{company}/contacts', [CompanyContactController::class, 'store'])
         ->middleware(['module.enabled:current_accounts', 'permission.check:edit_customers'])
         ->name('companies.contacts.store')
