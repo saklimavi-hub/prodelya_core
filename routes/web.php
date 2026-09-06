@@ -411,45 +411,45 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:web', 'resolve.tenant'
         Route::get('/', [StockPurchaseController::class, 'index'])->name('index');
         Route::get('/create', [StockPurchaseController::class, 'create'])->name('create');
         Route::get('/search', [StockPurchaseController::class, 'search'])->name('search');
-        Route::post('/', [StockPurchaseController::class, 'store'])->name('store');
+        Route::post('/', [StockPurchaseController::class, 'store'])->middleware('permission.check:manage_stock')->name('store');
         Route::get('/{entry}', [StockPurchaseController::class, 'show'])->name('show')->whereNumber('entry');
-        Route::post('/{entry}/cancel', [StockPurchaseController::class, 'cancel'])->name('cancel')->whereNumber('entry');
+        Route::post('/{entry}/cancel', [StockPurchaseController::class, 'cancel'])->middleware('permission.check:manage_stock')->name('cancel')->whereNumber('entry');
     });
     Route::get('/catalog/{product}/variants/{variant}', [TenantCatalogController::class, 'showVariant'])->name('catalog.variants.show')->whereNumber('product')->whereNumber('variant');
     Route::post('/catalog/local-products/import/preview', [\App\Http\Controllers\Admin\LocalProductImportController::class, 'preview'])->name('catalog.local-products.import.preview');
     Route::post('/catalog/local-products/import', [\App\Http\Controllers\Admin\LocalProductImportController::class, 'apply'])->name('catalog.local-products.import.apply');
-    Route::post('/catalog/local-products', [\App\Http\Controllers\Admin\LocalProductController::class, 'store'])->name('catalog.local-products.store');
-    Route::put('/catalog/local-products/{product}', [\App\Http\Controllers\Admin\LocalProductController::class, 'update'])->name('catalog.local-products.update')->whereNumber('product');
-    Route::post('/catalog/local-products/{product}/deactivate', [\App\Http\Controllers\Admin\LocalProductController::class, 'deactivate'])->name('catalog.local-products.deactivate')->whereNumber('product');
-    Route::delete('/catalog/local-products/{product}', [\App\Http\Controllers\Admin\LocalProductController::class, 'destroy'])->name('catalog.local-products.destroy')->whereNumber('product');
+    Route::post('/catalog/local-products', [\App\Http\Controllers\Admin\LocalProductController::class, 'store'])->middleware('permission.check:manage_advanced_catalog')->name('catalog.local-products.store');
+    Route::put('/catalog/local-products/{product}', [\App\Http\Controllers\Admin\LocalProductController::class, 'update'])->middleware('permission.check:manage_advanced_catalog')->name('catalog.local-products.update')->whereNumber('product');
+    Route::post('/catalog/local-products/{product}/deactivate', [\App\Http\Controllers\Admin\LocalProductController::class, 'deactivate'])->middleware('permission.check:manage_advanced_catalog')->name('catalog.local-products.deactivate')->whereNumber('product');
+    Route::delete('/catalog/local-products/{product}', [\App\Http\Controllers\Admin\LocalProductController::class, 'destroy'])->middleware('permission.check:manage_advanced_catalog')->name('catalog.local-products.destroy')->whereNumber('product');
     Route::get('/catalog/visibility', [TenantCatalogController::class, 'visibility'])->name('catalog.visibility');
-    Route::post('/catalog/visibility/bulk-update', [TenantCatalogController::class, 'bulkUpdateVisibility'])->name('catalog.visibility.bulk-update');
+    Route::post('/catalog/visibility/bulk-update', [TenantCatalogController::class, 'bulkUpdateVisibility'])->middleware('permission.check:manage_advanced_catalog')->name('catalog.visibility.bulk-update');
     Route::get('/catalog/warnings', [TenantCatalogController::class, 'warnings'])->name('catalog.warnings');
     Route::get('/catalog/search', [CatalogSearchController::class, 'search'])->name('catalog.search');
     Route::get('/product-hub/live-product-info', [ProductHubLiveProductInfoController::class, 'show'])->name('product-hub.live-product-info');
-    Route::post('/catalog/project', [TenantCatalogController::class, 'project'])->name('catalog.project');
-    Route::post('/catalog/{product}/toggle-quote-visibility', [TenantCatalogController::class, 'toggleQuoteVisibility'])->name('catalog.toggle-quote-visibility')->whereNumber('product');
-    Route::post('/catalog/{product}/local-stock', [TenantCatalogController::class, 'updateLocalStock'])->name('catalog.local-stock')->whereNumber('product');
-    Route::post('/catalog/{product}/local-stock-entry', [TenantCatalogController::class, 'storeLocalStockEntry'])->name('catalog.local-stock-entry')->whereNumber('product');
-    Route::post('/catalog/stock-entries/{entry}/cancel', [TenantCatalogController::class, 'cancelLocalStockEntry'])->name('catalog.stock-entries.cancel')->whereNumber('entry');
-    Route::post('/catalog/{product}/warnings/review', [TenantCatalogController::class, 'markWarningReviewed'])->name('catalog.warnings.review')->whereNumber('product');
-    Route::post('/catalog/{product}/warnings/action', [TenantCatalogController::class, 'quickWarningAction'])->name('catalog.warnings.action')->whereNumber('product');
+    Route::post('/catalog/project', [TenantCatalogController::class, 'project'])->middleware('permission.check:manage_advanced_catalog')->name('catalog.project');
+    Route::post('/catalog/{product}/toggle-quote-visibility', [TenantCatalogController::class, 'toggleQuoteVisibility'])->middleware('permission.check:manage_advanced_catalog')->name('catalog.toggle-quote-visibility')->whereNumber('product');
+    Route::post('/catalog/{product}/local-stock', [TenantCatalogController::class, 'updateLocalStock'])->middleware('permission.check:manage_stock')->name('catalog.local-stock')->whereNumber('product');
+    Route::post('/catalog/{product}/local-stock-entry', [TenantCatalogController::class, 'storeLocalStockEntry'])->middleware('permission.check:manage_stock')->name('catalog.local-stock-entry')->whereNumber('product');
+    Route::post('/catalog/stock-entries/{entry}/cancel', [TenantCatalogController::class, 'cancelLocalStockEntry'])->middleware('permission.check:manage_stock')->name('catalog.stock-entries.cancel')->whereNumber('entry');
+    Route::post('/catalog/{product}/warnings/review', [TenantCatalogController::class, 'markWarningReviewed'])->middleware('permission.check:manage_advanced_catalog')->name('catalog.warnings.review')->whereNumber('product');
+    Route::post('/catalog/{product}/warnings/action', [TenantCatalogController::class, 'quickWarningAction'])->middleware('permission.check:manage_advanced_catalog')->name('catalog.warnings.action')->whereNumber('product');
     Route::get('/catalog/{product}', [TenantCatalogController::class, 'show'])->name('catalog.show')->whereNumber('product');
-    Route::post('/catalog/{product}/toggle-visibility', [TenantCatalogController::class, 'toggleVisibility'])->name('catalog.toggle-visibility')->whereNumber('product');
-    Route::get('/companies', [CompanyController::class, 'index'])->middleware('module.enabled:current_accounts')->name('companies.index');
-    Route::get('/companies/create', [CompanyController::class, 'create'])->middleware('module.enabled:current_accounts')->name('companies.create');
-    Route::post('/companies', [CompanyController::class, 'store'])->middleware('module.enabled:current_accounts')->name('companies.store');
+    Route::post('/catalog/{product}/toggle-visibility', [TenantCatalogController::class, 'toggleVisibility'])->middleware('permission.check:manage_advanced_catalog')->name('catalog.toggle-visibility')->whereNumber('product');
+    Route::get('/companies', [CompanyController::class, 'index'])->middleware(['module.enabled:current_accounts', 'permission.check:view_customers'])->name('companies.index');
+    Route::get('/companies/create', [CompanyController::class, 'create'])->middleware(['module.enabled:current_accounts', 'permission.check:create_customers'])->name('companies.create');
+    Route::post('/companies', [CompanyController::class, 'store'])->middleware(['module.enabled:current_accounts', 'permission.check:create_customers'])->name('companies.store');
 
     Route::prefix('current-accounts')->name('current-accounts.')->middleware('module.enabled:current_accounts')->group(function () {
         Route::get('/', [CurrentAccountController::class, 'index'])->name('index');
         Route::get('/create', [CurrentAccountController::class, 'create'])->name('create');
-        Route::post('/', [CurrentAccountController::class, 'store'])->name('store');
+        Route::post('/', [CurrentAccountController::class, 'store'])->middleware('permission.check:create_customers')->name('store');
         Route::get('/{currentAccount}', [CurrentAccountController::class, 'show'])->name('show')->whereNumber('currentAccount');
         Route::get('/{currentAccount}/edit', [CurrentAccountController::class, 'edit'])->name('edit')->whereNumber('currentAccount');
-        Route::put('/{currentAccount}', [CurrentAccountController::class, 'update'])->name('update')->whereNumber('currentAccount');
-        Route::patch('/{currentAccount}/status', [CurrentAccountController::class, 'updateStatus'])->name('update-status')->whereNumber('currentAccount');
-        Route::post('/{currentAccount}/supplier-link', [CurrentAccountController::class, 'attachSupplier'])->name('supplier-link.store')->whereNumber('currentAccount');
-        Route::delete('/{currentAccount}/supplier-link', [CurrentAccountController::class, 'detachSupplier'])->name('supplier-link.destroy')->whereNumber('currentAccount');
+        Route::put('/{currentAccount}', [CurrentAccountController::class, 'update'])->middleware('permission.check:edit_customers')->name('update')->whereNumber('currentAccount');
+        Route::patch('/{currentAccount}/status', [CurrentAccountController::class, 'updateStatus'])->middleware('permission.check:edit_customers')->name('update-status')->whereNumber('currentAccount');
+        Route::post('/{currentAccount}/supplier-link', [CurrentAccountController::class, 'attachSupplier'])->middleware('permission.check:edit_customers')->name('supplier-link.store')->whereNumber('currentAccount');
+        Route::delete('/{currentAccount}/supplier-link', [CurrentAccountController::class, 'detachSupplier'])->middleware('permission.check:edit_customers')->name('supplier-link.destroy')->whereNumber('currentAccount');
         Route::get('/{currentAccount}/transactions', [CurrentAccountTransactionController::class, 'accountTransactions'])->name('transactions.index')->whereNumber('currentAccount');
         Route::get('/{currentAccount}/transactions/export/pdf', [CurrentAccountTransactionController::class, 'exportPdf'])->name('transactions.export.pdf')->whereNumber('currentAccount');
         Route::get('/{currentAccount}/transactions/export/excel', [CurrentAccountTransactionController::class, 'exportExcel'])->name('transactions.export.excel')->whereNumber('currentAccount');
@@ -468,36 +468,36 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:web', 'resolve.tenant'
     Route::get('/companies/import/template', [CompanyImportController::class, 'template'])->middleware('module.enabled:current_accounts')->name('companies.import.template');
 
     // Dynamic company routes - Must come after specific routes
-    Route::get('/companies/{company}', [CompanyController::class, 'show'])->middleware('module.enabled:current_accounts')->name('companies.show')->whereNumber('company');
+    Route::get('/companies/{company}', [CompanyController::class, 'show'])->middleware(['module.enabled:current_accounts', 'permission.check:view_customers'])->name('companies.show')->whereNumber('company');
     Route::post('/companies/{company}/contacts', [CompanyContactController::class, 'store'])
-        ->middleware('module.enabled:current_accounts')
+        ->middleware(['module.enabled:current_accounts', 'permission.check:edit_customers'])
         ->name('companies.contacts.store')
         ->whereNumber('company');
     Route::post('/companies/{company}/addresses', [CompanyAddressController::class, 'store'])
-        ->middleware('module.enabled:current_accounts')
+        ->middleware(['module.enabled:current_accounts', 'permission.check:edit_customers'])
         ->name('companies.addresses.store')
         ->whereNumber('company');
     Route::post('/companies/{company}/portal-users', [CustomerPortalUserController::class, 'store'])
-        ->middleware(['module.enabled:current_accounts', 'module.enabled:customer_portal'])
+        ->middleware(['module.enabled:current_accounts', 'module.enabled:customer_portal', 'permission.check:edit_customers'])
         ->name('companies.portal-users.store')
         ->whereNumber('company');
     Route::post('/companies/{company}/portal-users/{portalUser}/resend-invite', [CustomerPortalUserController::class, 'resendInvite'])
-        ->middleware(['module.enabled:current_accounts', 'module.enabled:customer_portal'])
+        ->middleware(['module.enabled:current_accounts', 'module.enabled:customer_portal', 'permission.check:edit_customers'])
         ->name('companies.portal-users.resend-invite')
         ->whereNumber('company')
         ->whereNumber('portalUser');
     Route::post('/companies/{company}/portal-users/{portalUser}/status', [CustomerPortalUserController::class, 'toggleStatus'])
-        ->middleware(['module.enabled:current_accounts', 'module.enabled:customer_portal'])
+        ->middleware(['module.enabled:current_accounts', 'module.enabled:customer_portal', 'permission.check:edit_customers'])
         ->name('companies.portal-users.toggle-status')
         ->whereNumber('company')
         ->whereNumber('portalUser');
     Route::post('/companies/{company}/archive-duplicate', [CompanyController::class, 'archiveDuplicate'])
-        ->middleware('module.enabled:current_accounts')
+        ->middleware(['module.enabled:current_accounts', 'permission.check:edit_customers'])
         ->name('companies.archive-duplicate')
         ->whereNumber('company');
-    Route::get('/companies/{company}/edit', [CompanyController::class, 'edit'])->middleware('module.enabled:current_accounts')->name('companies.edit')->whereNumber('company');
-    Route::put('/companies/{company}', [CompanyController::class, 'update'])->middleware('module.enabled:current_accounts')->name('companies.update')->whereNumber('company');
-    Route::delete('/companies/{company}', [CompanyController::class, 'destroy'])->middleware('module.enabled:current_accounts')->name('companies.destroy')->whereNumber('company');
+    Route::get('/companies/{company}/edit', [CompanyController::class, 'edit'])->middleware(['module.enabled:current_accounts', 'permission.check:edit_customers'])->name('companies.edit')->whereNumber('company');
+    Route::put('/companies/{company}', [CompanyController::class, 'update'])->middleware(['module.enabled:current_accounts', 'permission.check:edit_customers'])->name('companies.update')->whereNumber('company');
+    Route::delete('/companies/{company}', [CompanyController::class, 'destroy'])->middleware(['module.enabled:current_accounts', 'permission.check:delete_customers'])->name('companies.destroy')->whereNumber('company');
 
     // Product Data Hub Routes
     Route::prefix('product-data-hub')->name('product-data-hub.')->middleware('module.enabled:product_data_hub')->group(function () {
@@ -552,10 +552,10 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:web', 'resolve.tenant'
         Route::get('/{order}/tracking/{workForm}', [OrderController::class, 'openTracking'])->name('tracking.open')
             ->whereNumber('order')
             ->whereNumber('workForm');
-        Route::post('/{order}/delivery-packages', [OrderController::class, 'storeDeliveryPackages'])->name('delivery-packages.store')->whereNumber('order');
-        Route::post('/{order}/delivery-labels', [OrderController::class, 'storeDeliveryLabels'])->name('delivery-labels.store')->whereNumber('order');
-        Route::post('/{order}/delivery-info', [OrderController::class, 'updateDeliveryInfo'])->name('delivery-info.update')->whereNumber('order');
-        Route::post('/{order}/delivery-complete', [OrderController::class, 'completeDelivery'])->name('delivery.complete')->whereNumber('order');
+        Route::post('/{order}/delivery-packages', [OrderController::class, 'storeDeliveryPackages'])->middleware('permission.check:edit_orders')->name('delivery-packages.store')->whereNumber('order');
+        Route::post('/{order}/delivery-labels', [OrderController::class, 'storeDeliveryLabels'])->middleware('permission.check:edit_orders')->name('delivery-labels.store')->whereNumber('order');
+        Route::post('/{order}/delivery-info', [OrderController::class, 'updateDeliveryInfo'])->middleware('permission.check:edit_orders')->name('delivery-info.update')->whereNumber('order');
+        Route::post('/{order}/delivery-complete', [OrderController::class, 'completeDelivery'])->middleware('permission.check:edit_orders')->name('delivery.complete')->whereNumber('order');
         Route::post('/{order}/revision-draft', [OrderController::class, 'createRevisionDraft'])->name('revision-draft.store')->whereNumber('order');
         Route::post('/{order}/repeat-order-draft', [OrderController::class, 'createRepeatOrderDraft'])->name('repeat-order-draft.store')->whereNumber('order');
         Route::get('/{order}/delivery-labels/print', [OrderController::class, 'printDeliveryLabels'])->name('delivery-labels.print')->whereNumber('order');
@@ -564,7 +564,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:web', 'resolve.tenant'
         Route::put('/{order}', [OrderController::class, 'update'])->name('update')->whereNumber('order');
         Route::delete('/{order}', [OrderController::class, 'destroy'])->name('destroy')->whereNumber('order');
         Route::post('/{order}/status', [OrderController::class, 'updateStatus'])->name('status.update')->whereNumber('order');
-        Route::post('/convert/{quote}', [OrderController::class, 'convertFromQuote'])->name('convert.from.quote')->whereNumber('quote');
+        Route::post('/convert/{quote}', [OrderController::class, 'convertFromQuote'])->middleware('permission.check:convert_quote_to_order')->name('convert.from.quote')->whereNumber('quote');
     });
 
     Route::prefix('graphics')->name('graphics.')->middleware('module.enabled:graphics')->group(function () {
@@ -679,12 +679,12 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:web', 'resolve.tenant'
         Route::put('/{user}', [UserController::class, 'update'])->name('update')->whereNumber('user');
         Route::delete('/{user}', [UserController::class, 'destroy'])->name('destroy')->whereNumber('user');
     });
-    Route::prefix('/settings/notifications')->name('settings.notifications.')->middleware(['module.enabled:notification_center', 'feature.enabled:notification_center,smtp_settings'])->group(function () {
+    Route::prefix('/settings/notifications')->name('settings.notifications.')->middleware(['module.enabled:notification_center', 'feature.enabled:notification_center,smtp_settings', 'permission.check:manage_notification_settings'])->group(function () {
         Route::get('/smtp', [NotificationSettingsController::class, 'smtp'])->name('smtp');
         Route::put('/smtp', [NotificationSettingsController::class, 'updateSmtp'])->name('smtp.update');
         Route::post('/smtp/test', [NotificationSettingsController::class, 'sendTestMail'])->name('smtp.test');
     });
-    Route::prefix('/settings/notifications')->name('settings.notifications.')->middleware(['module.enabled:notification_center', 'feature.enabled:notification_center,whatsapp_links'])->group(function () {
+    Route::prefix('/settings/notifications')->name('settings.notifications.')->middleware(['module.enabled:notification_center', 'feature.enabled:notification_center,whatsapp_links', 'permission.check:manage_notification_settings'])->group(function () {
         Route::get('/whatsapp', [NotificationSettingsController::class, 'whatsapp'])->name('whatsapp');
         Route::put('/whatsapp', [NotificationSettingsController::class, 'updateWhatsapp'])->name('whatsapp.update');
         Route::post('/whatsapp/preview', [NotificationSettingsController::class, 'previewWhatsapp'])->name('whatsapp.preview');
@@ -716,11 +716,11 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:web', 'resolve.tenant'
         Route::prefix('templates')->name('templates.')->middleware('feature.enabled:notification_center,notification_templates')->group(function () {
             Route::get('/', [NotificationTemplateController::class, 'index'])->name('index');
             Route::get('/create', [NotificationTemplateController::class, 'create'])->name('create');
-            Route::post('/sync-defaults', [NotificationTemplateController::class, 'syncDefaults'])->name('sync-defaults');
-            Route::post('/', [NotificationTemplateController::class, 'store'])->name('store');
+            Route::post('/sync-defaults', [NotificationTemplateController::class, 'syncDefaults'])->middleware('permission.check:manage_notification_templates')->name('sync-defaults');
+            Route::post('/', [NotificationTemplateController::class, 'store'])->middleware('permission.check:manage_notification_templates')->name('store');
             Route::post('/preview', [NotificationTemplateController::class, 'preview'])->name('preview');
             Route::get('/{template}/edit', [NotificationTemplateController::class, 'edit'])->name('edit')->whereNumber('template');
-            Route::put('/{template}', [NotificationTemplateController::class, 'update'])->name('update')->whereNumber('template');
+            Route::put('/{template}', [NotificationTemplateController::class, 'update'])->middleware('permission.check:manage_notification_templates')->name('update')->whereNumber('template');
         });
     });
 });

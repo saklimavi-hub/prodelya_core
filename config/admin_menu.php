@@ -148,6 +148,7 @@ return [
                     'icon' => 'check-circle',
                     'module_key' => 'current_accounts',
                     'feature_key' => 'current_account_cards',
+                    'permission' => 'view_customers',
                     'status' => 'active',
                     'sort_order' => 10,
                 ],
